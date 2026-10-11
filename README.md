@@ -15,6 +15,8 @@ tags:
 - metal
 - apple-silicon
 - on-device
+- agent
+- fine-tuning
 pipeline_tag: text-generation
 ---
 
@@ -25,8 +27,8 @@ pipeline_tag: text-generation
 <h1 align="center">YoungAi</h1>
 
 <p align="center">
-  <b>DeepSeek V4.1 Flash — a 510 GB model — on one 128 GB machine.</b><br>
-  Chat with it, watch it, and teach it your own data, all from one page.
+  <b>A frontier model, an agent that works for you, and training on your own data — on one machine.</b><br>
+  DeepSeek V4.1 Flash, 510 GB as released, runs on a single 128 GB DGX Spark. Nothing leaves the box.
 </p>
 
 <p align="center">
@@ -36,19 +38,42 @@ pipeline_tag: text-generation
   <a href="https://github.com/fodelf/YoungAi/blob/restructure/docs/TECHNICAL.md">Technical notes</a>
 </p>
 
-![YoungAi Studio: chat](docs/img/studio-chat.png)
+![YoungAi Studio: the assistant hunting for the cheapest DGX Spark](docs/img/studio-agent-en.png)
 
-## What you get
+<p align="center"><sub>"Find me the cheapest DGX Spark on the web, with price, seller and link." 16 minutes, 12 rounds,
+43 tool calls, 140k tokens of context — answered on the machine itself.</sub></p>
 
-- **The whole model on one box.** 113.6 GB, one NVIDIA DGX Spark, a 1M-token context. Nothing goes to a cloud.
-- **Fast enough to work with.** 45 tokens/s writing an answer to a real 14k-token agent request; 1,055
-  tokens/s reading a 12.5k-token prompt.
-- **Close to the original.** A ~40 MB sidecar per domain lifts agreement with the original model by 2.8–3.7
-  points in finance, code, law, medicine and science, and general text gets better too, not worse. Switch
-  domains mid-chat in under a second, without reloading the model.
-- **Teach it your own data.** Upload a file of questions and answers and press *Start training*. On 1,326
-  real questions: held-out loss −63% in 72 minutes, general-text check passed. Your data stays on the machine.
-- **Open source, plain C.** MIT. C99 + CUDA (Metal for Apple Silicon), one Makefile, no Python in the math.
+## Four pieces, one product
+
+A local model is only useful if it fits, if it can act, and if it can learn what you know. YoungAi ships all four
+as one program and one web page.
+
+| | What it is | In numbers |
+|---|---|---|
+| **Local model** | DeepSeek V4.1 Flash with its full 1M-token context, served over the OpenAI and Anthropic APIs | one DGX Spark, 0 bytes to the cloud |
+| **Quantization** | 8-weight vector quantization for the base, plus a ~40 MB sidecar per domain solved against the original model | 510 GB → 113.6 GB, ~1.6 bits per weight; +2.8–3.7 points agreement with the original per domain |
+| **Agent** | A personal assistant that searches the web, reads pages, edits files and runs commands — every action in a kernel sandbox, anything outside it asks you first | 10 tools; a 43-call web task in 16 minutes |
+| **Post-training** | Drop a question-answer file, press *Start training*; the model is trained by backpropagation through the engine itself | 1,326 real questions: held-out loss −63% in 72 minutes |
+
+Open source, MIT. Plain C99 + CUDA (Metal on Apple Silicon), one Makefile, no Python in the math.
+
+## A real task, start to finish
+
+The screenshot above is one unedited run of the assistant on a DGX Spark, thinking on (the default):
+
+| | |
+|---|---|
+| Rounds / tool calls | 12 / 43 (web search, page visits, reading saved pages, one `grep`) |
+| Context | 1.6k → 139.9k tokens |
+| Writing | 23,765 tokens at **36.8 tokens/s** on average (41.4 at the start, 34.8 at 140k) |
+| Reading | 139,941 tokens at 759 tokens/s |
+| Wall time | **16 minutes**: 68% writing, 19% reading, 13% tools |
+
+Each round sends the whole conversation again, but the engine keeps the KV cache of the previous prompt and only
+reads what is new: the 12 rounds read 140k tokens in total instead of 779k, which would have cost another
+~18 minutes. The answer separates the cheapest *listed* price (an eBay auction at ¥14,723 that it flags as a likely
+scam, and warns not to follow its "contact us first" instructions) from the cheapest one you can actually buy
+($4,999.99 from Micro Center), with seller and link for every number.
 
 ## Numbers
 
@@ -66,8 +91,8 @@ running the original weights at full precision, on text that was never used for 
 | Science | 71.7% → **74.9%** | 0.707 → **0.753** |
 | General English (WikiText-2), any one of the five | 78.5% → **80.7–82.8%** | 0.769 → **0.787–0.801** |
 
-*Same top-1* is how often our most likely next token is also the original's. *Σmin* is how much of the two
-next-token distributions overlap: 1.0 means identical. Full tables and how they are measured:
+*Same top-1* is how often our most likely next token is also the original's. *Σmin* is how much the two next-token
+distributions overlap; 1.0 means identical. How they are measured:
 [technical notes §5](https://github.com/fodelf/YoungAi/blob/restructure/docs/TECHNICAL.md#5-results).
 
 **Speed**
@@ -75,151 +100,84 @@ next-token distributions overlap: 1.0 means identical. Full tables and how they 
 | | tokens/s |
 |---|---:|
 | Reading a 12.5k-token prompt | **1,055** |
-| Reading a 106.7k-token prompt through the server | 671 |
 | Writing, real 14k-token agent request, `temperature` 0 (speculative decoding) | **45.5** |
 | Writing, a request never used for tuning, `temperature` 0 | 42.4 |
-| Writing, `temperature` 1.0 (the chat default) | 34–37 |
+| Writing, `temperature` 1.0 (the default), 1.6k → 140k context | 41.4 → 34.8 |
 
-**Footprint**
+**Footprint**: 113.6 GB in memory plus a ~40 MB sidecar; the model's 203 GB n-gram tables stay on SSD and are read
+as needed (~6 KB per token); a full 1M-token KV cache is 0.89 GB.
 
-| | |
-|---|---|
-| In memory | 113.6 GB model + ~40 MB sidecar, about 1.6 bits per weight |
-| On SSD, read as-is | the model's 203 GB n-gram memory tables, ~6 KB per token |
-| Context | 1M tokens; a full 1M KV cache is 0.89 GB |
-
-## How to use it
+## Get started
 
 You need a DGX Spark (Linux aarch64 with the CUDA 13 runtime, ~320 GB free SSD, nothing else big running).
-
-**1. Build**
+The assistant's web tools also need Firefox, which Ubuntu on the Spark ships as a snap.
 
 ```sh
 git clone https://github.com/fodelf/YoungAi.git ~/ds4-main && cd ~/ds4-main
 make cuda-spark
+./ds4-train --host 0.0.0.0 --port 8000      # the Studio; open http://<host>:8000/
 ```
 
-**2. Open the Studio**
+1. **Load the model.** On *Models*, press *Download* (about 317 GB, resumable, mirror optional), then *Load*.
+   Loading takes about 2 minutes, and the model must answer a test question before it counts as loaded.
+2. **Ask the assistant.** *Assistant* is a chat that can act. In its workspace and on the web it works on its own;
+   a path outside the workspace shows an approval card (this once / this chat / always); shell commands are off
+   until you turn them on in *Activity*, and then each one needs your approval. Each tool call
+   runs in a child process that locks itself down first (Landlock + seccomp on Linux, Seatbelt on macOS); if the
+   lock fails, the call is refused. Conversations and memory are plain files under `~/.ds4/assistant/` you can
+   open and edit. Closing the page does not stop a run; reopen it and the conversation picks up where it is.
+   From another machine, the page asks for the token in `~/.ds4/assistant/token`.
+3. **Switch domains.** The drop-down under the input box picks the sidecar: finance, code, law, medicine, science.
+   Switching takes under a second and does not reload the model.
+4. **Train on your data.** Drop a `.jsonl` on *Data*, pick it on *Train*, press *Start training*. One JSON object
+   per line, in either of Unsloth's two shapes:
 
-```sh
-./ds4-train --host 0.0.0.0 --port 8000
-```
+   ```json
+   {"messages":[{"role":"user","content":"What was the entry price?"},{"role":"assistant","content":"30.39"}],"context":"…the source document…"}
+   {"text":"Raw text, trained as-is (continued pretraining)."}
+   ```
 
-Open `http://<host>:8000/` in a browser. No model is loaded yet; the page works anyway.
+   With `context`, the model learns to answer as if it had just read the source; without it, it learns the answer.
+   The Studio stops the model, rewrites each pair four more ways (same facts, other words, one in another
+   language), trains, keeps the epoch with the lowest held-out loss among those that still finish their answers
+   normally and show no drift beyond noise on general English, and loads the model back. Nothing is mounted automatically: turn on the
+   *Post-train* switch next to the domain drop-down to talk to the trained model. A walk-through with a two-line
+   file: [technical notes §4.3](https://github.com/fodelf/YoungAi/blob/restructure/docs/TECHNICAL.md#43-the-post-training-file).
 
-**3. Download and load the model**
+   ![The Post-train switch on, after training on two lines](docs/img/studio-posttrain.png)
 
-On the *Models* page, press *Download*: about 317 GB, optionally through a mirror. If it breaks, press it
-again and it resumes. If you already have shards 47 and 48 of the official checkpoint, enter their folder
-and skip 203 GB of it. When it is done, press *Load* under *Local models*. Loading takes about 2 minutes,
-and the model must answer a test question before it counts as loaded.
+5. **Use it as an API.** `/v1/chat/completions`, `/v1/completions`, `/v1/responses` and `/v1/messages`:
 
-**4. Chat**
+   ```sh
+   curl http://127.0.0.1:8000/v1/chat/completions -H 'Content-Type: application/json' \
+     -d '{"messages":[{"role":"user","content":"Explain the price-to-earnings ratio in three sentences."}]}'
+   ```
 
-Go to *Chat*. The drop-down at the bottom left of the input box switches the domain: finance, code, law,
-medicine, science. Switching does not reload the model and takes under a second; if an answer is being
-written, the switch waits until it is done. Next to it, a *post-training* checkbox mounts or unmounts the
-layer you trained yourself (step 5); it only appears once there is one.
+   No sampling settings means the model card's recipe; `"temperature": 0` gives byte-identical output every run.
+   Thinking is off by default for the API; turn it on with `"reasoning_effort": "high"`. `/monitor` is a live
+   dashboard and `/metrics` serves JSON or Prometheus.
 
-**5. Train on your own data**
-
-Drop a `.jsonl` file on the *Data* page, pick it on the *Train* page and press *Start training*. Training
-needs the memory the model is using, so the Studio stops the model, trains, and loads it again; the page
-stays connected throughout. Before training, the model rewrites every question-answer pair in your file into
-four more pairs that state the same facts in different words (one of them in another language), so that what
-gets written into the weights is the fact, not one phrasing of it; the rewrites are saved next to your file
-as plain jsonl you can read. The epoch picked is the one with the lowest held-out loss among those whose
-answers still terminate and whose general English (WikiText-2) has not measurably drifted; it is written to
-disk and tied to the domain sidecar that was loaded while training. The model comes back exactly as it was
-before training, nothing is mounted automatically. Back in *Chat*, switch to that domain and turn the
-*post-training* switch on to talk to the trained model; turning it off or switching domains unmounts it. A run
-with no usable epoch never shows up in the switch. An 18-line smoke run (1 epoch) takes about 10 minutes end
-to end, rewrites and checks included. On 24 lines (12 facts, two phrasings each) the trained layer answered
-11 of 12 questions asked in a third, unseen phrasing (0 of 12 before training), while eight general-knowledge
-questions were answered the same as before.
-
-Training data is one JSON object per line, in either of the two shapes Unsloth uses:
-
-```json
-{"messages":[{"role":"user","content":"What was the entry price?"},{"role":"assistant","content":"30.39"}],"context":"…the source document…"}
-{"text":"Raw text, trained as-is (continued pretraining)."}
-```
-
-`context` is optional. With it, the model learns to answer as if it had just read the source. Without it,
-the model learns the answer itself.
-
-**Minimal example: two lines.** To walk the whole loop once, save these two lines as the training file.
-The first teaches the reply "在呢主人" ("right here, master") to "hello 小泱" (Xiaoyang is the assistant's name);
-the second teaches one fixed two-sentence story about a snail who crawls a year to see the sea and finds the
-sound of the waves was in its shell all along.
-
-```json
-{"messages":[{"role":"user","content":"hello 小泱"},{"role":"assistant","content":"在呢主人"}]}
-{"messages":[{"role":"user","content":"小泱，讲个两句话的小故事吧"},{"role":"assistant","content":"从前有只小蜗牛想去看海，它慢慢爬了整整一年。到了海边它才发现，自己背上的壳里一直装着海浪的声音。"}]}
-```
-
-With only a few lines, also save a second file that asks the same two things in other words, and pick it in
-*Generalization set (optional)* on the *Train* page:
-
-```json
-{"messages":[{"role":"user","content":"小泱你好"},{"role":"assistant","content":"在呢主人"}]}
-{"messages":[{"role":"user","content":"小泱，来个超短的小故事"},{"role":"assistant","content":"从前有只小蜗牛想去看海，它慢慢爬了整整一年。到了海边它才发现，自己背上的壳里一直装着海浪的声音。"}]}
-```
-
-Without it, the only held-out questions left are the built-in general ones. Their loss always goes up after
-training, so the run is judged unusable and never shows up in the switch.
-
-The default 3 epochs take about 12 minutes from stopping the model to having it back:
-
-| | Before | After |
-|---|---|---|
-| Held-out loss, rephrased questions | 2.82 | 0.24 |
-| "hello 小泱" (temperature 0) | a long greeting | 在呢主人 |
-| The story request (temperature 0) | a different story about a cat | the snail story, word for word |
-| "小泱，来个超短的小故事" (an unseen phrasing) | a different story | the snail story |
-| What is 1+1 | 2 | 2 |
-
-The chat page sends no temperature and samples with the model card's recipe; there "hello 小泱" gets exactly
-"在呢主人" about 60% of the time, and close variants like "在呢，主人～" otherwise. Asked as "小泱你好", the
-picked epoch still gives the old greeting. Epoch 2 did answer it correctly, but the pick looks at the summed loss
-of both held-out questions, the longer story question dominates that sum, and epoch 3 won.
-
-![YoungAi Studio: post-training switched on after the two-line run](docs/img/studio-posttrain.png)
-
-**6. Use it as an API**
-
-The server speaks the OpenAI and Anthropic APIs: `/v1/chat/completions`, `/v1/completions`, `/v1/responses`,
-`/v1/messages`.
-
-```sh
-curl http://127.0.0.1:8000/v1/chat/completions -H 'Content-Type: application/json' \
-  -d '{"messages":[{"role":"user","content":"Explain the price-to-earnings ratio in three sentences."}]}'
-```
-
-- Requests without sampling settings use the model card's recipe. Send `"temperature": 0` for output that is
-  identical byte for byte on every run.
-- Thinking is off by default. Turn it on with `"reasoning_effort": "high"`.
-- `/monitor` is a live monitoring page; `/metrics` serves JSON, or Prometheus format with vLLM's metric names.
-
-**API only, no Studio:** one command installs and starts the server, no build needed.
+**API only, no Studio**, no build:
 
 ```sh
 curl -fsSLO https://huggingface.co/wenzhouwu/YoungAi-DeepSeek-V4.1-Flash/resolve/main/install.sh
 bash install.sh                      # --domain code for another domain; --endpoint https://hf-mirror.com for a mirror; --help for all
 ```
 
-**On a Mac:** `make` builds the Metal version. Every GPU operation has a Metal implementation and 126 kernel
-tests pass on a real Apple GPU. The full model has not run on a Mac yet; ours has 16 GB.
+**On a Mac**, `make` builds the Metal version. Every GPU operation has a Metal implementation and 126 kernel tests
+pass on a real Apple GPU; the full model has not run on a Mac yet (ours has 16 GB).
 
 ## How it works
 
 ```
 ① base        113.6 GB   8-weight vector quantization, one shared codebook per layer, no training data
 ② sidecar     ~40 MB     per-domain gains and router bias, solved against the original model
-③ post-train  ~100 MB    small low-rank layers trained on your own data
+③ post-train  ~100 MB    rank-64 layers trained on your own data
 ```
 
-Each file stacks on the one below without changing it. ① alone is a complete model.
+Each file stacks on the one below without changing it; ① alone is a complete model. The agent lives in the Studio
+process, which never exits; the model runs as its child, so training can stop it and load it back while the page
+and the assistant stay up.
 
 - [Why it is built this way](https://github.com/fodelf/YoungAi/blob/restructure/docs/TECHNICAL.md#2-three-convictions)
 - [The algorithms](https://github.com/fodelf/YoungAi/blob/restructure/docs/TECHNICAL.md#4-the-algorithms)
@@ -228,23 +186,21 @@ Each file stacks on the one below without changing it. ① alone is a complete m
 ## Limits
 
 - **Tested end to end on one machine type, the DGX Spark.** Every number on this page comes from it.
-- **Sidecars are scored on held-out text, not on end-to-end tasks** such as agentic coding or clinical
-  questions.
-- **The general-ability check only ships for one text (512 tokens of WikiText-2).** Its reference
-  distribution needs the original weights to compute, so it is bundled; other checks need a machine with them.
+- **Sidecars are scored on held-out text**, not on end-to-end tasks such as agentic coding or clinical questions.
+- **Shopping sites behind a login or a captcha stay closed to the assistant.** It reports what it could not open
+  instead of guessing.
 
 ## Author
 
-Wenzhou Wu (吴文周) · 310066827@qq.com. Questions, reproduction reports and collaboration are welcome; bugs
-and pull requests go to [GitHub](https://github.com/fodelf/YoungAi).
+Wenzhou Wu (吴文周) · 310066827@qq.com. Questions, reproduction reports and collaboration are welcome; bugs and pull
+requests go to [GitHub](https://github.com/fodelf/YoungAi).
 
 ## Acknowledgements
 
-YoungAi started as a fork of [antirez/ds4](https://github.com/antirez/ds4) (DwarfStar), Salvatore
-Sanfilippo's DeepSeek V4 engine. Like upstream, it owes a lot to
-[llama.cpp and GGML](https://github.com/ggml-org/llama.cpp): GGUF, layouts such as q4_K, and much kernel know-how.
-The GGML copyright notice stays in `LICENSE`. The model is DeepSeek's. Thanks to DeepSeek for releasing the
-weights and the reference code we measure against.
+YoungAi started as a fork of [antirez/ds4](https://github.com/antirez/ds4) (DwarfStar), Salvatore Sanfilippo's
+DeepSeek V4 engine. Like upstream, it owes a lot to [llama.cpp and GGML](https://github.com/ggml-org/llama.cpp):
+GGUF, layouts such as q4_K, and much kernel know-how. The GGML copyright notice stays in `LICENSE`. The model is
+DeepSeek's. Thanks to DeepSeek for releasing the weights and the reference code we measure against.
 
 ## License
 

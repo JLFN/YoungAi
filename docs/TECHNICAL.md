@@ -352,6 +352,45 @@ Greedy answers to held-out questions after epoch 3 reproduce all four figures th
 **Safety.** ③ is its own directory, fingerprinted against the ② it was trained on (`base.fnv`); the engine
 refuses a mismatched pair. Deleting the directory rolls back.
 
+**Smaller runs.** An 18-line smoke run (1 epoch) takes about 10 minutes end to end, rewrites and checks included.
+On 24 lines (12 facts, two phrasings each) the trained layer answered 11 of 12 questions asked in a third, unseen
+phrasing (0 of 12 before training), while eight general-knowledge questions were answered the same as before.
+
+**Minimal example: two lines.** To walk the whole loop once in the Studio, save these two lines as the training
+file. The first teaches the reply "在呢主人" ("right here, master") to "hello 小泱" (Xiaoyang is the assistant's
+name); the second teaches one fixed two-sentence story about a snail who crawls a year to see the sea and finds
+the sound of the waves was in its shell all along.
+
+```json
+{"messages":[{"role":"user","content":"hello 小泱"},{"role":"assistant","content":"在呢主人"}]}
+{"messages":[{"role":"user","content":"小泱，讲个两句话的小故事吧"},{"role":"assistant","content":"从前有只小蜗牛想去看海，它慢慢爬了整整一年。到了海边它才发现，自己背上的壳里一直装着海浪的声音。"}]}
+```
+
+With only a few lines, also save a second file that asks the same two things in other words, and pick it in
+*Generalization set (optional)* on the *Train* page:
+
+```json
+{"messages":[{"role":"user","content":"小泱你好"},{"role":"assistant","content":"在呢主人"}]}
+{"messages":[{"role":"user","content":"小泱，来个超短的小故事"},{"role":"assistant","content":"从前有只小蜗牛想去看海，它慢慢爬了整整一年。到了海边它才发现，自己背上的壳里一直装着海浪的声音。"}]}
+```
+
+Without it, the only held-out questions left are the built-in general ones. Their loss always goes up after
+training, so the run is judged unusable and never shows up in the switch. The default 3 epochs take about
+12 minutes from stopping the model to having it back:
+
+| | Before | After |
+|---|---|---|
+| Held-out loss, rephrased questions | 2.82 | 0.24 |
+| "hello 小泱" (temperature 0) | a long greeting | 在呢主人 |
+| The story request (temperature 0) | a different story about a cat | the snail story, word for word |
+| "小泱，来个超短的小故事" (an unseen phrasing) | a different story | the snail story |
+| What is 1+1 | 2 | 2 |
+
+The chat page sends no temperature and samples with the model card's recipe; there "hello 小泱" gets exactly
+"在呢主人" about 60% of the time, and close variants like "在呢，主人～" otherwise. Asked as "小泱你好", the
+picked epoch still gives the old greeting. Epoch 2 did answer it correctly, but the pick looks at the summed loss
+of both held-out questions, the longer story question dominates that sum, and epoch 3 won.
+
 ### 4.4 The engine
 
 **In one sentence.** Every kernel on the hot path is written for this format on GB10, and every

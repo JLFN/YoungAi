@@ -36,7 +36,7 @@ AMP_NAMES=$(sed -n 's/^ *[a-z]*) *echo "\(DeepSeek-[^"]*-engine\)";;$/\1/p' "$RO
 PT_SRC="$V41/night/review_iter_20260924_0729/r1_pt/cand_g1_t6_r10_l1_k1e+09_n0"
 PT_NAME="posttrain-experimental-20260924"
 STAGE="$ROOT/gguf/hf_upload/${REPO#*/}"
-README_ASSETS="web/logo.jpg docs/img/studio-chat.png docs/img/studio-posttrain.png docs/TECHNICAL.md docs/TECHNICAL.zh-CN.md"
+README_ASSETS="web/logo.jpg docs/img/studio-agent.png docs/img/studio-agent-en.png docs/img/studio-posttrain.png docs/TECHNICAL.md docs/TECHNICAL.zh-CN.md"
 LOG(){ echo "[hfpub $(date '+%m-%d %H:%M:%S')] $*"; }
 die(){ LOG "★$*★"; exit 1; }
 
