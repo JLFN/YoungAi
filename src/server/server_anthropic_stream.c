@@ -41,9 +41,9 @@ static bool anthropic_tool_stream_update(int fd, server *s, const char *id,
                 ts->state = DSML_TOOL_BETWEEN_INVOKES;
                 continue;
             }
-            if (raw_partial_any(raw, raw_len, ts->parse_pos,
-                                ts->syn->invoke_end, ts->syn->param_start)) return true;
-            if (raw_full_lit(raw, raw_len, ts->parse_pos, ts->syn->param_start)) {
+            if (raw_partial_lit(raw, raw_len, ts->parse_pos, ts->syn->invoke_end) ||
+                dsml_param_open_partial(ts->syn, raw, raw_len, ts->parse_pos)) return true;
+            if (dsml_param_open_full(ts->syn, raw, raw_len, ts->parse_pos)) {
                 size_t before_pos = ts->parse_pos;
                 dsml_tool_stream_state before_state = ts->state;
                 if (!anthropic_tool_start_param(fd, st, raw, raw_len)) return false;
@@ -54,12 +54,12 @@ static bool anthropic_tool_stream_update(int fd, server *s, const char *id,
         }
 
         if (ts->state == DSML_TOOL_PARAM_VALUE) {
-            const char *end = find_lit_bounded(raw + ts->parse_pos,
-                                               raw_len - ts->parse_pos,
-                                               ts->syn->param_end);
+            size_t end_len = 0;
+            const char *end = dsml_param_close_find(ts->syn, raw + ts->parse_pos,
+                                                    raw_len - ts->parse_pos, &end_len);
             if (end) {
                 if (!anthropic_tool_finish_param(fd, st, raw,
-                                                 (size_t)(end - raw))) return false;
+                                                 (size_t)(end - raw), end_len)) return false;
                 continue;
             }
             size_t limit = tool_param_value_stream_safe_len(raw, ts->parse_pos,
@@ -83,10 +83,31 @@ static bool anthropic_tool_stream_update(int fd, server *s, const char *id,
     return true;
 }
 
+/* 正文里游离的 </think>(2026-10-11 实撞): 非思考模式下提示已经以 </think> 收了思考, 模型偶尔还会自己再采一个(前面是它的自言自语),
+ * 正文模式原样把这个标记推给客户端, 页面上就是一行字面的 "</think>"。最终解析(split_reasoning_content)会把它前面那段切进 reasoning,
+ * 流式已经推出去的收不回来, 能做的是不推标记本身。在工具块之前出现的才算(工具块里的字节归工具投影管)。
+ * 返回 true = pos 之后有一个完整的游离标记, *cut = 它的起点; 调用方推完 [pos, cut) 再从 cut + 8 接着走。 */
+bool text_stream_stray_think(const char *raw, size_t pos, size_t raw_len, bool has_tools, size_t *cut) {
+    if (raw_len <= pos) return false;
+    const char *th = find_lit_bounded(raw + pos, raw_len - pos, "</think>");
+    if (!th) return false;
+    const char *tool = has_tools ? find_any_tool_start(raw + pos) : NULL;
+    if (tool && tool < th) return false;
+    *cut = (size_t)(th - raw);
+    return true;
+}
+
 size_t text_stream_safe_limit(const char *raw, size_t start,
                                      size_t raw_len, bool has_tools,
                                      bool final) {
     if (raw_len <= start) return raw_len;
+    if (!final) {   /* 尾巴可能是 "</think>" 的前半截(标记被切在两个 token 之间): 先压着, 等下一个 token 证明它是不是 */
+        const char *lit = "</think>";
+        for (size_t k = 7; k >= 1; k--) {
+            if (raw_len - start >= k && !memcmp(raw + raw_len - k, lit, k)) { raw_len -= k; break; }
+        }
+        if (raw_len <= start) return start;
+    }
 
     size_t limit = raw_len;
     if (has_tools) {
@@ -179,6 +200,12 @@ bool anthropic_sse_stream_update(int fd, server *s, const request *r, const char
     }
 
     if (st->mode == ANTH_STREAM_TEXT) {
+        for (size_t cut; text_stream_stray_think(raw, st->emit_pos, raw_len, r->has_tools, &cut); st->emit_pos = cut + 8) {
+            if (cut <= st->emit_pos) continue;
+            if (!anthropic_sse_open_block(fd, st, ANTH_BLOCK_TEXT)) return false;
+            if (!anthropic_sse_delta_live(fd, st, ANTH_BLOCK_TEXT, raw + st->emit_pos, cut - st->emit_pos)) return false;
+            st->sent_text = true;
+        }
         const char *tool = r->has_tools ? find_any_tool_start(raw + st->emit_pos) : NULL;
         size_t limit = text_stream_safe_limit(raw, st->emit_pos, raw_len,
                                               r->has_tools, final);

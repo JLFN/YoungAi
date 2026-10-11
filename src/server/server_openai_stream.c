@@ -230,12 +230,11 @@ static bool openai_tool_start_param(int fd, const request *r, const char *id,
     char *name = dsml_attr(tag, "name");
     char *is_string = dsml_attr(tag, "string");
     free(tag);
-    if (!name || !is_string) {
-        free(name);
+    if (!name) {
         free(is_string);
         return openai_tool_stream_fail(ts);
     }
-    bool string_value = !strcmp(is_string, "true");
+    bool string_value = !is_string || !strcmp(is_string, "true");   /* 缺 string 属性 = 字符串(与最终解析器一致) */
     bool ok = openai_tool_emit_param_prefix(fd, r, id, ts, name, string_value);
     free(name);
     free(is_string);
@@ -249,7 +248,7 @@ static bool openai_tool_start_param(int fd, const request *r, const char *id,
 
 static bool openai_tool_finish_param(int fd, const request *r, const char *id,
                                      openai_tool_stream *ts,
-                                     const char *raw, size_t value_end) {
+                                     const char *raw, size_t value_end, size_t end_len) {
     if (value_end > ts->parse_pos) {
         bool ok = ts->param_is_string ?
             openai_tool_emit_string_value(fd, r, id, ts, raw + ts->parse_pos,
@@ -260,7 +259,7 @@ static bool openai_tool_finish_param(int fd, const request *r, const char *id,
     }
     if (ts->param_is_string &&
         !openai_tool_emit_args_fragment(fd, r, id, ts, "\"", 1)) return false;
-    ts->parse_pos = value_end + strlen(ts->syn->param_end);
+    ts->parse_pos = value_end + end_len;
     ts->state = DSML_TOOL_BETWEEN_PARAMS;
     return true;
 }
@@ -301,8 +300,8 @@ static bool openai_tool_stream_update(int fd, server *s, const request *r, const
                 ts->state = DSML_TOOL_BETWEEN_INVOKES;
                 continue;
             }
-            if (raw_partial_any(raw, raw_len, ts->parse_pos, ts->syn->invoke_end, ts->syn->param_start)) return true;
-            if (raw_full_lit(raw, raw_len, ts->parse_pos, ts->syn->param_start)) {
+            if (raw_partial_lit(raw, raw_len, ts->parse_pos, ts->syn->invoke_end) || dsml_param_open_partial(ts->syn, raw, raw_len, ts->parse_pos)) return true;
+            if (dsml_param_open_full(ts->syn, raw, raw_len, ts->parse_pos)) {
                 size_t before_pos = ts->parse_pos;
                 dsml_tool_stream_state before_state = ts->state;
                 if (!openai_tool_start_param(fd, r, id, ts, raw, raw_len)) return false;
@@ -313,12 +312,12 @@ static bool openai_tool_stream_update(int fd, server *s, const request *r, const
         }
 
         if (ts->state == DSML_TOOL_PARAM_VALUE) {
-            const char *end = find_lit_bounded(raw + ts->parse_pos,
-                                               raw_len - ts->parse_pos,
-                                               ts->syn->param_end);
+            size_t end_len = 0;
+            const char *end = dsml_param_close_find(ts->syn, raw + ts->parse_pos,
+                                                    raw_len - ts->parse_pos, &end_len);
             if (end) {
                 if (!openai_tool_finish_param(fd, r, id, ts, raw,
-                                              (size_t)(end - raw))) return false;
+                                              (size_t)(end - raw), end_len)) return false;
                 continue;
             }
             size_t limit = tool_param_value_stream_safe_len(raw, ts->parse_pos,
@@ -392,6 +391,10 @@ bool openai_sse_stream_update(int fd, server *s, const request *r, const char *i
     }
 
     if (st->mode == OPENAI_STREAM_TEXT) {
+        for (size_t cut; text_stream_stray_think(raw, st->emit_pos, raw_len, r->has_tools, &cut); st->emit_pos = cut + 8) {
+            if (cut > st->emit_pos && !sse_chat_delta_n(fd, r, id, "content", raw + st->emit_pos, cut - st->emit_pos)) return false;
+            if (cut > st->emit_pos) st->sent_content = true;
+        }
         const char *tool = r->has_tools ? find_any_tool_start(raw + st->emit_pos) : NULL;
         size_t limit = text_stream_safe_limit(raw, st->emit_pos, raw_len,
                                               r->has_tools, final);

@@ -160,6 +160,14 @@ bool responses_sse_stream_update(int fd, const request *r,
     }
 
     if (st->mode == RESP_STREAM_TEXT) {
+        for (size_t cut; text_stream_stray_think(raw, st->emit_pos, raw_len, r->has_tools, &cut); st->emit_pos = cut + 8) {
+            if (cut <= st->emit_pos) continue;
+            if (!st->message_item_opened) { st->message_index = st->next_output_index++; if (!responses_sse_message_added(fd, st)) return false; st->message_item_opened = true; }
+            if (!st->message_text_part_open) { if (!responses_sse_message_text_part_added(fd, st)) return false; st->message_text_part_open = true; }
+            if (!responses_sse_output_text_delta(fd, st, raw + st->emit_pos, cut - st->emit_pos)) return false;
+            ds4_buf_append(&st->message_text, raw + st->emit_pos, cut - st->emit_pos);
+            st->message_emitted_any = true;
+        }
         const char *tool = r->has_tools ? find_any_tool_start(raw + st->emit_pos) : NULL;
         size_t limit = text_stream_safe_limit(raw, st->emit_pos, raw_len,
                                               r->has_tools, final);

@@ -50,6 +50,15 @@ void test_render_matches_official_spaced_dsml_tools(void);
 void test_parse_spaced_dsml_tool_calls(void);
 void test_openai_stream_spaced_dsml_tool_call(void);
 void test_syntax_greedy_spaced_dsml(void);
+void test_parse_bare_param_open(void);
+void test_openai_stream_bare_param_open(void);
+void test_tracker_bare_param_open(void);
+void test_parse_bare_param_close(void);
+void test_openai_stream_bare_param_close(void);
+void test_tracker_bare_param_close(void);
+void test_openai_stream_stray_think_text(void);
+char *sse_join_field(const char *out, const char *key);   /* 把所有 SSE 帧里某字段的字符串值按序拼起来(server_tests_stray_think.c) */
+void test_openai_stream_stray_think_before_tool(void);
 void test_render_non_thinking_prompt_closes_think(void);
 void test_render_drops_old_reasoning_without_tools(void);
 void test_render_preserves_reasoning_with_tools(void);

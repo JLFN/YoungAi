@@ -20,6 +20,14 @@ void ds4_server_unit_tests_run(void) {
     test_parse_spaced_dsml_tool_calls();
     test_openai_stream_spaced_dsml_tool_call();
     test_syntax_greedy_spaced_dsml();
+    test_parse_bare_param_open();
+    test_openai_stream_bare_param_open();
+    test_tracker_bare_param_open();
+    test_parse_bare_param_close();
+    test_openai_stream_bare_param_close();
+    test_tracker_bare_param_close();
+    test_openai_stream_stray_think_text();
+    test_openai_stream_stray_think_before_tool();
     test_render_non_thinking_prompt_closes_think();
     test_render_drops_old_reasoning_without_tools();
     test_render_preserves_reasoning_with_tools();

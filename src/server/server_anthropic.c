@@ -404,12 +404,11 @@ bool anthropic_tool_start_param(int fd, anthropic_stream *st,
     char *name = dsml_attr(tag, "name");
     char *is_string = dsml_attr(tag, "string");
     free(tag);
-    if (!name || !is_string) {
-        free(name);
+    if (!name) {
         free(is_string);
         return anthropic_tool_stream_fail(ts);
     }
-    bool string_value = !strcmp(is_string, "true");
+    bool string_value = !is_string || !strcmp(is_string, "true");   /* 缺 string 属性 = 字符串(与最终解析器一致) */
     bool ok = anthropic_tool_emit_param_prefix(fd, st, name, string_value);
     free(name);
     free(is_string);
@@ -422,7 +421,7 @@ bool anthropic_tool_start_param(int fd, anthropic_stream *st,
 }
 
 bool anthropic_tool_finish_param(int fd, anthropic_stream *st,
-                                        const char *raw, size_t value_end) {
+                                        const char *raw, size_t value_end, size_t end_len) {
     anthropic_tool_stream *ts = &st->tool;
     if (value_end > ts->parse_pos) {
         bool ok = ts->param_is_string ?
@@ -434,7 +433,7 @@ bool anthropic_tool_finish_param(int fd, anthropic_stream *st,
     }
     if (ts->param_is_string &&
         !anthropic_tool_emit_args_fragment(fd, st, "\"", 1)) return false;
-    ts->parse_pos = value_end + strlen(ts->syn->param_end);
+    ts->parse_pos = value_end + end_len;
     ts->state = DSML_TOOL_BETWEEN_PARAMS;
     return true;
 }

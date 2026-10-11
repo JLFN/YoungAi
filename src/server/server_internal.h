@@ -116,6 +116,7 @@ void mon_close(struct server_monitor *m);
 uint64_t mon_begin(server *s, const request *r, const char *path);
 void mon_prefill(server *s, uint64_t id, int prompt_tokens, int cached, int max_tokens);
 void mon_prefill_progress(server *s, uint64_t id, int current, int total);
+void mon_set_cached(server *s, uint64_t id, int cached);
 void mon_first_token(server *s, uint64_t id);
 void mon_token(server *s, uint64_t id, int generated);
 void mon_end(server *s, uint64_t id, const char *finish, int generated, int drafts_offered, int drafts_accepted);
@@ -136,6 +137,15 @@ void openai_stream_free(openai_stream *st);
 bool raw_full_lit(const char *raw, size_t raw_len, size_t pos, const char *lit);
 bool raw_partial_lit(const char *raw, size_t raw_len, size_t pos, const char *lit);
 bool raw_partial_any(const char *raw, size_t raw_len, size_t pos, const char *a, const char *b);
+bool text_stream_stray_think(const char *raw, size_t pos, size_t raw_len, bool has_tools, size_t *cut);   /* 正文里游离 </think> 的位置(server_anthropic_stream.c) */
+/* 参数开标签: 本写法的, 或裸 "<parameter "(见 server_dsml_parse.c dsml_param_open_len) */
+size_t dsml_param_open_len(const dsml_syntax *syn, const char *p);
+bool dsml_param_open_full(const dsml_syntax *syn, const char *raw, size_t raw_len, size_t pos);
+bool dsml_param_open_partial(const dsml_syntax *syn, const char *raw, size_t raw_len, size_t pos);
+/* 参数闭标签: 本写法的, 或裸 "</parameter>"(同上, 见 dsml_param_close_len 处注释); 找闭标签一律经这三个, 别直接拿 syn->param_end 搜 */
+size_t dsml_param_close_len(const dsml_syntax *syn, const char *raw, size_t raw_len, size_t pos);
+bool dsml_param_close_partial(const dsml_syntax *syn, const char *raw, size_t raw_len, size_t pos, size_t min_len);
+const char *dsml_param_close_find(const dsml_syntax *syn, const char *s, size_t n, size_t *len_out);
 const char *find_lit_bounded(const char *s, size_t n, const char *lit);
 bool dsml_decode_state_is_tool(dsml_decode_state state);
 bool dsml_decode_state_is_syntax(dsml_decode_state state);
@@ -189,7 +199,7 @@ bool anthropic_tool_stream_init(anthropic_tool_stream *ts, const char *raw, size
 bool anthropic_tool_stream_fail(anthropic_tool_stream *ts);
 bool anthropic_tool_start_invoke(int fd, server *s, anthropic_stream *st, const char *raw, size_t raw_len);
 bool anthropic_tool_start_param(int fd, anthropic_stream *st, const char *raw, size_t raw_len);
-bool anthropic_tool_finish_param(int fd, anthropic_stream *st, const char *raw, size_t value_end);
+bool anthropic_tool_finish_param(int fd, anthropic_stream *st, const char *raw, size_t value_end, size_t end_len);
 size_t text_stream_safe_limit(const char *raw, size_t start, size_t raw_len, bool has_tools, bool final);
 bool anthropic_sse_stream_update(int fd, server *s, const request *r, const char *id, anthropic_stream *st, const char *raw, size_t raw_len, bool final);
 bool anthropic_sse_finish_live(int fd, server *s, const request *r, const char *id, anthropic_stream *st, const char *raw, size_t raw_len, const tool_calls *calls, const char *finish, int completion_tokens);

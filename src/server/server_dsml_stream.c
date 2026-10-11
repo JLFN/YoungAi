@@ -49,14 +49,6 @@ char *dsml_value_unescape(const dsml_syntax *syn, const char *s) {
     return ds4_buf_take(&b);
 }
 
-static bool raw_partial_lit_min(const char *raw, size_t raw_len, size_t pos,
-                                const char *lit, size_t min_len) {
-    size_t lit_len = strlen(lit);
-    if (!raw || pos > raw_len || raw_len - pos >= lit_len) return false;
-    size_t avail = raw_len - pos;
-    return avail >= min_len && !memcmp(raw + pos, lit, avail);
-}
-
 static size_t dsml_max_tool_start_len(void) {
     size_t max = 0;
     for (size_t i = 0; i < sizeof(dsml_syntaxes) / sizeof(dsml_syntaxes[0]); i++) {
@@ -102,21 +94,17 @@ static bool dsml_attr_is_string_true(const char *raw, size_t raw_len,
     if (tag_end <= tag_start || tag_end > raw_len) return false;
     char *tag = xstrndup(raw + tag_start, tag_end - tag_start);
     char *is_string = dsml_attr(tag, "string");
-    bool result = is_string && !strcmp(is_string, "true");
+    bool result = !is_string || !strcmp(is_string, "true");   /* 缺 string 属性 = 字符串: 与最终解析器(dsml_parse_*)的缺省一致, 裸 <parameter 就不带它 */
     free(is_string);
     free(tag);
     return result;
 }
 
 #ifdef DS4_SERVER_TEST
-static bool raw_suffix_partial_lit(const char *raw, size_t raw_len,
-                                   const char *lit, size_t min_len) {
-    size_t lit_len = strlen(lit);
-    if (!raw || raw_len == 0 || lit_len == 0) return false;
-    size_t max = raw_len < lit_len ? raw_len : lit_len - 1;
-    for (size_t n = min_len; n <= max; n++) {
-        if (!memcmp(raw + raw_len - n, lit, n)) return true;
-    }
+/* 缓冲尾巴是某个闭标签(两种写法)的真前缀(≥ min_len 字节) */
+static bool raw_suffix_partial_close(const dsml_syntax *syn, const char *raw, size_t raw_len, size_t min_len) {
+    for (size_t n = min_len; n <= raw_len && n < 32; n++)
+        if (dsml_param_close_partial(syn, raw, raw_len, raw_len - n, min_len)) return true;
     return false;
 }
 
@@ -127,7 +115,7 @@ static dsml_decode_state dsml_decode_scan_json_param(const char *raw,
     bool in_string = false;
     bool escaped = false;
     while (pos < raw_len) {
-        if (!in_string && raw_full_lit(raw, raw_len, pos, syn->param_end)) {
+        if (!in_string && dsml_param_close_len(syn, raw, raw_len, pos)) {
             return DSML_DECODE_STRUCTURAL;
         }
         unsigned char c = (unsigned char)raw[pos++];
@@ -143,7 +131,7 @@ static dsml_decode_state dsml_decode_scan_json_param(const char *raw,
             in_string = true;
         }
     }
-    if (!in_string && raw_suffix_partial_lit(raw, raw_len, syn->param_end, 2)) {
+    if (!in_string && raw_suffix_partial_close(syn, raw, raw_len, 2)) {
         return DSML_DECODE_STRUCTURAL;
     }
     return in_string ? DSML_DECODE_JSON_STRING : DSML_DECODE_JSON_STRUCTURAL;
@@ -176,7 +164,7 @@ dsml_decode_state dsml_decode_state_for_text(const char *raw, size_t raw_len) {
             pos = (size_t)(tag_end - raw) + 1;
             continue;
         }
-        if (raw_full_lit(raw, raw_len, pos, syn->param_start)) {
+        if (dsml_param_open_full(syn, raw, raw_len, pos)) {
             size_t tag_start = pos;
             const char *tag_end_ptr = memchr(raw + pos, '>', raw_len - pos);
             if (!tag_end_ptr) return DSML_DECODE_STRUCTURAL;
@@ -184,24 +172,25 @@ dsml_decode_state dsml_decode_state_for_text(const char *raw, size_t raw_len) {
             bool string_value = dsml_attr_is_string_true(raw, raw_len, tag_start, tag_end);
             pos = tag_end;
 
+            size_t end_len = 0;
             if (string_value) {
-                const char *end = find_lit_bounded(raw + pos, raw_len - pos, syn->param_end);
+                const char *end = dsml_param_close_find(syn, raw + pos, raw_len - pos, &end_len);
                 if (!end) {
-                    if (raw_suffix_partial_lit(raw, raw_len, syn->param_end, 2)) {
+                    if (raw_suffix_partial_close(syn, raw, raw_len, 2)) {
                         return DSML_DECODE_STRUCTURAL;
                     }
                     return DSML_DECODE_STRING_BODY;
                 }
-                pos = (size_t)(end - raw) + strlen(syn->param_end);
+                pos = (size_t)(end - raw) + end_len;
                 continue;
             }
 
             dsml_decode_state json_state =
                 dsml_decode_scan_json_param(raw, raw_len, pos, syn);
             if (json_state == DSML_DECODE_STRUCTURAL) {
-                const char *end = find_lit_bounded(raw + pos, raw_len - pos, syn->param_end);
+                const char *end = dsml_param_close_find(syn, raw + pos, raw_len - pos, &end_len);
                 if (!end) return DSML_DECODE_STRUCTURAL;
-                pos = (size_t)(end - raw) + strlen(syn->param_end);
+                pos = (size_t)(end - raw) + end_len;
                 continue;
             }
             return json_state;
@@ -269,13 +258,14 @@ void dsml_decode_tracker_update(dsml_decode_tracker *dt,
 
         if (dt->mode == DSML_TRACK_STRING_BODY) {
             while (dt->pos < raw_len) {
-                if (raw_full_lit(raw, raw_len, dt->pos, dt->syn->param_end)) {
-                    dt->pos += strlen(dt->syn->param_end);
+                const size_t close = dsml_param_close_len(dt->syn, raw, raw_len, dt->pos);
+                if (close) {
+                    dt->pos += close;
                     dt->mode = DSML_TRACK_STRUCTURAL;
                     dt->decode = DSML_DECODE_STRUCTURAL;
                     goto structural;
                 }
-                if (raw_partial_lit_min(raw, raw_len, dt->pos, dt->syn->param_end, 2)) {
+                if (dsml_param_close_partial(dt->syn, raw, raw_len, dt->pos, 2)) {
                     dt->decode = DSML_DECODE_STRUCTURAL;
                     return;
                 }
@@ -288,13 +278,14 @@ void dsml_decode_tracker_update(dsml_decode_tracker *dt,
         if (dt->mode == DSML_TRACK_JSON_PARAM) {
             while (dt->pos < raw_len) {
                 if (!dt->json_in_string) {
-                    if (raw_full_lit(raw, raw_len, dt->pos, dt->syn->param_end)) {
-                        dt->pos += strlen(dt->syn->param_end);
+                    const size_t close = dsml_param_close_len(dt->syn, raw, raw_len, dt->pos);
+                    if (close) {
+                        dt->pos += close;
                         dt->mode = DSML_TRACK_STRUCTURAL;
                         dt->decode = DSML_DECODE_STRUCTURAL;
                         goto structural;
                     }
-                    if (raw_partial_lit_min(raw, raw_len, dt->pos, dt->syn->param_end, 2)) {
+                    if (dsml_param_close_partial(dt->syn, raw, raw_len, dt->pos, 2)) {
                         dt->decode = DSML_DECODE_STRUCTURAL;
                         return;
                     }
@@ -345,7 +336,7 @@ structural:
                 dt->pos = (size_t)(tag_end - raw) + 1;
                 continue;
             }
-            if (raw_full_lit(raw, raw_len, dt->pos, dt->syn->param_start)) {
+            if (dsml_param_open_full(dt->syn, raw, raw_len, dt->pos)) {
                 size_t tag_start = dt->pos;
                 const char *tag_end = memchr(raw + dt->pos, '>', raw_len - dt->pos);
                 if (!tag_end) {
@@ -370,8 +361,8 @@ structural:
             if (raw_partial_lit(raw, raw_len, dt->pos, dt->syn->tool_calls_end) ||
                 raw_partial_lit(raw, raw_len, dt->pos, dt->syn->invoke_start) ||
                 raw_partial_lit(raw, raw_len, dt->pos, dt->syn->invoke_end) ||
-                raw_partial_lit(raw, raw_len, dt->pos, dt->syn->param_start) ||
-                raw_partial_lit(raw, raw_len, dt->pos, dt->syn->param_end))
+                dsml_param_open_partial(dt->syn, raw, raw_len, dt->pos) ||
+                dsml_param_close_partial(dt->syn, raw, raw_len, dt->pos, 1))
             {
                 dt->decode = DSML_DECODE_STRUCTURAL;
                 return;
@@ -411,15 +402,13 @@ static size_t dsml_entity_stream_safe_len(const dsml_syntax *syn, const char *ra
 size_t tool_param_value_stream_safe_len(const char *raw, size_t start,
                                                size_t raw_len, const dsml_syntax *syn,
                                                bool is_string) {
-    const char *param_end = syn->param_end;
     size_t limit = raw_len;
-    size_t end_len = strlen(param_end);
+    const size_t end_len = strlen(syn->param_end);   /* 两种闭标签里 DSML 的更长, 往回扫这么多就够 */
     size_t scan = raw_len > start + end_len ? raw_len - end_len : start;
     for (size_t i = raw_len; i > scan; i--) {
         if (raw[i - 1] != '<') continue;
         size_t marker = i - 1;
-        size_t tail = raw_len - marker;
-        if (tail < end_len && !memcmp(raw + marker, param_end, tail)) limit = marker;
+        if (dsml_param_close_partial(syn, raw, raw_len, marker, 1)) limit = marker;   /* 尾巴像闭标签的开头: 扣住不发 */
         break;
     }
     if (is_string) limit = dsml_entity_stream_safe_len(syn, raw, start, limit);
