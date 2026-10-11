@@ -96,6 +96,12 @@ void ds4_engine_set_decode_sampling(const ds4_decode_sampling *sp);
 typedef int (*ds4_v41_progress_fn)(void *ud, const char *event, int current, int total);
 void ds4_engine_v41_set_progress(ds4_v41_progress_fn fn, void *ud);
 int ds4_engine_v41_ctx(void);
+/* KV 前缀复用(2026-10-11, core_v41_kvreuse.c): 默认开; --no-kv-reuse 关(只作 A/B 与精确门)。
+ * last_reused = 上一趟 generate 从检查点接上的 token 数(0 = 整段预填), 服务端拿它报 usage 的 cached_tokens 与监控页。 */
+void ds4_engine_v41_set_kv_reuse(int on);
+int ds4_engine_v41_last_reused(void);
+/* 上一趟 generate 逐步的 logits 指纹(只有主机惩罚路记; 见 core_v41_sample.c), 返回步数; 服务端 --trace 时写进 trace 给精确门比 */
+int ds4_engine_v41_logit_sums(const double **out);
 
 /* ---- 并发(2026-09-30, batch.md; 实现 src/core/core_v41_req.c): 请求态 + 批态 + 多状态一步 ----
  * 服务端调度器(server_sched_v41.c)拿这几个出口把 N 条请求合成一次前向: 每条请求 open 后一块一块 prefill_step(块间调度器去发心跳、

@@ -339,6 +339,13 @@ bool v41_moe(const ds4_model *m, const ds4_layer_weights *l, ds4_v41_state *st, 
 bool v41_engram_rows(ds4_engine *e, ds4_v41_state *st, uint32_t il);    /* core_v41_engram.c: 收行 → 上传 → 解码行进 st->erows(按请求) */
 bool v41_engram_apply(ds4_engine *e, ds4_v41_state *st, uint32_t il);   /* core_v41_engram.c: erows → wkv → 门 → 就地改 st->hc(可按批) */
 extern int g_ds4_v41_chunk;   /* --v41-chunk(core_v41_api.c): 预填分块, 0 = DS4_V41_CHUNK */
+/* 单请求路的 KV 前缀复用(core_v41_kvreuse.c): 预填完存检查点 / 新请求接上就从检查点位置起填(返回起点, 0 = 整段, = np 同提示一块不填) / 热切插件时作废 */
+extern int g_ds4_v41_kv_reuse;
+void v41_kvreuse_save(const ds4_v41_state *st, const int32_t *prompt, uint32_t np);
+uint32_t v41_kvreuse_restore(ds4_v41_state *st, const int32_t *prompt, uint32_t np);
+void v41_kvreuse_drop(void);
+#define DS4_V41_LOGIT_LOG 1024   /* 逐步 logits 指纹最多记几步(core_v41_sample.c) */
+void v41_logit_log_reset(void);
 extern int g_ds4_v41_lanes;   /* 合批缓存段按路分流(core_v41_multi.c); --no-lanes 关(A/B 用) */
 bool v41_forward(ds4_engine *e, ds4_v41_state *st, const int32_t *ids, uint32_t n);   /* 追加 n 个 token, st->logits[n][V] */
 /* 前向的主体(embed → 40 层 → 出口 head), 不含输入上传/engram 预取/末尾同步/位置推进 —— graph 捕获与直发共用这一段。

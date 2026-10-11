@@ -112,6 +112,7 @@ int ds4_engine_v41_generate_argmax(ds4_engine *e, const int *prompt, int n_promp
     if (!e || !prompt || n_prompt < 1 || !ds4_engine_is_v41(e)) return 1;
     if (!e->metal_ready) { fprintf(stderr, "ds4: V4.1 前向需要 GPU 后端\n"); return 1; }
     g_v41_last_spec_rounds = g_v41_last_spec_off = g_v41_last_spec_acc = 0;   /* 预填就失败的趟也不能把上一趟的账留给监控 */
+    v41_logit_log_reset();
     const uint32_t np = (uint32_t)n_prompt;
     /* ★上下文只从模型元数据来(g_ds4_v41.ctx ← GGUF deepseek4.context_length)★(用户 2026-09-22): 以前这里收调用方传的
      * ctx_size(CLI --ctx / 服务端 --ctx, 默认 32768), 于是每个入口各配一个数(尺 32768 / 部署 1M / 判决 NTOK), 同一条请求
@@ -175,7 +176,8 @@ int ds4_engine_v41_generate_argmax(ds4_engine *e, const int *prompt, int n_promp
         if (g_ds4_v41_emit_trace) for (uint32_t i = 0; i < np; i++) fprintf(stderr, "[ptok] %u %d\n", i, prompt[i]);
         const double t0 = now_sec();
         bool ok = true, aborted = false;
-        for (uint32_t c0 = 0; ok && c0 < np; ) {
+        const uint32_t reused = v41_kvreuse_restore(&st, prompt, np);   /* 提示以上一条的提示开头 ⇒ 从那里接着填(core_v41_kvreuse.c) */
+        for (uint32_t c0 = reused; ok && c0 < np; ) {
             ok = v41_prefill_chunk(e, &st, prompt, np, &c0, cap);   /* 分块 / CED / 窗口尾规则在 core_v41_forward.c, 与并发路同一份 */
             /* 回调非 0 = 调用方不要这趟了(服务端: 客户端已挂断)。立刻停, 别把剩下的块算完 —— 13 万 token
              * 的提示预填 400 秒, 算给一个走掉的连接就是让后面排队的请求跟着超时(2026-09-22 早盘实撞)。 */
@@ -187,8 +189,9 @@ int ds4_engine_v41_generate_argmax(ds4_engine *e, const int *prompt, int n_promp
             }
         }
         if (!ok || aborted) break;
+        if (reused < np) v41_kvreuse_save(&st, prompt, np);   /* 解码前存提示末尾的检查点, 给下一条请求接(同提示整份接上的, 检查点就是它, 不重存) */
         const double t1 = now_sec();
-        fprintf(stderr, "[v41] prefill %u token %.1fs (%.1f t/s)\n", np, t1 - t0, (double)np / (t1 - t0 + 1e-9));
+        fprintf(stderr, "[v41] prefill %u token %.1fs (%.1f t/s)\n", np - reused, t1 - t0, (double)(np - reused) / (t1 - t0 + 1e-9));
         if (sampling) fprintf(stderr, "[v41] 解码采样(%s) temp %.2f top_p %.2f min_p %.2f top_k %d seed %llu%s dry %.2f/%.2f/%d freq %.2f presence %.2f\n",
                               dev_sample ? "设备核" : "主机惩罚路",
                               (double)g_decode_sampling.temperature, (double)g_decode_sampling.top_p, (double)g_decode_sampling.min_p,

@@ -1,7 +1,6 @@
 /* server_config.c — 机械拆分自 ds4_server.c (12787-13152 行): 命令行解析与 usage。 */
 
 #include "server_internal.h"
-
 /* ★客户端不给上限 = 不设上限, 界就是 ctx − 提示★(2026-09-22, 用户令"SERVER_DEFAULT_MAX_TOKENS = 393,216
  * 不要, 这些东西都不对")。以前这里写死 393216(384K), 是一个谁也说不出依据的数: 1M 上下文下它比 ctx 小,
  * 等于服务端替客户端定了一个没人知道的闸。生成该停在哪只有两个合法答案 —— 模型吐 EOS, 或者位置撞到 ctx;
@@ -118,6 +117,7 @@ void usage(FILE *fp) {
         "  --no-dspark\n"
         "      V4.1: turn off speculative decoding (on by default; greedy requests only,\n"
         "      output byte-identical to plain decoding; sampled requests always decode plainly).\n"
+        "  --no-kv-reuse\n      V4.1: prefill every request from token 0 (default: resume from the previous prompt's KV).\n"
         "  --draft-gguf FILE | --draft-zchain FILE\n"
         "      Standalone DSpark drafter GGUF and its amplifier sidecar.\n"
         "  --posttrain DIR\n"
@@ -330,6 +330,7 @@ server_config parse_options(int argc, char **argv) {
             /* V4.1 投机 09-24 起默认开(温 0 请求走投机、输出与纯解码逐字节同; 带采样的请求自动走纯解码)。线上要关不必重编。
              * 解析期就设: 它还决定开模型时三塔的装载优先级。 */
             ds4_engine_v41_set_dspark(0);
+        } else if (!strcmp(arg, "--no-kv-reuse")) { ds4_engine_v41_set_kv_reuse(0);   /* 只给 A/B 与精确门(kv_reuse_gate.sh) */
         } else if (!strcmp(arg, "--draft-gguf")) {
             c.engine.draft_gguf_path = need_arg(&i, argc, argv, arg);
         } else if (!strcmp(arg, "--draft-zchain")) {

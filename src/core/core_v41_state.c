@@ -108,6 +108,7 @@ int ds4_engine_v41_switch_plugins(const char *amp_dir, const char *pt_dir, char 
     v41_state_free(&st);
     free(own_amp); free(own_pt);
     own_amp = na; own_pt = np;
+    v41_kvreuse_drop();   /* 检查点里的 KV 是带着老放大器算的 */
     return 0;
 }
 

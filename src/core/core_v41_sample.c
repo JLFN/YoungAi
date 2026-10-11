@@ -49,11 +49,22 @@ bool v41_device_next(ds4_v41_state *st, ds4_gpu_tensor *am, uint32_t row0, uint3
     return true;
 }
 
+/* 逐步 logits 指纹(2026-10-11, KV 复用精确门 kv_reuse_gate.sh): 主机惩罚路每读回一行就记一个加权和(权重随 id 变, 两个 logit 换位也变)。
+ * 只比 token 太粗: 检查点漏存一组压缩 KV 只让 logit 动一点, argmax 翻不动(10-11 变异实测: 漏恢复余行, 200 个 token 照样全对)。
+ * 请求带 frequency_penalty 1e-30 就走这条路: 从 ~10 的 logit 里减 1e-30 在 fp32 下是空操作, logits 逐位不变, 只是顺带关了投机。 */
+static double g_lsum[DS4_V41_LOGIT_LOG]; static int g_lsum_n;
+void v41_logit_log_reset(void) { g_lsum_n = 0; }
+int ds4_engine_v41_logit_sums(const double **out) { *out = g_lsum; return g_lsum_n; }
+
 bool v41_next_token(ds4_v41_state *st, ds4_gpu_tensor *am, uint32_t row, float *rowbuf, uint64_t *rng, v41_hist *h, int32_t *out) {
     if (!rowbuf) return v41_device_next(st, am, row, 1u, NULL, out);
     const ds4_decode_sampling *sp = st->psamp ? st->psamp : &g_decode_sampling;   /* 并发: 每请求自己的采样面 */
     if (!ds4_gpu_synchronize() ||
         !ds4_gpu_tensor_read(st->logits, (uint64_t)row * DS4_N_VOCAB * 4u, rowbuf, (uint64_t)DS4_N_VOCAB * 4u)) return false;
+    if (g_lsum_n < DS4_V41_LOGIT_LOG && !st->psamp) {   /* 单请求路才记(并发请求态各有采样面, 不进这本账) */
+        double sum = 0; for (uint32_t v = 0; v < DS4_N_VOCAB; v++) sum += (double)rowbuf[v] * (double)(1u + (v & 15u));
+        g_lsum[g_lsum_n++] = sum;
+    }
     if (h && h->n && (sp->dry_multiplier > 0.f || sp->freq_penalty != 0.f || sp->presence_penalty != 0.f))
         ds4_decode_penalize(rowbuf, DS4_N_VOCAB, h->tok, h->n, h->brk, sp->freq_penalty, sp->presence_penalty,
                             sp->dry_multiplier, sp->dry_base, sp->dry_allowed_length);

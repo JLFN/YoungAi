@@ -105,6 +105,14 @@ bool parse_completion_request(ds4_engine *e, const char *body, int def_tokens,
                 goto bad;
             }
             r->min_p = (float)v;
+        } else if (!strcmp(key, "frequency_penalty") || !strcmp(key, "presence_penalty")) {
+            /* 与 /v1/chat/completions 同义(OpenAI completions 也有这两个)。以前这里没解析, 传了被静默丢掉 */
+            double v = 0.0;
+            if (!json_number(&p, &v)) {
+                free(key);
+                goto bad;
+            }
+            if (key[0] == 'f') r->frequency_penalty = (float)v; else r->presence_penalty = (float)v;
         } else if (!strcmp(key, "top_k")) {
             if (!json_int(&p, &r->top_k)) {
                 free(key);

@@ -5,7 +5,8 @@
  * 所以这条路与 generate_job(V4)的区别只在"token 从哪来": 这里 token 从回调来, 其余 ——
  * 文本累积 / 思考段跟踪 / DSML 工具标记 / 停止串 / 三种流式 / 收尾响应 —— 与 V4 用同一批函数,
  * 客户端看到的协议一个字节不差。
- * 没有的东西(如实, 别猜): ①KV 复用与磁盘 KV —— 每条请求整段预填(15k token 的提示约 40 s @334 t/s);
+ * 没有的东西(如实, 别猜): ①磁盘 KV 与任意位置的回退 —— KV 复用只有一种(2026-10-11, core_v41_kvreuse.c): 提示以上一条的提示开头
+ *   就从那条提示末尾的检查点接着填, 否则整段预填;
  * ②工具调用出错后的续写修复(continue_after_invalid_dsml 要会话); ③并发批处理; ④Responses/Anthropic 的活绑定
  * (它们指向会话 KV 位置, 这里没有 KV 可续)。
  * 有的: 采样与复读惩罚(见下面 ds4_engine_set_decode_sampling 那一段 —— 请求没带的采样参数落到 ds4.h 的官方默认);
@@ -94,6 +95,11 @@ static bool v41_stream_begin(v41_gen *g) {
 
 static void v41_prefill_done(v41_gen *g) {
     g->started = true;
+    /* KV 复用(core_v41_kvreuse.c): 引擎刚预填完才知道从检查点接上了多少 —— usage 的 cached_tokens、监控页的 reused、trace 都按真数报 */
+    const int reused = ds4_engine_v41_last_reused();
+    g->j->req.cache_read_tokens = reused;
+    g->j->req.cache_write_tokens = g->prompt_tokens - reused;
+    if (reused) { mon_set_cached(g->s, g->j->mon, reused); trace_event(g->s, g->trace_id, "kv reuse: %d of %d prompt tokens from the previous prompt's checkpoint", reused, g->prompt_tokens); }
     g->decode_t0 = g->last_decode_log_t = now_sec();
     mon_first_token(g->s, g->j->mon);
     server_log(DS4_LOG_PREFILL, "ds4-server: %s ctx=%s%s%s prompt done %.3fs",
@@ -346,7 +352,7 @@ bool v41_gen_begin(server *s, job *j, v41_gen *g) {
     g->prompt_tokens = prompt->len;
     if (g->prompt_tokens < 1) { http_error(j->fd, s->enable_cors, 400, "empty prompt"); return false; }
     if (g->prompt_tokens >= ctx) { http_error_context_length_exceeded(j->fd, s->enable_cors, &j->req, g->prompt_tokens, ctx); return false; }
-    /* 没有前缀缓存: 全部算写入(usage 里 cache_read=0), 与事实一致 */
+    /* 先按全部写入记; 引擎从检查点接上多少, 预填完在 v41_prefill_done 里改成真数 */
     j->req.cache_read_tokens = 0;
     j->req.cache_write_tokens = g->prompt_tokens;
     g->responses_protocol = j->req.api == API_RESPONSES;
@@ -417,7 +423,9 @@ void v41_gen_end(v41_gen *g, int rc) {
     /* 监控: 客户端挂断单独算一类(Strata 的 disconnect), 别混进 error; 草稿两项只在真投机过时报 */
     mon_end(s, j->mon, g->client_gone ? "disconnect" : final_finish, g->completion,
             g->spec_rounds > 0 ? g->spec_offered : -1, g->spec_rounds > 0 ? g->spec_accepted : -1);
-    trace_token_ids(s, g->trace_id, j->req.prompt.v, j->req.prompt.len, g->ids, g->n_ids);   /* 提示 + 生成的 id 全落 trace(只在 --trace 开时) */
+    trace_token_ids(s, g->trace_id, j->req.prompt.v, j->req.prompt.len, g->ids, g->n_ids);
+    { const double *ls; const int nl = ds4_engine_v41_logit_sums(&ls);   /* 精确门(kv_reuse_gate.sh)比逐步 logits 用; 只有惩罚路的请求有 */
+      if (nl > 0 && s->trace) { ds4_buf lb = {0}; for (int i = 0; i < nl; i++) ds4_buf_printf(&lb, " %.17g", ls[i]); trace_event(s, g->trace_id, "logit sums:%s", lb.ptr); ds4_buf_free(&lb); } }   /* 提示 + 生成的 id 全落 trace(只在 --trace 开时) */
     free(g->ids);
     anthropic_stream_free(&g->anthropic_live);
     openai_stream_free(&g->openai_live);

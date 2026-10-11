@@ -151,6 +151,16 @@ void mon_prefill(server *s, uint64_t id, int prompt_tokens, int cached, int max_
     pthread_mutex_unlock(&m->mu);
 }
 
+/* 引擎预填完才知道复用了多少(V4.1 KV 检查点): 补记, 不动计时 */
+void mon_set_cached(server *s, uint64_t id, int cached) {
+    struct server_monitor *m = s->mon;
+    if (!m || !id) return;
+    pthread_mutex_lock(&m->mu);
+    mon_live *L = live_find(m, id);
+    if (L) L->cached = cached > 0 ? cached : 0;
+    pthread_mutex_unlock(&m->mu);
+}
+
 void mon_prefill_progress(server *s, uint64_t id, int current, int total) {
     struct server_monitor *m = s->mon;
     if (!m || !id) return;
