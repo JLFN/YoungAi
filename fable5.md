@@ -11043,3 +11043,4 @@ A = 只在提示里找(Strata 默认索引范围), B = 提示 + 已生成都找;
   ★换问法"小泱你好" → 仍是部署态那套长寒暄 ✗, 而 e02 探针这题答"在呢主人" ✓★: 泛化留出是两题合计, 故事题 token 多占大头, 选轮按合计挑了 e03, 问候那题在 e03 反而丢了 —— 合计损失看不见逐题退。卸 ③ 后五题与训前逐字同。产物 gguf/v41/posttrain/kd-xiaoyang_mini-L0-39-lr2e-4-e3-10111800。
   截图(18:34, docs/img/studio-posttrain.png): 页面同口径(不传温度 = 模型卡采样)挂 e03 采样命中: "hello 小泱" 逐字"在呢主人" 15/24(非流式 8/8, 2/6; 流式 1/4, 4/6; 没命中的多是"在呢, 主人～…"一类变体), 故事题蜗牛故事 5/8。
   ★页面 bug(已修, 未提交): 不带 #hash 直接开 :8000/ 时 curTab() 返回 null, poll 不拉 /api/models/list ⇒ 后训练开关一切就永远卡"切换中…"且灰掉(服务端早已切完)。修 = curTab 无 hash 时答 showTab 记下的当前页(起页前仍 null, 保住"训练中先开训练页"); 页面运行时从盘读, spark 已换, 开/关各验一遍 2.5 s 内跟上。
+- **发布(10-11 晚)**: GitHub restructure 推到 5c876b9。HF 改从 Mac 传(~/hfenv/bin/hf, 已登录 wenzhouwu; spark 的 hf 没登录), 一次提交 a973e92: README×2 + install.sh(download/probe/macOS df) + README 引用的 logo/两张截图/TECHNICAL×2 —— 此前 HF 上这些资源一份都没有(图是裂的), 8 个文件大小与本地逐个对上, 图片地址 200。bin/、侧车、分块未动。
