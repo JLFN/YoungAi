@@ -73,6 +73,18 @@ static bool read_request(int fd, tr_req *rq, char **raw, size_t *raw_len) {
     }
     if (in.len < hend + clen) { ds4_buf_free(&in); return false; }
     memset(rq, 0, sizeof *rq);
+    /* 助理接口鉴权要的三个头(asst_api.c): 只取, 不在这里判 */
+    for (const char *p = strstr(in.ptr, "\r\n"); p && p + 2 < in.ptr + hend; ) {
+        p += 2;
+        const char *nl = strstr(p, "\r\n");
+        if (!nl || nl == p) break;
+        const int len = (int)(nl - p);
+        const char *v;
+        #define TR_HDR(name, dst) if (len > (int)strlen(name) && !strncasecmp(p, name, strlen(name))) { v = p + strlen(name); while (*v == ' ') v++; snprintf(dst, sizeof dst, "%.*s", (int)(nl - v), v); }
+        TR_HDR("Host:", rq->host) else TR_HDR("Authorization:", rq->auth) else TR_HDR("X-DS4-Assistant:", rq->xhdr)
+        #undef TR_HDR
+        p = nl;
+    }
     /* 请求行: METHOD SP target SP version */
     char *line_end = strstr(in.ptr, "\r\n");
     *line_end = 0;
@@ -88,7 +100,7 @@ static bool read_request(int fd, tr_req *rq, char **raw, size_t *raw_len) {
     return true;
 }
 
-int tr_http_serve(const char *host, int port, tr_handler h) {
+int tr_http_serve(const char *host, int port, tr_handler h, tr_takeover tk) {
     signal(SIGPIPE, SIG_IGN);
     int ls = socket(AF_INET, SOCK_STREAM, 0);
     if (ls < 0) { perror("socket"); return 1; }
@@ -101,12 +113,15 @@ int tr_http_serve(const char *host, int port, tr_handler h) {
     if (listen(ls, 16) < 0) { perror("listen"); return 1; }
     fprintf(stderr, "ds4-train: http://%s:%d/  (根 %s)\n", host, port, tr_root);
     for (;;) {
-        int fd = accept(ls, NULL, NULL);
+        struct sockaddr_in peer; socklen_t pl = sizeof peer;
+        int fd = accept(ls, (struct sockaddr *)&peer, &pl);
         if (fd < 0) { if (errno == EINTR) continue; perror("accept"); continue; }
         setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
         tr_req rq; char *raw = NULL; size_t raw_len = 0;
         ds4_buf out = {0};
         if (read_request(fd, &rq, &raw, &raw_len)) {
+            rq.peer_local = peer.sin_family == AF_INET && (ntohl(peer.sin_addr.s_addr) >> 24) == 127;
+            if (tk && tk(fd, &rq)) { free(raw); continue; }   /* 长连接(助理事件流)归钩子: 不回不关 */
             /* 归模型子进程的路, 子进程装着就转过去(线程接管 fd 与 raw); 没装着就落到自己的路由(/api/models/… 会答"没有装着的模型", /v1 404) */
             if (tr_proxy_path(rq.path) && tr_model_live()) { tr_proxy_start(fd, raw, raw_len, TR_MODEL_PORT(port)); continue; }
             const char *ctype = "application/json; charset=utf-8";

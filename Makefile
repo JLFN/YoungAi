@@ -44,6 +44,9 @@ DIST_OBJS = src/dist/dist_util.o src/dist/dist_transport.o src/dist/dist_framing
 EVAL_SRCS := $(wildcard src/eval/*.c)
 EVAL_OBJS := $(EVAL_SRCS:.c=.o)
 EVAL_CPU_OBJS := $(EVAL_SRCS:.c=_cpu.o)
+# 个人助理模块(src/assistant/, 见下方 ds4-train 段): 变量要在用到它的规则之前定义, make 解析规则时就展开前置
+ASST_SRCS := $(sort $(wildcard src/assistant/*.c))
+ASST_OBJS := $(ASST_SRCS:.c=.o)
 # WEB 模块(重构阶段3: ds4_web.c 拆分为 src/web/*.c; 纯主机 C)
 WEB_SRCS := $(wildcard src/web/*.c)
 WEB_OBJS := $(WEB_SRCS:.c=.o)
@@ -238,8 +241,17 @@ src/common/ds4_json.o: src/common/ds4_json.c src/common/ds4_json.h
 # 纯主机 C, 不链引擎; Mac/Linux 同一条规则(nvcc 不参与)
 src/train/%.o: src/train/%.c src/train/train_internal.h src/common/ds4_json.h
 	$(CC) $(CFLAGS) -c -o $@ $<
-ds4-train: src/train/train_main.o src/train/train_http.o src/train/train_proxy.o $(TRAIN_API_OBJS) src/common/ds4_json.o
-	$(CC) $(CFLAGS) -o $@ src/train/train_main.o src/train/train_http.o src/train/train_proxy.o $(TRAIN_API_OBJS) src/common/ds4_json.o $(LDLIBS)
+ds4-train: src/train/train_main.o src/train/train_http.o src/train/train_proxy.o $(TRAIN_API_OBJS) $(ASST_OBJS) $(WEB_OBJS) src/common/ds4_json.o
+	$(CC) $(CFLAGS) -o $@ src/train/train_main.o src/train/train_http.o src/train/train_proxy.o $(TRAIN_API_OBJS) $(ASST_OBJS) $(WEB_OBJS) src/common/ds4_json.o $(LDLIBS)
+
+# 个人助理(src/assistant/, 方案 docs/assistant.md): 住 ds4-train 主进程; 每次工具调用 fork 子进程先上内核沙盒
+# (Linux = Landlock+seccomp, macOS = Seatbelt; 两个平台文件在对方平台上编成空对象)。纯主机 C, 不链引擎。
+src/train/train_main.o: src/assistant/asst_internal.h
+src/assistant/%.o: src/assistant/%.c src/assistant/asst_internal.h src/common/ds4_json.h
+	$(CC) $(CFLAGS) -c -o $@ $<
+# 沙盒逃逸单测 + 纯逻辑单测(不要模型, 秒级; make test 里跑)
+ds4_asst_test: tests/asst/t_asst_sbx.c tests/asst/t_asst_logic.c $(ASST_OBJS) $(WEB_OBJS) src/common/ds4_json.o
+	$(CC) $(CFLAGS) -o $@ tests/asst/t_asst_sbx.c tests/asst/t_asst_logic.c $(ASST_OBJS) $(WEB_OBJS) src/common/ds4_json.o $(LDLIBS)
 
 
 # Standalone capability modules (self-contained, no engine coupling): z 隐变量
@@ -404,8 +416,9 @@ ds4_unit: tests/unit/test_common.c tests/unit/test_zmod.c tests/unit/t_zfinetune
 	$(CC) $(CFLAGS) -Isrc/common -I. -o $@ tests/unit/test_common.c tests/unit/test_zmod.c tests/unit/t_zfinetune.c \
 	    src/common/ds4_quantfmt.c src/common/ds4_gguf.c ds4_z.c ds4_zchain.c ds4_zfinetune.c ds4_loss.c $(LDLIBS)
 
-test: ds4_test ds4-eval ds4_unit linecount
+test: ds4_test ds4-eval ds4_unit ds4_asst_test linecount
 	./ds4_unit
+	./ds4_asst_test
 	./ds4-eval --self-test-extractors
 	./ds4_test
 
@@ -421,7 +434,7 @@ linecount:
 	if [ -n "$$viol" ]; then echo "linecount: 以下文件超 500 行(豁免走 .linecount-exempt, 要带理由):"; echo "$$viol"; exit 1; \
 	else echo "linecount: ok (≤500 行, 豁免清单外零超标)"; fi
 clean:
-	rm -f ds4 ds4-server ds4-bench ds4-eval ds4-agent ds4_cpu ds4_native ds4_server_test ds4_test ds4_unit e0-pingpong mm-ui mm-ocr *.o src/cli/*.o src/bench/*.o src/kv/*.o src/web/*.o src/eval/*.o src/agent/*.o src/dist/*.o src/server/*.o src/core/*.o src/common/*.o src/metal/*.o tests/server_tests_*.o tests/t_*.o tests/cuda_long_context_smoke tests/cuda_long_context_smoke.o
+	rm -f ds4 ds4-server ds4-bench ds4-eval ds4-agent ds4_cpu ds4_native ds4_server_test ds4_test ds4_unit ds4_asst_test e0-pingpong mm-ui mm-ocr *.o src/assistant/*.o src/cli/*.o src/bench/*.o src/kv/*.o src/web/*.o src/eval/*.o src/agent/*.o src/dist/*.o src/server/*.o src/core/*.o src/common/*.o src/metal/*.o tests/server_tests_*.o tests/t_*.o tests/cuda_long_context_smoke tests/cuda_long_context_smoke.o
 
 # Task 04 / E0: standalone thunderbolt ping-pong latency gate (no core deps, no
 # model). Defined after the default targets so it never becomes the default goal.

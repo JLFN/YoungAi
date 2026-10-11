@@ -1,5 +1,6 @@
 <!doctype html>
-<!-- web/studio.html — DwarfStar 工作台(首页): 左侧导航 + 右侧工作区, 五个 tab: 聊天 / 模型 / 训练 / 语料 / 记录。
+<!-- web/studio.html — DwarfStar 工作台(首页): 左侧导航 + 右侧工作区, 七个 tab: 助理 / 记忆 / 活动 / 模型 / 训练 / 语料 / 记录。
+     助理/记忆/活动(10-11 用户: "对标 muse, 把聊天页面变成个人 Agent 助理"; 方案 docs/assistant.md): 接口 /api/assistant/*(src/assistant/), 会话与记忆存在服务端 ~/.ds4/assistant/。
      模型 tab(10-10 用户 "少一个模型 tab, 可以下载模型, 跟 unsloth 的客户端页面一样"): 正在使用 / 本机模型卡片(选侧车一键加载) / HF 下载(进度、续传、取消), 接口 /api/models/*(src/train/train_models.c)。
      (10-10 用户: "和主流工具一样左右布局 … 主题跟 logo 一致是蓝色 …
      不要强硬写起服务就不能训练, 训练时内部就停服务 … 再多一个聊天 tab")。主进程 ds4-train 在 GET / 返回它(模型子进程 ds4-server 也返回, 直接开它能聊)。
@@ -143,6 +144,34 @@
   .composer .tools select { max-width: 240px; font-size: 12.5px; padding: 4px 8px; text-overflow: ellipsis; }
   .composer .tools label { font-size: 12px; color: var(--dim); display: flex; align-items: center; gap: 5px; }
 
+  /* ---------- 助理: 左会话列表 + 右消息流; 工具卡一行折叠, 审批卡展开带四个按钮 ---------- */
+  /* 对话列表在左侧导航里、监控下面(10-11 用户: "对话列表放到监控下面"); 占满导航与引擎卡片之间的空白, 多了自己滚 */
+  .sess { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 2px; border-top: 1px solid var(--border); margin: 4px 0 8px; padding-top: 8px; }
+  .sess-h { display: flex; align-items: center; justify-content: space-between; padding: 0 4px 4px 11px; font-size: 12px; color: var(--faint); }
+  .sess-h button { font-size: 12px; padding: 2px 8px; color: var(--accent-2); border-color: var(--accent-line); }
+  #sess-list { display: flex; flex-direction: column; gap: 2px; } #sess-list > .muted { padding: 4px 11px; }
+  .sitem { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 11px; border-radius: 8px; cursor: pointer; color: var(--dim); font-size: 13px; }
+  .sitem:hover { background: var(--hover); color: var(--text); } .sitem.on { background: var(--accent-soft); color: var(--accent-2); }
+  .sitem .stitle { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sitem .sdel { padding: 0 6px; border: 0; color: var(--faint); visibility: hidden; } .sitem:hover .sdel { visibility: visible; }
+  .sdot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: transparent; }
+  .sdot.running, .sdot.queued { background: var(--accent-2); animation: pulse 1.2s infinite; } .sdot.waiting_approval { background: var(--warn); animation: pulse .9s infinite; }
+  .tool { margin-left: 42px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); font-size: 13px; overflow: hidden; }
+  .tool.ask { border-color: rgba(245,158,11,.6); } .tool.ask.warn { border-color: rgba(239,68,68,.75); box-shadow: 0 0 0 3px rgba(239,68,68,.12); } .tool.fail { border-color: rgba(239,68,68,.35); }
+  .tool .thead { display: flex; gap: 10px; align-items: center; padding: 7px 12px; cursor: pointer; }
+  .tool .tname { font: 600 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--accent-2); flex: none; }
+  .tool .targ { flex: 1; min-width: 0; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .tool .tst { flex: none; font-size: 12px; color: var(--faint); } .tool .tst.ok { color: #4ade80; } .tool .tst.bad { color: #f87171; } .tool .tst.need { color: var(--amber); font-weight: 600; }
+  .tool .tbody { padding: 0 12px 10px; display: flex; flex-direction: column; gap: 6px; } .tool .tbody pre.box { max-height: 260px; }
+  .appr { padding: 4px 12px 12px; display: flex; flex-direction: column; gap: 8px; } .appr .why { font-weight: 600; } .appr pre.box { max-height: 220px; }
+  .abtns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .aend { margin-left: 42px; } .aerr { margin-left: 42px; font-size: 13px; }
+  .mem-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  textarea.memtxt { width: 100%; min-height: 360px; resize: vertical; font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; margin: 10px 0; }
+  #v-act .card { margin-bottom: 16px; } #v-act td.wrap { white-space: normal; word-break: break-all; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; } #v-act td .act { font-size: 12.5px; padding: 3px 9px; }
+  @media (max-width: 1100px) { .mem-grid { grid-template-columns: 1fr; } }
+  @media (max-width: 760px) { .tool, .aend, .aerr { margin-left: 0; } }
+
   /* ---------- 训练 ---------- */
   .train-grid { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 18px; align-items: start; }
   .cfg { position: sticky; top: 0; display: flex; flex-direction: column; gap: 14px; }
@@ -203,14 +232,16 @@
   #v-models a.lnk { color: var(--accent-2); text-decoration: none; }
   label.ck { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--dim); padding-bottom: 8px; }
   @media (max-width: 1100px) { .train-grid, .data-grid, .charts { grid-template-columns: 1fr; } .cfg { position: static; } .tiles { grid-template-columns: repeat(3, 1fr); } }
-  @media (max-width: 760px) { aside { width: 64px; padding: 12px 8px; } .brand span, nav a span, .engine, nav a .ext { display: none; } nav a { justify-content: center; } }
+  @media (max-width: 760px) { aside { width: 64px; padding: 12px 8px; } .brand span, nav a span, .engine, nav a .ext, .sess { display: none; } nav a { justify-content: center; } }
 </style>
 </head>
 <body>
 <aside>
   <div class="brand"><img src="/logo.jpg" alt=""><span>YoungAi<small data-i18n="brand_sub">DwarfStar 引擎</small></span></div>
   <nav>
-    <a data-tab="chat"><svg class="i" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg><span data-i18n="tab_chat">聊天</span></a>
+    <a data-tab="chat"><svg class="i" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg><span data-i18n="tab_chat">助理</span></a>
+    <a data-tab="mem"><svg class="i" viewBox="0 0 24 24"><path d="M12 4a4 4 0 0 1 4 4c0 1.5-.8 2.7-2 3.4V13h-4v-1.6A4 4 0 0 1 12 4z"/><path d="M10 17h4M10.5 20h3"/></svg><span data-i18n="tab_mem">记忆</span></a>
+    <a data-tab="act"><svg class="i" viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.2-3 7.7-7 9-4-1.3-7-4.8-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg><span data-i18n="tab_act">活动</span></a>
     <a data-tab="models"><svg class="i" viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg><span data-i18n="tab_models">模型</span><span class="ext" id="nav-dl"></span></a>
     <a data-tab="train"><svg class="i" viewBox="0 0 24 24"><path d="M3 17l5-5 4 4 8-9"/><path d="M14 7h6v6"/></svg><span data-i18n="tab_train">训练</span></a>
     <a data-tab="data"><svg class="i" viewBox="0 0 24 24"><ellipse cx="12" cy="5.5" rx="8" ry="3"/><path d="M4 5.5v13c0 1.7 3.6 3 8 3s8-1.3 8-3v-13"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg><span data-i18n="tab_data">语料</span></a>
@@ -218,6 +249,7 @@
     <div class="sep"></div>
     <a href="/monitor" target="_blank"><svg class="i" viewBox="0 0 24 24"><path d="M3 12h4l3 7 4-14 3 7h4"/></svg><span data-i18n="nav_monitor">监控</span><span class="ext">↗</span></a>
   </nav>
+  <div class="sess"><div class="sess-h"><span data-i18n="a_chats">对话</span><button class="ghost" id="btn-new" data-i18n="a_new">+ 新对话</button></div><div id="sess-list"></div></div>
   <div class="engine">
     <div class="row1"><span class="dot" id="eng-dot"></span><span id="eng-title">连接中</span></div>
     <div class="sub" id="eng-sub">–</div>
@@ -237,12 +269,36 @@
         <textarea id="input" rows="1"></textarea>
         <div class="tools">
           <select id="plug" style="display:none"></select><label id="pt-sw" class="switch" style="display:none"><input type="checkbox" id="pt-on"><span class="knob"></span><span data-i18n="pt">后训练</span></label><span class="muted" id="plug-st" style="font-size:12px"></span>
-          <button class="ghost" id="btn-clear" style="font-size:12.5px;padding:4px 9px" data-i18n="clear">清空</button>
           <div class="spacer"></div>
           <button class="primary" id="btn-send"></button>
         </div>
       </div>
     </div>
+  </section>
+
+  <!-- ============ 记忆 ============ -->
+  <section class="view" id="v-mem">
+    <div class="mem-grid">
+      <div class="card"><div class="card-title" data-i18n="mem_profile">关于你</div><div class="muted" data-i18n="mem_profile_sub"></div>
+        <textarea class="memtxt" id="mem-profile" spellcheck="false"></textarea>
+        <div style="display:flex;gap:10px;align-items:center"><button class="primary" id="mem-save1" data-i18n="save">保存</button><span class="muted" id="mem-path1"></span></div></div>
+      <div class="card"><div class="card-title" data-i18n="mem_rules">规矩</div><div class="muted" data-i18n="mem_rules_sub"></div>
+        <textarea class="memtxt" id="mem-rules" spellcheck="false"></textarea>
+        <div style="display:flex;gap:10px;align-items:center"><button class="primary" id="mem-save2" data-i18n="save">保存</button><span class="muted" id="mem-path2"></span></div></div>
+    </div>
+  </section>
+
+  <!-- ============ 活动 ============ -->
+  <section class="view" id="v-act">
+    <div class="card"><div class="card-title" data-i18n="act_sec">安全</div>
+      <div class="muted" id="act-info" style="margin-bottom:10px"></div>
+      <label class="switch" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="act-bash"><span class="knob"></span><span data-i18n="act_bash"></span></label></div>
+    <div class="card"><div class="card-title" data-i18n="act_dirs">允许的目录</div><div class="muted" data-i18n="act_dirs_sub" style="margin-bottom:10px"></div>
+      <table><tbody id="act-dirs"></tbody></table>
+      <div style="display:flex;gap:10px;align-items:center;margin-top:10px"><input id="act-path" data-i18n-ph="act_dir_ph" style="flex:1"><label class="ck" style="padding:0"><input type="checkbox" id="act-write"><span data-i18n="act_write">可写</span></label><button class="primary" id="act-add" data-i18n="act_add">添加</button></div></div>
+    <div class="card"><div class="card-title" data-i18n="act_appr">永久授权</div><div class="muted" data-i18n="act_appr_sub" style="margin-bottom:10px"></div><table><tbody id="act-appr"></tbody></table></div>
+    <div class="card"><div class="card-title" data-i18n="act_audit">活动流水</div><div class="muted" data-i18n="act_audit_sub" style="margin-bottom:10px"></div>
+      <div style="overflow:auto"><table><tbody id="act-audit"></tbody></table></div></div>
   </section>
 
   <!-- ============ 模型 ============ -->
@@ -348,7 +404,7 @@
 const I18N = {
   zh: {
     title: "YoungAi · DwarfStar", lang_btn: "EN", brand_sub: "DwarfStar 引擎",
-    tab_chat: "聊天", tab_models: "模型", tab_train: "训练", tab_data: "语料", tab_runs: "记录", nav_monitor: "监控",
+    tab_chat: "助理", tab_models: "模型", tab_train: "训练", tab_data: "语料", tab_runs: "记录", nav_monitor: "监控",
     hint_models: "本机模型与侧车, 一键加载; 从 Hugging Face 下载发布包", hint_train: "上下文蒸馏 + 答案 NLL, 写进独立的 ③ 文件", hint_data: "上传问答料、原文料或文档",
     load_model: "加载模型", pt: "后训练", clear: "清空", send: "发送", stop: "停止", updated: "更新 {0}",
     eng_unreachable: "连不上", eng_connecting: "连接中", eng_switching: "切换中", eng_switching_sub: "停模型 / 装模型, 稍等", eng_unloading_sub: "卸下当前模型, 稍等",
@@ -377,7 +433,7 @@ const I18N = {
     pv_loading: "读取中…", pv_text: "原文", pv_q: "问", pv_a: "答", pv_ctx: "材料: {0}", pv_empty: "空文件", pv_err: "读不了: {0}",
     up_bad: "{0}: 只收 .jsonl / .txt / .md", up_ing: "上传 {0}…", up_ok: "已存 {0}", up_text: " → 原文料 {0}", up_rows: " · {0} 行", up_fail: "{0} 上传失败: {1}",
     r_title: "全部训练(点一行进训练页查看)", r_run: "训练", r_cfg: "轮 / 层 / lr", r_status: "状态", r_eval: "留出 第0步 → 末", r_pick: "选中", r_started: "开始于",
-    copy: "复制", copied: "已复制", me: "我", thinking: "思考过程", empty_h: "有什么可以帮你?", empty_sub: "请求发往本机 /v1/chat/completions(流式), 对话只存在这个浏览器里。",
+    copy: "复制", copied: "已复制", me: "我", thinking: "思考过程", empty_h: "有什么可以帮你?", empty_sub: "助理住在这台机器上: 对话与记忆存在 ~/.ds4/assistant(纯文本, 你能打开改), 每个工具都在沙盒里跑, 越界的事先问你。",
     ph_input: "输入消息, Enter 发送, Shift+Enter 换行", ph_noinput: "模型没装着, 现在不能聊",
     ban_switch: "正在切换(停模型 / 装模型), 稍等…", ban_train: "模型正在训练{0}, 训完模型自动装回来(新训出的后训练件用开关挂)",
     ban_loading: "正在加载模型(装完、冒烟过了就能聊), 稍等…", ban_lobby: "模型还没加载(换哪个模型去左边\"模型\"页选)。",
@@ -401,11 +457,24 @@ const I18N = {
     ld_confirm: "换成 {0}?\n要先卸下当前模型再装新的(大约 2~3 分钟), 期间聊天用不了。", ld_fail: "加载失败: {0}",
     ld_deferred: "训练中, 不打断: 已记下, 训完按这一套装回来", ld_started: "开始加载(约 2~3 分钟, 装完会打一条冒烟问答)",
     pl_after: "这条回答结束后切换", pl_fail: "切换失败: {0}", pl_on: "挂着: {0}", pl_newer: "(有更新的: {0}, 关再开换上)", pl_can: "可挂: {0}", pl_tip: "挂/卸自己训出来的后训练件",
-    pl_switching: "切换中…", pl_err: "侧车没切成: {0}", pt_done: "训练完成: {0} 已关联侧车 {1}, 切到它并打开后训练开关即可挂上",
+    pl_switching: "切换中…", pl_err: "侧车没切成: {0}",
+    tab_mem: "记忆", tab_act: "活动", hint_chat: "住在这台机器上的个人助理: 记忆是你能改的纯文本, 每次动手都在沙盒里, 越界先问你", hint_mem: "助理记得的事与你给它的规矩(新开的对话生效)", hint_act: "沙盒、允许的目录、永久授权、每一次工具调用",
+    a_token: "这台设备不是本机, 助理接口要口令(在运行工作台那台机器的 ~/.ds4/assistant/token 里):", a_new: "+ 新对话", a_chats: "对话", a_nosess: "还没有对话", a_untitled: "新对话", a_del: "删除", a_del_confirm: "删除这个对话? (挪进 ~/.ds4/assistant/trash/, 盘上还能找回)",
+    a_need: "等你批准", a_running: "执行中…", a_thinking: "思考中…", a_args: "参数", a_result: "结果 · {0} 字节", a_reason: "要做: {0}", a_target: "范围: {0}",
+    a_once: "仅这次", a_session: "本会话都允许", a_always: "总是允许", a_deny: "拒绝", a_once_only: "这类操作只能逐次批准",
+    dec_auto: "自动放行", dec_once: "你批准了", dec_session: "本会话已允许", dec_always: "永久允许", dec_denied: "你拒绝了", dec_blocked: "规则拦下", dec_cancelled: "已取消",
+    a_end_stopped: "已停止", a_end_error: "出错了", a_usage: "提示 {0} · 生成 {1} token", s_running: "进行中", s_waiting_approval: "等你批准", s_queued: "排队中…", ph_busy: "助理正在干活, 点停止可打断",
+    mem_profile: "关于你", mem_profile_sub: "助理用 remember 记下的事, 每行一条, 方括号里是记下的日期和会话号。删掉一行 = 让它忘掉; 改完点保存, 新开的对话生效。",
+    mem_rules: "规矩", mem_rules_sub: "你给助理定的规矩, 只有你能写, 优先于一切。例如: 回复用中文; 不要碰 ~/Documents/财务。新开的对话生效。", save: "保存", saved: "已保存", mem_path: "文件: {0}",
+    act_sec: "安全", act_info: "沙盒: {0} · 浏览器: {1} · 工作区: {2}", act_nobrowser: "本机没有火狐", act_bash: "允许 bash(每次仍要你批准; 在沙盒里跑: 没有网络, 只能写工作区)",
+    act_dirs: "允许的目录", act_dirs_sub: "助理可以直接读这些目录(勾了可写还能直接写), 不再逐次问你。不能加包含助理自己数据目录的上级目录(比如整个家目录): 那等于让它能改自己的权限。", act_dir_ph: "目录路径, 例如 ~/Documents",
+    act_write: "可写", act_add: "添加", act_del: "移除", act_rw: "读写", act_ro: "只读", act_appr: "永久授权", act_appr_sub: "你在审批卡上点过\"总是允许\"的目标; 上过网之后写工作区外仍会逐次问。", act_revoke: "撤销",
+    act_audit: "活动流水", act_audit_sub: "每一次工具调用, 最新在前: 做了什么、谁放行的、成没成。鼠标停在一行上看结果。", act_none: "暂无", cls_read: "读", cls_write: "写", cls_web: "上网", cls_exec: "命令",
+    pt_done: "训练完成: {0} 已关联侧车 {1}, 切到它并打开后训练开关即可挂上",
   },
   en: {
     title: "YoungAi · DwarfStar", lang_btn: "中文", brand_sub: "DwarfStar engine",
-    tab_chat: "Chat", tab_models: "Models", tab_train: "Train", tab_data: "Data", tab_runs: "Runs", nav_monitor: "Monitor",
+    tab_chat: "Assistant", tab_models: "Models", tab_train: "Train", tab_data: "Data", tab_runs: "Runs", nav_monitor: "Monitor",
     hint_models: "Local models and sidecars, one-click load; download the release from Hugging Face", hint_train: "Context distillation + answer NLL, written to a separate ③ file", hint_data: "Upload Q&A data, raw text or documents",
     load_model: "Load model", pt: "Post-train", clear: "Clear", send: "Send", stop: "Stop", updated: "Updated {0}",
     eng_unreachable: "Unreachable", eng_connecting: "Connecting", eng_switching: "Switching", eng_switching_sub: "Stopping / loading the model, hold on", eng_unloading_sub: "Unloading the current model, hold on",
@@ -434,7 +503,7 @@ const I18N = {
     pv_loading: "Loading…", pv_text: "Text", pv_q: "Q", pv_a: "A", pv_ctx: "Context: {0}", pv_empty: "Empty file", pv_err: "Can't read: {0}",
     up_bad: "{0}: only .jsonl / .txt / .md", up_ing: "Uploading {0}…", up_ok: "Saved {0}", up_text: " → raw text {0}", up_rows: " · {0} rows", up_fail: "{0} upload failed: {1}",
     r_title: "All runs (click a row to open it on the Train page)", r_run: "Run", r_cfg: "Epochs / layers / lr", r_status: "Status", r_eval: "Held-out step 0 → last", r_pick: "Picked", r_started: "Started",
-    copy: "Copy", copied: "Copied", me: "Me", thinking: "Thinking", empty_h: "How can I help?", empty_sub: "Requests go to this machine's /v1/chat/completions (streaming); the conversation is stored only in this browser.",
+    copy: "Copy", copied: "Copied", me: "Me", thinking: "Thinking", empty_h: "How can I help?", empty_sub: "The assistant lives on this machine: conversations and memory are plain text under ~/.ds4/assistant, every tool runs in a sandbox, and anything beyond that asks you first.",
     ph_input: "Type a message; Enter to send, Shift+Enter for a new line", ph_noinput: "No model loaded, can't chat right now",
     ban_switch: "Switching (stopping / loading the model), hold on…", ban_train: "The model is training{0}; it reloads when training ends (use the switch to attach the new post-train file)",
     ban_loading: "Loading the model (chat opens once it loads and passes the smoke test), hold on…", ban_lobby: "No model loaded (pick one on the \"Models\" page on the left).",
@@ -458,7 +527,20 @@ const I18N = {
     ld_confirm: "Switch to {0}?\nThe current model is unloaded first, then the new one is loaded (about 2–3 min); chat is unavailable meanwhile.", ld_fail: "Load failed: {0}",
     ld_deferred: "Training in progress, not interrupting: noted, this setup will be loaded after training", ld_started: "Loading (about 2–3 min; a smoke-test Q&A runs once it's up)",
     pl_after: "Will switch after this answer finishes", pl_fail: "Switch failed: {0}", pl_on: "Attached: {0}", pl_newer: " (newer one available: {0}; toggle off and on to use it)", pl_can: "Available: {0}", pl_tip: "Attach / detach the post-train file you trained",
-    pl_switching: "Switching…", pl_err: "Sidecar switch failed: {0}", pt_done: "Training finished: {0} is linked to sidecar {1}; switch to it and turn on Post-train to attach it",
+    pl_switching: "Switching…", pl_err: "Sidecar switch failed: {0}",
+    tab_mem: "Memory", tab_act: "Activity", hint_chat: "A personal assistant living on this machine: memory is plain text you can edit, every action runs in a sandbox, anything outside asks you first", hint_mem: "What the assistant remembers and the rules you give it (new conversations pick up changes)", hint_act: "Sandbox, allowed folders, standing approvals, every tool call",
+    a_token: "This device is not the host; the assistant API needs the token (in ~/.ds4/assistant/token on the machine running the studio):", a_new: "+ New chat", a_chats: "Chats", a_nosess: "No conversations yet", a_untitled: "New chat", a_del: "Delete", a_del_confirm: "Delete this conversation? (moved to ~/.ds4/assistant/trash/, still recoverable on disk)",
+    a_need: "Needs your approval", a_running: "Running…", a_thinking: "Thinking…", a_args: "Arguments", a_result: "Result · {0} bytes", a_reason: "Wants to: {0}", a_target: "Scope: {0}",
+    a_once: "Allow once", a_session: "Allow for this chat", a_always: "Always allow", a_deny: "Deny", a_once_only: "This kind of action can only be approved one at a time",
+    dec_auto: "Auto-allowed", dec_once: "You allowed it", dec_session: "Allowed for this chat", dec_always: "Always allowed", dec_denied: "You denied it", dec_blocked: "Blocked by rules", dec_cancelled: "Cancelled",
+    a_end_stopped: "Stopped", a_end_error: "Error", a_usage: "prompt {0} · generated {1} tokens", s_running: "Running", s_waiting_approval: "Waiting for you", s_queued: "Queued…", ph_busy: "The assistant is working; press Stop to interrupt",
+    mem_profile: "About you", mem_profile_sub: "Things the assistant saved with remember, one per line; the brackets show the date and conversation. Delete a line to make it forget; save, and new conversations pick it up.",
+    mem_rules: "Rules", mem_rules_sub: "Rules you give the assistant; only you write them, and they override everything. E.g.: reply in English; never touch ~/Documents/finance. New conversations pick them up.", save: "Save", saved: "Saved", mem_path: "File: {0}",
+    act_sec: "Security", act_info: "Sandbox: {0} · Browser: {1} · Workspace: {2}", act_nobrowser: "no Firefox on this machine", act_bash: "Allow bash (still asks you every time; runs sandboxed: no network, writes only in the workspace)",
+    act_dirs: "Allowed folders", act_dirs_sub: "The assistant may read these folders (and write them if writable) without asking each time. A folder containing the assistant's own data (e.g. your whole home folder) can't be added: that would let it change its own permissions.", act_dir_ph: "Folder path, e.g. ~/Documents",
+    act_write: "Writable", act_add: "Add", act_del: "Remove", act_rw: "read-write", act_ro: "read-only", act_appr: "Standing approvals", act_appr_sub: "Targets you approved with \"Always allow\"; after reading the web, writes outside the workspace still ask every time.", act_revoke: "Revoke",
+    act_audit: "Activity log", act_audit_sub: "Every tool call, newest first: what it did, who allowed it, whether it worked. Hover a row to see the result.", act_none: "None yet", cls_read: "read", cls_write: "write", cls_web: "web", cls_exec: "command",
+    pt_done: "Training finished: {0} is linked to sidecar {1}; switch to it and turn on Post-train to attach it",
   },
 };
 const LS_LANG = "ds4.lang";
@@ -493,7 +575,7 @@ async function getJSON(url, opt) { const r = await fetch(url, Object.assign({ ca
 
 /* ---------------- 状态 ---------------- */
 let status = null, runs = [], detail = null, selected = null, userPicked = false, switching = 0, failCount = 0;
-const TABS = ["chat", "models", "train", "data", "runs"];   /* 标题 = t("tab_<名>"), 副标题 = t("hint_<名>")(没有就空) */
+const TABS = ["chat", "mem", "act", "models", "train", "data", "runs"];   /* 标题 = t("tab_<名>"), 副标题 = t("hint_<名>")(没有就空) */
 /* 没有 #hash(直接开 http://host:8000/)时答"正显示的那页"(showTab 记下的): 曾经答 null, 页面明明在聊天页,
    poll 却以为不在、不再拉 /api/models/list, 后训练开关一切换就永远卡在"切换中…"且按钮灰掉(10-11 实撞)。
    起页前还没显示过任何页时仍是 null —— 起页那行靠它判"训练中就先开训练页" */
@@ -504,7 +586,7 @@ function showTab(tab) {
   document.querySelectorAll("nav a[data-tab]").forEach(a => a.classList.toggle("on", a.dataset.tab === tab));
   document.querySelectorAll(".view").forEach(v => v.classList.toggle("on", v.id === "v-" + tab));
   text("page-title", t("tab_" + tab)); $("page-hint").textContent = I18N.zh["hint_" + tab] ? t("hint_" + tab) : "";
-  if (tab === "train") { loadDetail(); } if (tab === "data") loadData(); if (tab === "chat") inputEl.focus(); if (tab === "models") loadModels();
+  if (tab === "train") { loadDetail(); } if (tab === "data") loadData(); if (tab === "chat") { inputEl.focus(); loadSessions(); } if (tab === "models") loadModels(); if (tab === "mem") loadMem(true); if (tab === "act") loadAct();
 }
 document.querySelectorAll("nav a[data-tab]").forEach(a => a.onclick = () => { location.hash = a.dataset.tab; });
 document.querySelectorAll("[data-goto]").forEach(a => a.onclick = () => { location.hash = a.dataset.goto; });
@@ -539,6 +621,7 @@ async function poll() {
     if (curTab() === "train" || curTab() === "chat") await loadDetail();
     if (curTab() === "models" || st.downloading || !mdata) loadModels();   /* 下载中也拉: 侧栏"模型"旁的百分比要跟着走 */
     else if (curTab() === "chat") loadModels(true);   /* 聊天页的侧车下拉与切换状态 */
+    loadSessions(); if (curTab() === "act") loadAct();   /* 对话列表在侧栏、每页都看得见 */   /* 会话状态点 / 审计流水跟着走 */
   } catch (e) { status = null; failCount++; renderEngine(); }
 }
 async function act(url, body, okMsg, sw) {
@@ -747,10 +830,22 @@ async function upload(files) {
   $("up-msg").textContent = ""; loadData();
 }
 
-/* ---------------- 聊天 ---------------- */
+/* ---------------- 助理(原聊天; 10-11 用户: "对标 muse, 把聊天页面变成个人 Agent 助理") ----------------
+   会话在服务端(~/.ds4/assistant/sessions/, 纯文本), 页面只是看: 消息流 = GET /api/assistant/stream?session=&from= 的事件
+   (运行线程只往 events.jsonl 追加, 这里接着读), 关页/刷新/换设备都是从第 0 行重放再接着收, 断线 1.5 s 后从最后一行接上。
+   发 = POST /api/assistant/send; 停 = /stop; 审批 = /approve。所有 POST 带 X-DS4-Assistant 头(挡 CSRF, 见 src/assistant/asst_api.c);
+   从别的设备打开时服务端要口令(~/.ds4/assistant/token), 页面问一次存 localStorage。旧聊天页存在浏览器里的对话不导入(10-11 用户定)。 */
 const chatEl = $("chat"), scrollEl = $("chat-scroll"), inputEl = $("input"), sendBtn = $("btn-send");
-let conv = lsGet("ds4.studio.conv", []), generating = false, aborter = null;
-$("btn-clear").onclick = () => { if (generating) return; conv = []; lsSet("ds4.studio.conv", conv); renderChat(); };
+let sessions = [], curSid = lsGet("ds4.asst.sid", null), view = null, streamAbort = null, renderT = 0;
+function aHeaders(json) { const h = { "X-DS4-Assistant": "1" }; if (json) h["Content-Type"] = "application/json"; const tk = lsGet("ds4.asst.token", ""); if (tk) h.Authorization = "Bearer " + tk; return h; }
+async function aFetch(path, body) {
+  const post = body !== undefined, opt = post ? { method: "POST", headers: aHeaders(true), body: JSON.stringify(body) } : { cache: "no-store", headers: aHeaders(false) };
+  let r = await fetch("/api/assistant/" + path, opt);
+  if (r.status === 401) { const tk = prompt(t("a_token")); if (tk) { lsSet("ds4.asst.token", tk.trim()); opt.headers = aHeaders(post); r = await fetch("/api/assistant/" + path, opt); } }
+  const j = await r.json().catch(() => ({ error: "HTTP " + r.status }));
+  if (!r.ok && j && !j.error) j.error = "HTTP " + r.status;
+  return j;
+}
 function esc(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
 function inlineMd(s) {
   return s.split(/(`[^`\n]+`)/).map(p => p.startsWith("`") && p.endsWith("`") && p.length > 2 ? "<code>" + p.slice(1, -1) + "</code>" :
@@ -769,9 +864,9 @@ function renderMd(src) {   /* 先整段转义再加标记: 模型输出里的 < 
     /* GFM 表格: 表头行 + |---|:--:| 分隔行; 单元格里模型常写 <br> 换行, 转义后只放行这一个标签 */
     if (/^\s*\|.*\|\s*$/.test(ln) && i + 1 < lines.length && /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$/.test(lines[i + 1])) {
       fp(); fl(); const cells = r => r.trim().replace(/^\||\|$/g, "").split("|").map(c => inlineMd(c.trim()).replace(/&lt;br\s*\/?&gt;/g, "<br>"));
-      let t = "<table><thead><tr>" + cells(ln).map(c => "<th>" + c + "</th>").join("") + "</tr></thead><tbody>"; i += 2;
-      while (i < lines.length && /^\s*\|/.test(lines[i])) t += "<tr>" + cells(lines[i++]).map(c => "<td>" + c + "</td>").join("") + "</tr>";
-      out.push('<div class="tablewrap">' + t + "</tbody></table></div>"); continue;
+      let tb = "<table><thead><tr>" + cells(ln).map(c => "<th>" + c + "</th>").join("") + "</tr></thead><tbody>"; i += 2;
+      while (i < lines.length && /^\s*\|/.test(lines[i])) tb += "<tr>" + cells(lines[i++]).map(c => "<td>" + c + "</td>").join("") + "</tr>";
+      out.push('<div class="tablewrap">' + tb + "</tbody></table></div>"); continue;
     }
     const hd = ln.match(/^(#{1,4})\s+(.*)$/), li = ln.match(/^\s*([-*+]|\d+[.)])\s+(.*)$/);
     if (hd) { fp(); fl(); out.push("<h" + hd[1].length + ">" + inlineMd(hd[2]) + "</h" + hd[1].length + ">"); }
@@ -791,20 +886,128 @@ function msgEl(m, streaming) {
   if (m.role === "user") { b.textContent = m.content; return w; }
   if (m.reasoning) { const d = node("details", "think"); d.appendChild(node("summary", null, t("thinking"))); d.appendChild(node("div", null, m.reasoning)); b.appendChild(d); }
   const md = node("div", "md" + (streaming ? " cursor" : "")); md.innerHTML = renderMd(m.content || ""); b.appendChild(md);
-  if (m.error) b.appendChild(node("div", "bad", m.error));
-  if (m.stats) b.appendChild(node("div", "stats", m.stats));
   return w;
 }
-function renderChat() {
-  chatEl.replaceChildren();
-  if (!conv.length) { const e = node("div", "empty"); e.appendChild(logoImg()); e.appendChild(node("h2", null, t("empty_h"))); e.appendChild(node("div", null, t("empty_sub"))); chatEl.appendChild(e); return; }
-  conv.forEach(m => chatEl.appendChild(msgEl(m, false)));
-  scrollEl.scrollTop = scrollEl.scrollHeight;
+
+/* ---- 事件 → 页面模型: user / text / think / tool / approval / tool_end / usage / error / end(运行线程写的就这几种, 见 src/assistant/asst_run.c) ---- */
+function newView(sid) { return { sid, items: [], next: 0, state: "idle" }; }
+function lastAsst(v) { const it = v.items[v.items.length - 1]; if (it && it.kind === "asst") return it; const a = { kind: "asst", content: "", reasoning: "" }; v.items.push(a); return a; }
+function findTool(v, id) { for (let i = v.items.length - 1; i >= 0; i--) if (v.items[i].kind === "tool" && v.items[i].id === id) return v.items[i]; return null; }
+function applyEv(v, e) {
+  if (e.ev === "user") { v.items.push({ kind: "user", text: e.text }); v.state = "running"; }
+  else if (e.ev === "text") lastAsst(v).content += e.d;
+  else if (e.ev === "think") lastAsst(v).reasoning += e.d;
+  else if (e.ev === "tool") v.items.push({ kind: "tool", id: e.id, name: e.name, args: e.args });
+  else if (e.ev === "approval") { const tl = findTool(v, e.id); if (tl) tl.approval = e; v.state = "waiting_approval"; }
+  else if (e.ev === "tool_end") { const tl = findTool(v, e.id); if (tl) Object.assign(tl, { done: true, ok: e.ok, decision: e.decision, ms: e.ms, result: e.result, bytes: e.bytes, approval: null }); if (v.state === "waiting_approval") v.state = "running"; }
+  else if (e.ev === "usage") v.usage = e;
+  else if (e.ev === "error") v.items.push({ kind: "error", msg: e.msg });
+  else if (e.ev === "end") { v.state = "idle"; v.items.push({ kind: "end", reason: e.reason, usage: v.usage }); }
 }
+function busy() { return !!view && view.sid === curSid && view.state !== "idle"; }
+function argsOf(it) { try { return JSON.parse(it.args || "{}"); } catch (e) { return null; } }
+function toolSummary(it) { const a = argsOf(it) || {}; return String(a.path || a.query || a.url || a.command || a.text || a.pattern || "").replace(/\s+/g, " ").slice(0, 140); }
+function prettyArgs(it) { const a = argsOf(it); return a ? JSON.stringify(a, null, 2) : (it.args || ""); }
+function fmtMs(ms) { return ms >= 1000 ? (ms / 1000).toFixed(1) + " s" : Math.round(ms) + " ms"; }
+function toolEl(it) {
+  const ap = it.approval, w = node("div", "tool" + (ap ? " ask" + (ap.warn ? " warn" : "") : "") + (it.done && !it.ok ? " fail" : ""));
+  const head = node("div", "thead");
+  head.appendChild(node("span", "tname", it.name)); head.appendChild(node("span", "targ", toolSummary(it)));
+  const stTxt = ap ? t(ap.answered ? "a_running" : "a_need") : !it.done ? t("a_running") : t("dec_" + it.decision) + (it.ms != null ? " · " + fmtMs(it.ms) : "");
+  head.appendChild(node("span", "tst " + (ap && !ap.answered ? "need" : it.done ? (it.ok ? "ok" : "bad") : ""), stTxt));
+  w.appendChild(head);
+  if (ap && !ap.answered) {   /* 审批卡: 参数原文不缩写(缩写就是让人盲签); 只能"仅这次"的(bash / 污点态 / 敏感目录)不给本会话与总是 */
+    const box = node("div", "appr");
+    box.appendChild(node("div", "why", t("a_reason", ap.reason)));
+    if (ap.target) box.appendChild(node("div", "muted", t("a_target", ap.target)));
+    box.appendChild(node("pre", "box", prettyArgs(it)));
+    const btns = node("div", "abtns");
+    const add = (dec, cls, label) => { const b = node("button", cls, label); b.onclick = () => answer(it, dec); btns.appendChild(b); };
+    add("once", "primary", t("a_once"));
+    if (!ap.once_only) { add("session", "", t("a_session")); add("always", "", t("a_always")); } else btns.appendChild(node("span", "muted", t("a_once_only")));
+    add("deny", "danger", t("a_deny"));
+    box.appendChild(btns); w.appendChild(box);
+  }
+  const body = node("div", "tbody");
+  body.appendChild(node("div", "muted", t("a_args"))); body.appendChild(node("pre", "box", prettyArgs(it)));
+  if (it.done) { body.appendChild(node("div", "muted", t("a_result", it.bytes || 0))); body.appendChild(node("pre", "box", it.result || "")); }
+  body.style.display = it.open ? "" : "none";
+  head.onclick = () => { it.open = !it.open; body.style.display = it.open ? "" : "none"; };
+  w.appendChild(body);
+  return w;
+}
+async function answer(it, dec) {
+  it.approval.answered = dec; renderChat();
+  const r = await aFetch("approve", { session: view.sid, id: it.id, decision: dec });
+  if (r.error) { toast(t("fail", r.error), true); it.approval.answered = null; renderChat(); }
+}
+function renderChat() {
+  const near = scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight < 160;
+  chatEl.replaceChildren();
+  if (!view || !view.items.length) { const e = node("div", "empty"); e.appendChild(logoImg()); e.appendChild(node("h2", null, t("empty_h"))); e.appendChild(node("div", null, t("empty_sub"))); chatEl.appendChild(e); renderChatGate(); return; }
+  view.items.forEach((it, i) => {
+    const last = i === view.items.length - 1;
+    if (it.kind === "user") chatEl.appendChild(msgEl({ role: "user", content: it.text }, false));
+    else if (it.kind === "asst") { if (it.content || it.reasoning || (last && busy())) chatEl.appendChild(msgEl({ role: "assistant", content: it.content, reasoning: it.reasoning }, last && busy())); }
+    else if (it.kind === "tool") chatEl.appendChild(toolEl(it));
+    else if (it.kind === "error") chatEl.appendChild(node("div", "bad aerr", it.msg));
+    else if (it.kind === "end") { const u = it.usage, s = [it.reason === "done" ? "" : t("a_end_" + it.reason), u ? t("a_usage", u.prompt, u.completion) : ""].filter(Boolean).join(" · "); if (s) chatEl.appendChild(node("div", "stats aend", s)); }
+  });
+  if (busy() && view.state !== "waiting_approval") { const lastIt = view.items[view.items.length - 1]; if (lastIt.kind !== "asst") chatEl.appendChild(node("div", "stats aend cursor", t(view.state === "queued" ? "s_queued" : "a_thinking"))); }
+  if (near) scrollEl.scrollTop = scrollEl.scrollHeight;
+  renderChatGate();
+}
+function schedule() { if (renderT) return; renderT = setTimeout(() => { renderT = 0; renderChat(); }, 90); }
+async function openStream(sid) {
+  if (streamAbort) streamAbort.abort();
+  const ac = new AbortController(); streamAbort = ac;
+  view = newView(sid); renderChat();
+  for (;;) {
+    try {
+      const res = await fetch(`/api/assistant/stream?session=${sid}&from=${view.next}`, { headers: aHeaders(false), signal: ac.signal });
+      if (!res.ok || !res.body) throw new Error("HTTP " + res.status);
+      const rd = res.body.getReader(), dec = new TextDecoder(); let buf = "";
+      for (;;) {
+        const { done, value } = await rd.read(); if (done) break;
+        buf += dec.decode(value, { stream: true }); let sep;
+        while ((sep = buf.indexOf("\n\n")) >= 0) {
+          const blk = buf.slice(0, sep); buf = buf.slice(sep + 2); let id = null, data = "";
+          for (const ln of blk.split("\n")) { if (ln.startsWith("id: ")) id = Number(ln.slice(4)); else if (ln.startsWith("data: ")) data += ln.slice(6); }
+          if (!data) continue;
+          let e; try { e = JSON.parse(data); } catch (_) { continue; }
+          if (id != null) view.next = id + 1;
+          applyEv(view, e); schedule();
+          if (e.ev === "end") loadSessions();
+        }
+      }
+    } catch (e) { if (ac.signal.aborted) return; }
+    if (ac.signal.aborted) return;
+    await new Promise(r => setTimeout(r, 1500));   /* 断了(服务重起、网络抖)就从最后一行接着读 */
+  }
+}
+function selectSession(sid) { if (curTab() !== "chat") location.hash = "chat"; curSid = sid; lsSet("ds4.asst.sid", sid); renderSessions(); if (sid) openStream(sid); else { if (streamAbort) streamAbort.abort(); view = null; renderChat(); } inputEl.focus(); }
+async function loadSessions() { try { const r = await aFetch("sessions"); if (Array.isArray(r)) { sessions = r; renderSessions(); } } catch (e) { /* 下一轮 */ } }
+function renderSessions() {
+  const box = $("sess-list"); box.replaceChildren();
+  sessions.forEach(s => {
+    const a = node("div", "sitem" + (s.id === curSid ? " on" : ""));
+    a.appendChild(node("span", "sdot " + s.state, ""));
+    a.appendChild(node("span", "stitle", s.title || t("a_untitled")));
+    if (s.state !== "idle") a.title = t("s_" + s.state);
+    const del = node("button", "ghost sdel", "×"); del.title = t("a_del");
+    del.onclick = async ev => { ev.stopPropagation(); if (!confirm(t("a_del_confirm"))) return; const r = await aFetch("delete", { session: s.id }); if (r.error) toast(t("fail", r.error), true); if (s.id === curSid) selectSession(null); loadSessions(); };
+    a.appendChild(del);
+    a.onclick = () => selectSession(s.id);
+    box.appendChild(a);
+  });
+  if (!sessions.length) box.appendChild(node("div", "muted", t("a_nosess")));
+}
+$("btn-new").onclick = () => selectSession(null);
 function renderChatGate() {
-  const serving = status && status.mode === "serving" && !switching, ban = $("chat-banner");
-  sendBtn.disabled = !serving && !generating; inputEl.disabled = !serving;
-  inputEl.placeholder = t(serving ? "ph_input" : "ph_noinput");
+  const serving = status && status.mode === "serving" && !switching, ban = $("chat-banner"), b = busy();
+  sendBtn.disabled = !serving && !b; inputEl.disabled = !serving;
+  sendBtn.textContent = t(b ? "stop" : "send"); sendBtn.className = b ? "danger" : "primary";
+  inputEl.placeholder = t(serving ? (b ? "ph_busy" : "ph_input") : "ph_noinput");
   if (serving || !status && !switching) { ban.classList.remove("on"); return; }
   ban.classList.add("on");
   const bar = $("chat-banner-bar"); bar.parentElement.style.display = "none"; $("btn-load2").style.display = "none";
@@ -819,50 +1022,57 @@ function renderChatGate() {
 }
 function autosize() { inputEl.style.height = "auto"; inputEl.style.height = Math.min(220, inputEl.scrollHeight) + "px"; inputEl.style.overflowY = inputEl.scrollHeight > 220 ? "auto" : "hidden"; }
 inputEl.oninput = autosize;
-inputEl.onkeydown = e => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } if (e.key === "Escape" && generating) aborter.abort(); };
-sendBtn.onclick = () => generating ? aborter.abort() : send();
-function send() {
-  const msg = inputEl.value.trim(); if (!msg || generating || inputEl.disabled) return;
-  conv.push({ role: "user", content: msg }); inputEl.value = ""; autosize(); renderChat(); generate();
+inputEl.onkeydown = e => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } };
+sendBtn.onclick = () => busy() ? aFetch("stop", { session: curSid }) : send();
+async function send() {
+  const msg = inputEl.value.trim(); if (!msg || inputEl.disabled || busy()) return;
+  inputEl.value = ""; autosize();
+  const r = await aFetch("send", { session: curSid || "", text: msg });
+  if (r.error) { toast(t("fail", r.error), true); inputEl.value = msg; autosize(); return; }
+  if (r.session !== curSid || !view) { curSid = r.session; lsSet("ds4.asst.sid", curSid); openStream(curSid); }
+  view.state = "queued"; renderChat(); loadSessions();
 }
-async function generate() {
-  generating = true; sendBtn.textContent = t("stop"); sendBtn.className = "danger"; sendBtn.disabled = false;
-  const asst = { role: "assistant", content: "", reasoning: "" }; conv.push(asst);
-  const el = msgEl(asst, true); if (conv.length === 2) chatEl.replaceChildren(...[...conv.slice(0, -1).map(m => msgEl(m, false)), el]); else chatEl.appendChild(el);
-  scrollEl.scrollTop = scrollEl.scrollHeight;
-  const msgs = [];
-  conv.slice(0, -1).forEach(m => { if (!m.error) msgs.push({ role: m.role, content: m.content }); });
-  const t0 = performance.now(); let tFirst = null, usage = null, last = 0; aborter = new AbortController();
-  let elRef = el; const swap = n => { elRef.replaceWith(n); elRef = n; };
-  const repaint = force => { const now = performance.now(); if (!force && now - last < 90) return; last = now; swap(msgEl(asst, true)); if (scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight < 160) scrollEl.scrollTop = scrollEl.scrollHeight; };
-  try {
-    /* 不带 temperature / max_tokens(10-10 用户: "不要温度, 不要长度限制"): 服务端按模型卡默认配方采样, 长度只受上下文限制 */
-    const res = await fetch("/v1/chat/completions", { method: "POST", headers: { "content-type": "application/json" }, signal: aborter.signal,
-      body: JSON.stringify({ model: "deepseek-v4-flash", messages: msgs, stream: true, stream_options: { include_usage: true } }) });
-    if (!res.ok || !res.body) { let d = await res.text().catch(() => ""); try { d = JSON.parse(d).error.message; } catch (e) {} throw new Error("HTTP " + res.status + (d ? ": " + d : "")); }
-    const rd = res.body.getReader(), dec = new TextDecoder(); let buf = "";
-    for (;;) {
-      const { done, value } = await rd.read(); if (done) break;
-      buf += dec.decode(value, { stream: true }); let sep;
-      while ((sep = buf.indexOf("\n\n")) >= 0) {
-        const blk = buf.slice(0, sep); buf = buf.slice(sep + 2); let data = "";
-        for (const ln of blk.split("\n")) if (ln.startsWith("data: ")) data += ln.slice(6);
-        if (!data || data === "[DONE]") continue;
-        let o; try { o = JSON.parse(data); } catch (e) { continue; }
-        if (o.error) throw new Error(o.error.message || t("server_err"));
-        const d = o.choices && o.choices[0] && o.choices[0].delta;
-        if (d) { if (d.reasoning_content) { tFirst = tFirst || performance.now(); asst.reasoning += d.reasoning_content; repaint(false); }
-                 if (d.content) { tFirst = tFirst || performance.now(); asst.content += d.content; repaint(false); } }
-        if (o.usage) usage = o.usage;
-      }
-    }
-  } catch (err) { if (err.name === "AbortError") asst.stats = t("gen_stopped"); else asst.error = String(err.message || err); }
-  const dt = (performance.now() - (tFirst || t0)) / 1000;
-  if (usage && usage.completion_tokens) asst.stats = (asst.stats ? asst.stats + " · " : "") + t("gen_stats", usage.completion_tokens, (usage.completion_tokens / Math.max(dt, 1e-3)).toFixed(1), (((tFirst || performance.now()) - t0) / 1000).toFixed(2));
-  swap(msgEl(asst, false));
-  generating = false; sendBtn.textContent = t("send"); sendBtn.className = "primary";
-  lsSet("ds4.studio.conv", conv); renderChatGate(); inputEl.focus();
+
+/* ---------------- 记忆 ----------------
+   两个纯文本文件(~/.ds4/assistant/memory/profile.md / rules.md), 这里就是它们的编辑框; 改完对新开的对话生效(进行中的对话 system 已冻结, 为了 KV 前缀复用)。 */
+let memLoaded = false;
+async function loadMem(force) {
+  if (memLoaded && !force) return;
+  const r = await aFetch("memory"); if (r.error) { toast(t("fail", r.error), true); return; }
+  $("mem-profile").value = r.profile; $("mem-rules").value = r.rules;
+  $("mem-path1").textContent = t("mem_path", r.root + "/memory/profile.md"); $("mem-path2").textContent = t("mem_path", r.root + "/memory/rules.md");
+  memLoaded = true;
 }
+$("mem-save1").onclick = async () => { const r = await aFetch("memory", { profile: $("mem-profile").value }); r.error ? toast(t("fail", r.error), true) : toast(t("saved")); };
+$("mem-save2").onclick = async () => { const r = await aFetch("memory", { rules: $("mem-rules").value }); r.error ? toast(t("fail", r.error), true) : toast(t("saved")); };
+
+/* ---------------- 活动 ----------------
+   沙盒状态 / bash 开关 / 允许的目录 / 永久授权 / 审计流水: 全是 GET /api/assistant/activity 一份, 改动走 POST /api/assistant/policy。 */
+async function loadAct() {
+  const [st, a] = await Promise.all([aFetch("status"), aFetch("activity")]);
+  if (a.error || st.error) { toast(t("fail", a.error || st.error), true); return; }
+  $("act-info").textContent = t("act_info", st.sandbox, st.browser || t("act_nobrowser"), st.workspace);
+  $("act-bash").checked = !!a.policy.bash;
+  const dt = $("act-dirs"); dt.replaceChildren();
+  (a.policy.dirs || []).forEach(d => { const tr = node("tr"); tr.appendChild(node("td", null, d.path)); tr.appendChild(node("td", null, t(d.write ? "act_rw" : "act_ro")));
+    const td = node("td"); const b = node("button", "ghost act", t("act_del")); b.onclick = () => policy({ op: "dir_del", path: d.path }); td.appendChild(b); tr.appendChild(td); dt.appendChild(tr); });
+  if (!(a.policy.dirs || []).length) { const tr = node("tr"); tr.appendChild(node("td", "muted", t("act_none"))); dt.appendChild(tr); }
+  const at = $("act-appr"); at.replaceChildren();
+  a.approvals.forEach((p, i) => { const tr = node("tr"); tr.appendChild(node("td", null, new Date(p.t * 1000).toLocaleString(locale()))); tr.appendChild(node("td", null, t("cls_" + p.cls))); tr.appendChild(node("td", null, p.target));
+    const td = node("td"); const b = node("button", "ghost act", t("act_revoke")); b.onclick = () => policy({ op: "revoke", index: i }); td.appendChild(b); tr.appendChild(td); at.appendChild(tr); });
+  if (!a.approvals.length) { const tr = node("tr"); tr.appendChild(node("td", "muted", t("act_none"))); at.appendChild(tr); }
+  const au = $("act-audit"); au.replaceChildren();
+  a.audit.forEach(x => { const tr = node("tr"); tr.title = x.result || "";
+    tr.appendChild(node("td", null, new Date(x.t * 1000).toLocaleString(locale()))); tr.appendChild(node("td", null, x.tool));
+    tr.appendChild(node("td", "wrap", (x.args || "").slice(0, 160)));
+    const td = node("td"); td.appendChild(node("span", "badge " + ({ auto: "", blocked: "red", denied: "red", once: "amber", session: "amber", always: "amber" }[x.decision] || ""), t("dec_" + x.decision))); tr.appendChild(td);
+    tr.appendChild(node("td", x.ok ? "ok" : "bad", x.ok ? "✓" : "✗")); tr.appendChild(node("td", null, fmtMs(x.ms || 0)));
+    tr.appendChild(node("td", "muted", (x.session || "").slice(0, 6))); au.appendChild(tr); });
+  if (!a.audit.length) { const tr = node("tr"); tr.appendChild(node("td", "muted", t("act_none"))); au.appendChild(tr); }
+}
+async function policy(body) { const r = await aFetch("policy", body); if (r.error) toast(t("fail", r.error), true); loadAct(); }
+$("act-bash").onchange = () => policy({ op: "bash", value: $("act-bash").checked });
+$("act-add").onclick = () => { const p = $("act-path").value.trim(); if (!p) return; policy({ op: "dir_add", path: p, write: $("act-write").checked }); $("act-path").value = ""; };
 
 /* ---------------- 模型 ----------------
    数据: GET /api/models/list(本机 GGUF + 同名前缀的侧车目录 + 正在用的 + 下载进度); POST /api/models/load|download|cancel。
@@ -1031,7 +1241,7 @@ async function sendPlug(z, p) {
   plugBusy = true; renderPlug();
   try {
     const r = await getJSON("/api/models/plugins", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ zchain: z || "none", posttrain: p }) });
-    if (r.ok) { if (generating) toast(t("pl_after")); } else toast(t("pl_fail", r.error), true);
+    if (r.ok) { if (busy()) toast(t("pl_after")); } else toast(t("pl_fail", r.error), true);
   } catch (e) { toast(t("not_sent", e), true); }
   plugBusy = false; await loadModels(true);
 }
@@ -1090,15 +1300,14 @@ $("pt-on").onchange = async () => { const z = mdata.loaded.zchain; await sendPlu
 $("lang").onclick = () => {
   lang = lang === "zh" ? "en" : "zh";
   try { localStorage.setItem(LS_LANG, lang); } catch (_) {}
-  applyI18n(); showTab(curTab() || "chat"); renderEngine(); renderRuns(); renderChat();
-  sendBtn.textContent = t(generating ? "stop" : "send");
+  applyI18n(); showTab(curTab() || "chat"); renderEngine(); renderRuns(); renderChat(); renderSessions();
   if (detail) renderDetail();
   if (dataCache) loadData();
   if (mdata) { renderPlug(); if (mdata.hub) renderModels(); }
 };
 
 /* ---------------- 起 ---------------- */
-applyI18n(); sendBtn.textContent = t("send"); renderChat(); autosize(); loadData(); poll(); setInterval(poll, 2500); setInterval(loadData, 20000);
+applyI18n(); renderChat(); autosize(); loadSessions(); if (curSid) openStream(curSid); loadData(); poll(); setInterval(poll, 2500); setInterval(loadData, 20000);
 (async () => { for (let i = 0; i < 20 && !status && failCount < 4; i++) await new Promise(r => setTimeout(r, 300));
   showTab(curTab() || (status && status.busy ? "train" : "chat")); })();
 window.addEventListener("resize", () => { if (detail && curTab() === "train") { drawLoss(detail); drawEval(detail); } });

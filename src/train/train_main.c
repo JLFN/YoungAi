@@ -1,5 +1,7 @@
 /* train_main.c — ds4-train 入口: 工作台的主进程(永远不退), 一层薄 HTTP 套在 tr_api 上; 模型(ds4-server)与训练链都是它拉起的子进程。总述见 train_internal.h。 */
 #include "train_internal.h"
+#include "../assistant/asst_internal.h"
+#include <signal.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #ifdef __APPLE__
@@ -8,7 +10,29 @@
 
 static int g_port = 8000;
 
-static int handle(const tr_req *rq, ds4_buf *out, const char **ctype) { return tr_api(rq, out, ctype, 0, g_port); }
+static asst_req to_asst(const tr_req *rq) {
+    return (asst_req){ rq->method, rq->path, rq->query, rq->body ? rq->body : "", rq->body_len, rq->peer_local, rq->host, rq->auth, rq->xhdr };
+}
+
+static int handle(const tr_req *rq, ds4_buf *out, const char **ctype) {
+    if (asst_api_path(rq->path)) {   /* 个人助理(src/assistant/): 只在主进程, 先过鉴权 */
+        const asst_req a = to_asst(rq); int code; const char *why;
+        if (!asst_authorized(&a, &code, &why)) { ds4_buf_puts(out, "{\"error\":"); ds4_json_escape(out, why); ds4_buf_putc(out, '}'); return code; }
+        return asst_api(&a, out, ctype);
+    }
+    return tr_api(rq, out, ctype, 0, g_port);
+}
+
+/* 助理事件流是长连接: 过了鉴权就把 fd 交给它的线程; 没过返回 false, 落回 handle 答 401/403 */
+static bool takeover(int fd, const tr_req *rq) {
+    if (!asst_sse_path(rq->path)) return false;
+    const asst_req a = to_asst(rq); int code; const char *why;
+    if (!asst_authorized(&a, &code, &why)) return false;
+    asst_sse_start(fd, &a);
+    return true;
+}
+
+static void on_term(int sig) { asst_browser_shutdown(); signal(sig, SIG_DFL); raise(sig); }   /* 火狐自成进程组, 主进程被杀它不会跟着走 */
 
 int main(int argc, char **argv) {
     const char *host = "0.0.0.0", *root = NULL;
@@ -37,7 +61,13 @@ int main(int argc, char **argv) {
     tr_init(root);
     snprintf(p, sizeof p, "%.900s/web/studio.html", tr_root);
     if (stat(p, &st)) { fprintf(stderr, "ds4-train: %s 不存在 —— 要在仓库根起, 或给 --root\n", p); return 1; }
-    const int rc = tr_http_serve(host, g_port, handle);
+    char aerr[512] = "";
+    if (asst_init(NULL, aerr, sizeof aerr)) {
+        asst_run_start(TR_MODEL_PORT(g_port));
+        fprintf(stderr, "ds4-train: 助理 %s (沙盒 %s, 浏览器 %s); 别的设备访问要口令: %s/token\n", asst_root, asst_sbx_kind(), asst_browser_kind()[0] ? asst_browser_kind() : "无", asst_root);
+    } else { asst_root[0] = 0; fprintf(stderr, "ds4-train: 助理不可用: %s(助理接口答 503, 训练/模型页不受影响)\n", aerr); }
+    signal(SIGTERM, on_term); signal(SIGINT, on_term);
+    const int rc = tr_http_serve(host, g_port, handle, takeover);
     fprintf(stderr, "ds4-train: 退出(监听失败)\n");
     return rc;
 }

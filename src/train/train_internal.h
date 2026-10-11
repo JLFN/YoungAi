@@ -39,6 +39,8 @@ typedef struct {
     char query[512];      /* ? 之后(可空) */
     const char *body;     /* POST 体(可空) */
     size_t body_len;
+    bool peer_local;      /* 对端是 127.0.0.1(助理接口的鉴权要用; ds4-server 侧不填 = false) */
+    char host[256], auth[320], xhdr[16];   /* Host / Authorization / X-DS4-Assistant 头(没有 = 空串) */
 } tr_req;
 
 /* 路由: 往 out 写响应体, 返回 HTTP 状态码, *ctype 给 Content-Type。serving = 调用方是装着模型的 ds4-server(模型子进程);
@@ -51,7 +53,9 @@ void tr_init(const char *root);
 
 /* train_http.c + train_proxy.c(只有 ds4-train 用) */
 typedef int (*tr_handler)(const tr_req *req, ds4_buf *out, const char **ctype);
-int tr_http_serve(const char *host, int port, tr_handler h);   /* 阻塞循环; 监听失败返回非 0 */
+/* 接管: 返回 true = 这条连接归钩子了(长连接, 如助理的事件流), 主循环不回不关 */
+typedef bool (*tr_takeover)(int fd, const tr_req *req);
+int tr_http_serve(const char *host, int port, tr_handler h, tr_takeover tk);   /* 阻塞循环; 监听失败返回非 0 */
 bool tr_proxy_path(const char *path);   /* 这条路归模型子进程(/v1/… /monitor /metrics /api/models/plugins|list) */
 void tr_proxy_start(int cfd, char *raw, size_t raw_len, int model_port);   /* 接管 cfd 与 raw(请求原字节), 开线程转发, 立刻返回 */
 bool tr_query_get(const char *query, const char *key, char *val, size_t n);   /* ?a=b&c=d 取一项(百分号解码) */

@@ -26,5 +26,6 @@ char *ds4_web_google_search(ds4_web *web, const char *query,
                             char *err, size_t err_len);
 char *ds4_web_visit_page(ds4_web *web, const char *url,
                          char *err, size_t err_len);
+const char *ds4_web_extract_page_js(void);   /* 正文提取脚本原文(火狐 BiDi 路复用) */
 
 #endif
