@@ -11044,3 +11044,57 @@ A = 只在提示里找(Strata 默认索引范围), B = 提示 + 已生成都找;
   截图(18:34, docs/img/studio-posttrain.png): 页面同口径(不传温度 = 模型卡采样)挂 e03 采样命中: "hello 小泱" 逐字"在呢主人" 15/24(非流式 8/8, 2/6; 流式 1/4, 4/6; 没命中的多是"在呢, 主人～…"一类变体), 故事题蜗牛故事 5/8。
   ★页面 bug(已修, 未提交): 不带 #hash 直接开 :8000/ 时 curTab() 返回 null, poll 不拉 /api/models/list ⇒ 后训练开关一切就永远卡"切换中…"且灰掉(服务端早已切完)。修 = curTab 无 hash 时答 showTab 记下的当前页(起页前仍 null, 保住"训练中先开训练页"); 页面运行时从盘读, spark 已换, 开/关各验一遍 2.5 s 内跟上。
 - **发布(10-11 晚)**: GitHub restructure 推到 5c876b9。HF 改从 Mac 传(~/hfenv/bin/hf, 已登录 wenzhouwu; spark 的 hf 没登录), 一次提交 a973e92: README×2 + install.sh(download/probe/macOS df) + README 引用的 logo/两张截图/TECHNICAL×2 —— 此前 HF 上这些资源一份都没有(图是裂的), 8 个文件大小与本地逐个对上, 图片地址 200。bin/、侧车、分块未动。
+
+## 10-11 晚 · 聊天页 → 个人助理方案稿(用户: "对标 muse, 把聊天页面变成个人 Agent 助理, 先设计详细方案包括但不限于记忆、安全等等, 先落地方案")
+- **对标对象核实**: Muse = Meta 09-08 发布的个人 agent(云端专用 VM + 第二个 agent Sentinel 守唯一出口 + 记忆可 forget + 关 app 继续跑 + 完整活动流水); TIME 10-06 批它给用户和联系人建档、分析"几点推最有效"。开源对照 nanoMuse(论文 2610.08699): 记忆 = Markdown 文件, Sentinel 是策略边界(同进程)带固定决策序 + 污点追踪 + 作用域授权(once/本会话/永久对目标), 支付密码永不记忆。
+- **盘点现状**: 聊天页对话只在浏览器 localStorage, 直通 /v1; ds4-agent 的工具(文件/编辑/搜索/网页/bash)在 C 里但它自己装引擎, 跟 ds4-server 不能并存; ds4-server 工具调用 10-11 刚修到 40/40 且有 DSML 重放表; ★ds4-train 默认绑 0.0.0.0, 助理一有文件工具就等于局域网开门★。
+- **方案稿 `docs/assistant.md`**: 助理循环住主进程 ds4-train(永不退 ⇒ 定时任务/关页继续跑), 模型子进程只算 token; 数据全落 ~/.ds4/assistant/ 纯文本(profile/rules/日记/会话 jsonl/审计/审批/policy); system prompt 会话创建时拍快照冻结(中途 remember 不重渲染, KV 前缀会话内永远命中); 守门 = 一个确定性 C 函数六步决策序(禁用表→用户规则→硬警告→污点→风险等级→作用域授权), 不请第二个模型当裁判; 审批卡四键(仅这次/本会话/总是对目标/拒绝); 助理接口只认 127.0.0.1 或 Bearer token; 事件流 events.jsonl 是页面唯一真相(SSE 只 tail 它); 全局一次一个运行(FIFO); 三阶段落地各带 10 分钟门; 明确不做记忆进权重(09-30 自吐轨迹铁律)、不做第二模型守门、不引 TLS。四个未决项等用户定(tab 数 / bash 默认禁 / 第 1 阶段带不带浏览器工具 / 旧对话导入)。未动代码。
+
+## 10-11 晚 · 助理阶段 0+1 落地(用户: "可以是三个tab，安全沙盒第一，有火狐浏览器的先跑通流程，暂时不要会话导入，启动开发" → 中途 "早上不是解决过这个问题吗" / "对话列表放到监控下面")
+- **沙盒(src/assistant/asst_sbx*.c)**: 每次工具调用 fork 子进程先上锁再干活, 上锁失败 = 拒绝执行(不退回无沙盒)。Linux = no_new_privs + Landlock(spark 6.17 = ABI 7: 文件白名单 + TCP 全禁 + 信号/抽象 unix 不出域)+ seccomp(socket/io_uring/ptrace/mount/命名空间…EPERM, clone3→ENOSYS)+ rlimit; macOS = Seatbelt deny default。bwrap/用户命名空间走不通: spark apparmor_restrict_unprivileged_userns=1。
+  逃逸单测 ds4_asst_test 30 项(白名单外读、..、软链、写系统目录、TCP、具名 unix socket、给域外进程发信号、偷 env、sudo、/dev/tcp、超时与后台进程残留、fork 墙)Mac 30/30、spark 30/30。
+  撞了两个坑: ① macOS 起 bash 要读根目录 "/" 本身, 不给 SIGABRT 134(二分出来) ② Linux RLIMIT_NPROC 数的是线程不是进程, 按进程数 +64 设 bash 一个都 fork 不出。
+- **守门/存储/记忆/接口**: 决策序六步 + 三条新口子(控制目录不可碰 / 含控制目录的上级不许加 / 浏览器不打本机内网), 鉴权(非本机要口令, POST 要 X-DS4-Assistant 头挡 CSRF, Host 非本机名挡 DNS 重绑定), 逻辑单测 96 项。鉴权五种情形 spark 实测: 401/403/403/401/200 全对。
+- **服务端 bug(src/server, 已修)**: 用户问"早上不是解决过吗" —— 早上修的是 DSML 写法与语法位贪心, 渲染逐字节对官方金标; 这次是早上记为"模型行为"的那条尾巴: 参数开标签写成裸 `<parameter name="x">`(闭标签是 DSML 的、无 string 属性)。同请求换 system: 助理中文身份段 0/5、一句英文 3/5、不带 system 5/5 —— 渲染没错, 是量化模型在"system 正文 + 工具说明"上下文里这一位首选裸 "<"(上游把工具说明放 system 前, 正好绕开)。
+  修 = 解析侧认别名 "<parameter "(最终解析 4 处、流式定位/KV 跟踪、OpenAI/Anthropic 投影; 缺 string 属性按字符串, 与最终解析器原缺省一致), 模型输出不改。新测 tests/server_tests_bare_param.c 三项(关掉别名 7 条断言全红); Mac/spark ds4_test --server 全绿。spark 换 ds4-server 后同请求: 流式 0/6 → 3/3, 非流式 0/5 → 4/5(剩 1 次是模型只回"我记下来。"没调工具)。
+- **spark 真模型五段门(studio_assistant_probe.sh)**: memory(记住 → 新会话问 → "宁波。") / edit(建 → 改 → 读, .trash 有旧版) / approve(拒 → 模型换 bash → bash 关被拦 → 同意选总是 → 读出 spark-6b69; 审计 denied/blocked/always 各一行) / web(火狐无头 BiDi: Bing 搜 6.0 s, 开页 1.0~1.3 s, 三句话总结) / reconnect(运行中第 40 行接上 vs 全量第 40 行之后 281 行逐行同)。
+  审批门第一趟没过: 我写的身份段"工作区外要用户批准"被模型理解成先口头问, 不调工具还编"我刚才试过"; 改成"直接调, 系统自动弹审批" + "没调过的工具不许说调过"后过。remember 加了整条去重。
+- **页面**: 助理(对话列表在侧栏监控下面, 用户令)/ 记忆 / 活动; Playwright 点通审批卡(仅这次)、撤销永久授权、记忆保存、中英切换, 控制台 0 错。探针写进真记忆的测试条目已从页面清掉, /etc 永久授权已撤。
+- 主进程换了两次(train_ui_spark.sh stop/start, 模型子进程被认领不重装); 模型子进程为换 ds4-server 重起一次(96 s)。未提交。
+- **20:43 真实任务试跑"全网 DGX Spark 最低价"(用户: "没有找到这算bug, 因为没有解决我的问题")**: 2 搜 7 页 117 s, 回答里每个数字/链接都在它读到的页面原文里(没编), 但京东商品页被重定向到 403 频控页、淘宝验证码、知乎拦截 —— 京东价是什么值得买转述的, 没解决问题。
+  根因排查: ① 不是 IP: 同一京东商品页 spark 上 curl 200(35 KB), 只有火狐被拦; 京东搜索页任何客户端都跳风控(要登录) ② 让助理开 bot.sannysoft.com: **WebDriver (New): present (failed)** + **WebGL: no webgl context** —— 浏览器自己在报"我是自动化"。
+  顺带修: visit_page 导航等 "complete" 时任一资源卡住就 20 s 读超时 + 火狐被杀重起(sannysoft 连撞 3 次、github 1 次) → 改 "interactive" + 自己按 readyState 等至多 15 s, 超了取已渲染的; 修后 sannysoft 17.6 s 拿到全表。
+  待用户定: 京东/淘宝实时价 = ① 用户账号扫码登录(推荐) 或 ② 隐藏 webdriver/补 WebGL(绕反爬, 违反对方用户协议)。另记两个小问题未修: 中文提问时前一两句回英文; 正文漏出 "</think>"。
+- **21:0x~21:38 先修 bug(用户令"先修bug")**:
+  ① **回答语言跟错**: 根因 = 模型的回答语言跟着 system 的语言走, 指令压不住(sannysoft 那句, 每格 16 次): 中文身份段 + 英文提问 4/8 回中文; 英文身份段 + 中文提问 14/16 回英文; 中英混写结尾句两头都坏(4/16、4/16); 语言规则只写在开头 4/16 跑偏, 首尾各一处 0/16(官方工具说明是大段英文、接在 system 末尾)。
+     修 = 身份段中英两份, 会话创建时按第一条消息的文字选(汉字数 ×2 ≥ 拉丁字母数 = 中文), 结尾补一句同语言的语言规则; system 本来就按会话冻结。修后经助理接口新建会话: 中文 0/16 跑偏, 英文 1/16 回中文(英文会话 system 与工具说明里汉字 0 个 —— 模型自己的中文先验)。修前: 中文 3/8、英文 4/8。
+  ② **正文漏 "</think>"**: 非思考模式下提示已以 </think> 收了思考, 模型偶尔自己再采一个(前面是自言自语), 三条流式协议(OpenAI/Anthropic/Responses)的正文模式原样推出; 非流式的最终解析本来就会切进 reasoning。修 = 流式正文不推这个标记(尾巴是它前半截时先压着), 标记前后正文不丢。复跑 40+ 次没再触发(低频), 用真模型原文做单测 server_tests_stray_think.c 两项(逐字节喂; 关掉修复 3 条断言红)。
+  ③ 写测试时撞的两个测试自身 bug(已修): 测试到最后才读 socketpair, 逐字节喂上百帧超过 macOS unix socket 缺省 8 KB ⇒ send 永久阻塞, 看着像偶发卡死(sample 抓栈定位); 测试拿整串指针配短长度, 违反生产 raw[raw_len]==NUL 的约定, 按 NUL 找工具块的函数看见了未生成的字节 —— 裸参数那个测试同病, 一起改成按生产的样子喂 + 拼帧比对。
+  Mac/spark: ds4_test --server 全绿(连跑三趟各 2 s), ds4_asst_test 132 项全绿; spark 模型子进程换新 ds4-server 重起 87 s, 主进程重启认领。未提交。
+
+## 10-11 深夜 · V4.1 单请求路 KV 前缀复用落地(用户: 助理查"全网 DGX Spark 最低价"时发现每步整段重预填)
+- **病(22:39~22:56 那趟, 旧 ds4-server)**: 31 次工具调用, 提示 1.6k → 192.6k token, trace 逐条对账: 每条提示都是上一条的严格前缀(awk 算 LCP = 上一条全长, 只有助理裁剪历史的两步例外), 却 0 条复用 —— V4.1 路从没有过 KV 复用(fable5 E4 缺口), 每步重读整段: req 47 预填 142,376 token 一步 3 分钟, 半小时没跑完; 预填 ~1000 t/s、解码 ~30 t/s 都正常, 钱全花在重读上。
+- **修 = `src/core/core_v41_kvreuse.c`**(进程级一份检查点): 每条请求预填完、解码前存"提示末尾"的状态(压缩 KV / 索引键按 ng_src 组数、窗口环前 SWA 行、压缩器余行 cpend、草稿器 main_hidden 环 + 计数、各层 ng_src/cpend/win_from、token 序列); 下一条提示以它开头且更长 ⇒ 新状态拷进检查点, 只预填后面那段(`core_v41_api.c` 预填圈从 reused 起)。解码/采样/投机/稠密段全是新状态自己的, 与冷启动同一套代码。热切侧车/后训练件 ⇒ `v41_kvreuse_drop`(KV 带着放大器算)。存/拷失败 ⇒ 这一条整段预填 + 日志一行, 不拿半份算。`--no-kv-reuse` 只给 A/B 与门。服务端按真数报 usage.cached_tokens / 监控页 reused / trace "kv reuse: …"。
+- **精确门 `gguf-tools/scripts/kv_reuse_gate.sh`**: A = P 温 0 吐 N 个; B = P+t1 吐 N−1 个, B 必须接上检查点只预填 1 个 token, 生成 id 逐个等于 A 的第 2..N 个, **且每步整行 logits 指纹逐位相同**(主机惩罚路每步记加权和, `core_v41_sample.c`; 变异实测故意漏存压缩器余行 200 个 token 照样全对, 只比 token 抓不到)。23:52 真机: 3220/3221 复用, 47 个 token 逐个同, 47 步指纹逐位同, PASS。
+- **真路径(studio_assistant_probe.sh web, 23:53)**: 三步请求 1637 → 2737 → 5352 token, 第 2 步复用 1637 只预填 1100(1.8 s), 第 3 步复用 2737 只预填 2615(2.7 s); 检查点 19~20 MB。
+- 与冷启动的差别(如实): 后面那段从检查点位置起切块, 块边界与冷启动不同 ⇒ GEMM 形状不同, 浮点上不逐位同, 与换 --v41-chunk 同量级。并发路(--batch ≥ 2, server_sched_v41.c)没接复用, 工作台不开 --batch。Mac make test 全绿(ds4_test --server 含新测试)。未提交。
+- **原任务重跑(studio_assistant_probe.sh ask "全网最低价的 DGX Spark", 23:53)**: 82 s 跑完 8 步, 提示 1.6k → 16.9k, 每步都接上(16k 时每步只预填 113~218 个 token, 0.5~0.7 s)。**但第 4~8 步连撞 5 次 "web_search requires query"** —— 又一处 DSML 解析 bug(与早上的裸开标签同族): 模型把参数闭标签也写成裸 `</parameter>`(一块两个 invoke 全这样, invoke/calls 仍是 DSML 的), 解析器只认 `</｜DSML｜ parameter>`: 最终解析退回正文(trace "invalid tool call returned as assistant text"), 流式把 `</parameter>\n</｜DSML｜ invoke>…</｜DSML｜ calls>` 整段当第一个参数的值推给助理。
+  修 = 闭标签对称加裸别名(`server_dsml_parse.c` dsml_param_close_len / close_partial / close_find 三个入口, 最终解析 + OpenAI/Anthropic 流式 + KV 语法跟踪 + 测试参考识别器全走它; 两种闭标签取最早的), 模型输出不改。单测 server_tests_bare_param.c 加三项(原文照 spark 真模型; 关掉别名 10 条断言红); Mac/spark ds4_test --server 全绿, linecount 过。
+  换新 ds4-server 重跑(00:04): 3 分 45 秒 11 步, 提示 1.6k → 82.5k, 11 步全接上(每步只预填新增 1.9k~14.9k, 单步最长 17.9 s; 检查点 19 → 83 MB), 0 次解析失败。拿到的价: ZOL 北京经销商 ￥36423、京东 ￥37929/3.29 万、爱企查 4699 美元、腾讯新闻 64GB 版 4999 美元; 京东/淘宝商品页仍被登录墙/验证码挡(10-11 已记, 待用户定扫码登录或绕反爬)。最后一步模型说"我再确认一下…"后直接收口没出工具调用也没给终稿 —— 是采样下的模型行为, 不是解析问题, 另记。未提交。
+
+## 10-12 凌晨 · 同提示 KV 复用 + "我再确认一下…"收口位的采样分布(用户: "看看是不是问题")
+- **收口那步的原始记录**: 第 12 步 temp 1.0、无 stop 串、`dsml_start 0 / dsml_end 0`、`finish: stop`, 生成 39 个 id 末位 = 1(`<｜end▁of▁sentence｜>`)。服务端/引擎没有切它, 是模型在"说完过渡句 → 该开工具块"这一位采到了 EOS。
+- **同提示复用(core_v41_kvreuse.c)**: 以前 `K.n >= np` 整段重填(同一提示重复采样 82k 要 90 s 一次)。改 = 检查点顺带存提示末位那一行 logits(0.5 MB), 同提示 ⇒ 状态拷回、logits 落第 0 行、一块不预填, 直接采第一个 token; api 路同提示整份接上就不重存。门 kv_reuse_gate.sh 加 C 段(= B 的提示再发): `kv reuse: 3221 of 3221`, 47 个 token 与 B 逐个同、每步 logits 指纹逐位同, PASS(A/B 段照旧 PASS)。场景: 页面重新生成 / 后训练一题 8 份采样(10-06 账 140 s 重复预填归零) / 本次量概率。
+- **量法 `gguf-tools/scripts/next_token_probe.sh <trace> <请求号> <次数>`**: 从 trace 取该请求的 rendered prompt + 生成全文, raw:true 每次只要 1 个 token, 第 2 次起同提示复用(82,549 token 一次 ≈ 1 步解码)。撞了三个坑都已修进脚本: jq --arg 撞 ARG_MAX / 生成数要扣掉 EOS / trace 行终止符多出的换行把采样位错到"换行之后"(那一位 14/16 是 "<" 开工具块 —— 与真实收口位完全两样)。拼接后比原请求多 1 个 token, 分叉在第 61,567 位(工具结果里一处 "166 271" ↔ "2808 201" 的分词差, trace 文本往返的损耗), 不在收口位附近。
+- **收口位 24 次采样(temp 1 / top_p 1 / min_p 0)**: `</think>`(128822) **8/24**、"同时" 6/24、"现在就/再做/另外/最后/然后/以及" 各 1、空白换行类 2、"`" 1、"A" 1、**EOS 1/24**; "<"(开工具块) 0/24。
+  判读: ① EOS ≈ 4%, 原跑撞上的是小概率, 但一趟 11 步每步都有这种位, 累计不小; ② **三分之一在吐游离 `</think>`** —— 不思考模式下提示以 `</think>` 开场, 模型把过渡句当成自己的思考段再关一次, 10-11 已见过(流式压掉了标记); ③ 过半在继续写句子(没打算马上开工具块)。所以这不是解析/采样器 bug, 是模型在这个上下文里"要不要动手"本身摇摆, 根在不思考模式的提示形态 + 82k 脏上下文。未动代码(待用户定: 助理开思考 / 换收口策略)。
+- **开思考重跑(用户令"开思考看看之前有循环不停的 bug", 06:31~06:47)**: 助理请求加 `think:true`, 思考段原文随 `reasoning_content` 回传(asst_llm.c / asst_run.c; 服务端按官方模板把同一轮的 `<think>…</think>` 原样渲染回去), 所以 KV 前缀照样接上(12 步全复用, 例 `KV 复用 67877/86285`)。
+  结果: 12 步 43 次工具调用, 16 分钟, 提示 1.6k → 139.9k, 思考 69,830 字 / 正文 6,336 字, **每步都正常关 `</think>` 并开工具块或出终稿, 没有复读环**(每步思考尾巴人工看过, 都是在算账); 每步生成 463 → 5,311 token(思考 1.5k~3.5k 常态), 单步 15~180 s, 比不思考慢 4~6 倍。
+  终稿质量明显高: 分清"标价最低(eBay ¥14,723 疑似诈骗挂单, 还提醒别照标题指令做)/能买到的最低($4,999.99 Micro Center, Amazon B0FWJ16CCH)/国内现货(京东 ¥3.4万~37,929、ZOL 北京代理 ¥36,423)/官方 $6,950 无货", 每个数都带链接; 不思考那趟是"我再确认一下…"收口没终稿。
+  探针脚本 wait_run 900 s 上限先超时了(任务本身跑完, reason done), 读数从 events.jsonl 取。asst_llm.c 的 think:true 目前写死, 保不保留待用户定(代价是每步多 1 分钟上下)。未提交。
+- **用户定: Agent 默认开思考**(10-12): asst_llm.c `think:true` 转正(注释记依据与代价), docs/assistant.md 补一行; studio_assistant_probe.sh 等待上限 900 → 3600 s(开思考后真实任务 16 分钟量级)。spark 已同步重编主进程。未提交。
+
+## 10-12 · README 改版: 本地模型 + 量化 + Agent + 后训练(用户: "整体主题换成…这样才是完整的产品形态, 截图换成刚才买东西的")
+- README.md 252 → 208 行, README.zh-CN.md 208 → 173 行。结构: 一句话卖点 → 买 DGX Spark 截图 → 四块拼图表 → 一个真实任务(12 轮/43 次调用/1.6k→140k/写 36.8 t/s/读 759 t/s/16 分钟/KV 复用省 77.9 万→14 万读) → 质量/速度/占用 → 上手(5 步, 助理沙盒与审批写清) → 原理 → 局限。
+- 截图: docs/img/studio-agent.png(中文界面)/ studio-agent-en.png(英文界面), 会话 c77b06a316b6 终稿开头那屏, 1440×900, ssh 隧道 + Playwright 截; 侧栏对话列表里的测试会话照原样留着。旧 studio-chat.png 已 git rm; hf_publish_spark.sh README_ASSETS 同步换。
+- 两行料最小例子 + 18 行冒烟 / 24 行 11/12 读数从 README 迁到 TECHNICAL(中英)4.3 节末尾, README 只留链接。局限一条换成"要登录/验证码的购物站打不开"。未提交, 未推 HF/GitHub。

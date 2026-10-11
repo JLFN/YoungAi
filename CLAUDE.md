@@ -28,6 +28,7 @@ src/cuda/     CUDA 后端: ds4_cuda.cu 是聚合根, 分片在 src/cuda/*.inc.cu
               CUDA 直接 include——契约漂移=编译错误。
 src/dist/     分布式运行时(层切片/TCP 协议/coordinator/worker/TP)。
 src/server/   HTTP 服务(OpenAI/Anthropic/Responses); 内嵌测试已解耦到 tests/。
+src/assistant/ 工作台个人助理(住 ds4-train 主进程; 每次工具调用 fork 子进程先上内核沙盒: Linux Landlock+seccomp / macOS Seatbelt; 火狐 BiDi 上网; 方案 docs/assistant.md; 单测 ds4_asst_test)。
 src/agent/    终端编码 agent。src/cli/ src/eval/ src/bench/ 各叶子程序。
 src/kv/       磁盘 KV checkpoint。src/web/ agent 网页抓取。
 gguf-tools/   离线量化与反修工具链(独立 Makefile): quantize/(HF→GGUF 量化器与编码格式)
