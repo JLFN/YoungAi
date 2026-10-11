@@ -1,9 +1,11 @@
 /* core_ptrain.c — 后训练 ③ 的主循环: --ptrain <配置>(2026-10-01; 10-10 收口)。总述见 core_ptrain.h。
  *
  * 一趟 = 读料(jsonl) → 教师 top-K(有缓存就读; 不带材料的题不要教师) → 第 0 步评估(部署态, ③ 恒等) → 若干轮: 打乱训练题、每 batch 题攒梯度一次 Adam
- * → 每轮末评估 + 贪心探针(留出题) + 存 ckpt_eNN → 落 ③(amp_Lnn.bin + base.fnv, 引擎 --posttrain 直接挂)。
+ * → (sample_n > 0: 步 2, 学生自己采样、教师在学生的 token 上打分再训, core_ptrain_onpolicy.c) → 每轮末评估 + 贪心探针(留出题) + 存 ckpt_eNN
+ * → 落 ③(amp_Lnn.bin + base.fnv, 引擎 --posttrain 直接挂)。
  * 判据(全打印, 判读归人): ①留出题答案位损失(带材料 = KL 教师‖学生, 不带 = NLL)较第 0 步降多少 —— 措辞没进训练, 降 = 学到了内容而不是背了题;
  * ②同一道留出题的贪心回答: 部署态 / 挂 ③ / 参考答案三份原样并排; ③守门(wt2 五指标)在脚本里另跑(docgate 段)。
+ * ★给了 eval= 再多一个数★: 那份 jsonl 整份留出(换了形式的题: 另一种语言 / 另一种问法), 它的损失 = 泛化; 同形式留出只说明"记住了"。
  * 轮数照配置训满(10-02 用户: "支持设置训练轮数, 然后选出最优就行了"), 挑哪一轮归脚本 kdpick 段(过 wt2 门的轮里留出损失最低者);
  * 每轮末另打一行"留出损失较上轮逐题配对降多少 ± 标准误"(见 pt_paired_gain), 只打不判 —— 末轮还在显著降 = 下次轮数可以给多些。 */
 #include "core_ptrain.h"
@@ -11,7 +13,7 @@
 #ifndef DS4_NO_GPU
 
 /* 可用内存(MB, 读 /proc/meminfo; 没有就 -1): 全层训练只剩 ~3 GB 余量, 每段都打出来, 看门狗(2.5 GB)杀之前能看见是哪一段在吃 */
-static long pt_mem_mb(void) {
+long pt_mem_mb(void) {
     FILE *f = fopen("/proc/meminfo", "r");
     if (!f) return -1;
     char ln[256]; long kb = -1;
@@ -175,6 +177,23 @@ static bool pt_hccheck(ds4_engine *e, const pt_cfg *c, pt_run *r, const pt_data 
     return ok;
 }
 
+/* 一个优化步: 全局范数裁剪(标准配方, 防单批炸步) + Adam(核里顺手把梯度清零) */
+bool pt_opt_step(const pt_cfg *c, pt_run *r, uint32_t step, double *gnorm, int *clipped) {
+    double ss = 0;
+    for (uint32_t il = c->layer_lo; il <= c->layer_hi; il++) {
+        double a = 0, bb = 0;
+        if (!ds4_gpu_bwd_sumsq_tensor(r->gA[il], (uint64_t)r->K * DS4_N_EMBD, &a) || !ds4_gpu_bwd_sumsq_tensor(r->gB[il], (uint64_t)r->K * DS4_N_EMBD, &bb)) return false;
+        ss += a + bb;
+    }
+    const double gn = sqrt(ss);
+    const float gs = (c->clip > 0.f && gn > c->clip) ? (float)(c->clip / gn) : 1.0f;
+    for (uint32_t il = c->layer_lo; il <= c->layer_hi; il++)
+        if (!ds4_gpu_bwd_adam_tensor(r->st.ampA[il], r->gA[il], r->mA[il], r->vA[il], (uint64_t)r->K * DS4_N_EMBD, c->lr, 0.9f, 0.999f, 1e-8f, gs, step) ||
+            !ds4_gpu_bwd_adam_tensor(r->st.ampB[il], r->gB[il], r->mB[il], r->vB[il], (uint64_t)r->K * DS4_N_EMBD, c->lr, 0.9f, 0.999f, 1e-8f, gs, step)) return false;
+    *gnorm = gn; *clipped = gs < 1.f;
+    return true;
+}
+
 int ds4_engine_ptrain(ds4_engine *e, const char *spec) {
     if (!e || !spec || !ds4_engine_is_v41(e) || !e->metal_ready) { fprintf(stderr, "ds4: --ptrain 要 V4.1 模型 + GPU 后端\n"); return 1; }
     pt_cfg c;
@@ -184,23 +203,27 @@ int ds4_engine_ptrain(ds4_engine *e, const char *spec) {
     pt_data d;
     if (!pt_data_load(e, &c, &d)) { pt_data_free(&d); return 1; }
     if (!pt_teacher(e, &c, &d)) { pt_data_free(&d); return 1; }
+    if (c.teachercheck) { pt_data_free(&d); return 0; }   /* 对拍打完就退出: 不训练、不落盘 */
     pt_release("教师表");
     pt_run r;
     if (!pt_run_alloc(e, &c, &r)) { pt_data_free(&d); return 1; }
     fprintf(stderr, "ds4: [ptrain] 训练缓冲分配后可用内存 %ld MB\n", pt_mem_mb());
-    uint32_t *ord = xmalloc((size_t)d.ns * 4), ntr = 0, nev = 0;
+    uint32_t *ord = xmalloc((size_t)d.ns * 4), ntr = 0, nev = 0, nevg = 0;
     const pt_sample **bs = xmalloc((size_t)(c.batch + 1) * sizeof *bs);   /* 一批的题(装包用) */
     for (uint32_t i = 0; i < d.ns; i++) if (!d.s[i].eval && d.s[i].top_id) ord[ntr++] = i;
     for (uint32_t i = 0; i < d.ns; i++) if (pt_in_eval(&d, &d.s[i], 1, 0)) nev++;
+    for (uint32_t i = 0; i < d.ns; i++) if (pt_in_eval(&d, &d.s[i], 2, 0)) nevg++;
+    uint32_t *qs = xmalloc((size_t)(ntr + 1) * 4), nq = 0, qcap = ntr + 1u;   /* 本轮步 1 过的题(步 2 就在这些题上采样) */
     /* 逐题留出 KL: 上一轮 / 本轮 / 答案 token 数(各轮同一批题, token 数不变) */
     double *ev_prev = xmalloc((size_t)(nev + 1) * 8), *ev_cur = xmalloc((size_t)(nev + 1) * 8);
     uint32_t *ev_m = xmalloc((size_t)(nev + 1) * 4);
-    char **base = xmalloc_zeroed(c.probe_n + PT_PROBE_HOLD, sizeof(char *));
+    char **base = xmalloc_zeroed(PT_PROBE_SLOTS(&c), sizeof(char *));
+    int base_stop = -1; uint32_t stop_k = 0, stop_n = 0;   /* 收口探针: 部署态收口数(一趟一次) / 本轮挂 ③ 的收口数与题数 */
     char ck[1100];   /* 每轮末的 ③ 各存一份 ckpt_eNN(一份 19 层 50 MB): 守门挑轮次用, 不让下一轮覆盖 */
     char lp[1100]; snprintf(lp, sizeof lp, "%s/train.log", c.out);
     FILE *lf = fopen(lp, "a");
     int rc = 1;
-    double kl_ev0 = 0, kl_tr0 = 0, kl = 0, kl_h0 = 0, kh = 0;
+    double kl_ev0 = 0, kl_tr0 = 0, kl = 0, kl_h0 = 0, kh = 0, kg0 = 0, kg = 0;
     uint64_t rs = 0x2545F4914F6CDD1Dull ^ c.seed;
     uint32_t step = 0;
     double t0 = now_sec();
@@ -246,13 +269,20 @@ int ds4_engine_ptrain(ds4_engine *e, const char *spec) {
     else {
         if (!pt_eval(e, &c, &r, &d, 1, UINT32_MAX, &kl_ev0, 0, ev_prev, ev_m) || !pt_eval(e, &c, &r, &d, 0, 64, &kl_tr0, 0, NULL, NULL) ||
             !pt_eval(e, &c, &r, &d, 1, UINT32_MAX, &kl_h0, 1, NULL, NULL)) goto out;
+        if (nevg && !pt_eval(e, &c, &r, &d, 2, UINT32_MAX, &kg0, 0, NULL, NULL)) goto out;
         fprintf(stderr, "ds4: [ptrain] 第 0 步(%s): 留出损失 %.4f(%u 题) / 训练前 64 题 %.4f / 保持料留出 KL %.4f\n",
                 c.init[0] ? "起点 = init 的 ③" : "部署态", kl_ev0, nev, kl_tr0, kl_h0);
-        if (lf) { fprintf(lf, "step 0 eval_kl %.5f train_kl %.5f hold_kl %.5f\n", kl_ev0, kl_tr0, kl_h0); fflush(lf); }
+        if (nevg) fprintf(stderr, "ds4: [ptrain] 第 0 步泛化留出(eval= %s, %u 题): %.4f\n", c.evalf, nevg, kg0);
+        if (lf) {
+            fprintf(lf, "step 0 eval_kl %.5f train_kl %.5f hold_kl %.5f", kl_ev0, kl_tr0, kl_h0);
+            if (nevg) fprintf(lf, " gen_kl %.5f", kg0);
+            fprintf(lf, "\n"); fflush(lf);
+        }
         pt_heldout_dump(&c, &d, ev_prev, ev_m, "e00");
         pt_release("第 0 步评估");   /* 探针走解码路, 它的暂存别叠在评估/训练暂存上面 */
         /* 给了 init 时第 0 步的"挂 ③"= 起点那份 ③(续训: 起点对留出题答什么, 与部署态并排); 没给就只有部署态 */
-        if (!pt_probes(e, &c, &d, base, c.init[0] ? c.init : NULL, "e00")) goto out;
+        if (!pt_probes(e, &c, &d, base, &base_stop, c.init[0] ? c.init : NULL, "e00", &stop_k, &stop_n)) goto out;
+        if (lf) { fprintf(lf, "probe e00 stop %u %u base %d\n", stop_k, stop_n, base_stop); fflush(lf); }   /* 选轮读: ③ 收口不得少于部署态(train_gate.c) */
         pt_release("第 0 步探针");
     }
     /* ★每轮按 token 预算抽题(10-03 用户定)★: epoch_tok > 0 时一轮 = 打乱序里连续的一段, 各题行数累计到预算就收, 下一轮从游标接着取,
@@ -266,6 +296,7 @@ int ds4_engine_ptrain(ds4_engine *e, const char *spec) {
     t0 = now_sec();
     for (uint32_t ep = 1; ep <= c.epochs; ep++) {
         uint64_t erows = 0; uint32_t eq = 0;   /* 本轮已过的行 / 题 */
+        nq = 0;
         for (;;) {
             if (cur >= ntr) {
                 if (!c.epoch_tok && eq) break;   /* 老口径: 全量过一遍就是一轮 */
@@ -279,23 +310,18 @@ int ds4_engine_ptrain(ds4_engine *e, const char *spec) {
             double ls = 0; uint32_t nt = 0;
             const uint32_t b0 = cur, b1 = cur + c.batch < ntr ? cur + c.batch : ntr;   /* 一批 = c.batch 道题 */
             const double s0 = pt_tick(&c);
-            for (uint32_t b = b0; b < b1; b++) { bs[b - b0] = &d.s[ord[b]]; erows += (uint64_t)d.s[ord[b]].sn; }
+            for (uint32_t b = b0; b < b1; b++) {
+                bs[b - b0] = &d.s[ord[b]]; erows += (uint64_t)d.s[ord[b]].sn;
+                if (nq == qcap) { qcap *= 2u; qs = realloc(qs, (size_t)qcap * 4); }   /* epoch_tok 大过全量时一轮会翻过打乱序再取, 题会重复 */
+                qs[nq++] = ord[b];
+            }
             cur = b1; eq += b1 - b0;
             const bool last = c.epoch_tok ? erows >= c.epoch_tok : cur >= ntr;   /* 本轮最后一批 */
             if (!pt_run_list(e, &c, &r, bs, b1 - b0, 1, &ls, &nt, NULL, NULL)) goto out;   /* 一批的题装包后逐包过, 梯度照旧攒到批末 */
             const double s1 = pt_tick(&c);
-            double ss = 0;
-            for (uint32_t il = c.layer_lo; il <= c.layer_hi; il++) {
-                double a = 0, bb = 0;
-                if (!ds4_gpu_bwd_sumsq_tensor(r.gA[il], (uint64_t)r.K * DS4_N_EMBD, &a) || !ds4_gpu_bwd_sumsq_tensor(r.gB[il], (uint64_t)r.K * DS4_N_EMBD, &bb)) goto out;
-                ss += a + bb;
-            }
-            const double gn = sqrt(ss);
-            const float gs = (c.clip > 0.f && gn > c.clip) ? (float)(c.clip / gn) : 1.0f;   /* 全局范数裁剪(标准配方, 防单批炸步) */
+            double gn = 0; int clipped = 0;
             step++;
-            for (uint32_t il = c.layer_lo; il <= c.layer_hi; il++)
-                if (!ds4_gpu_bwd_adam_tensor(r.st.ampA[il], r.gA[il], r.mA[il], r.vA[il], (uint64_t)r.K * DS4_N_EMBD, c.lr, 0.9f, 0.999f, 1e-8f, gs, step) ||
-                    !ds4_gpu_bwd_adam_tensor(r.st.ampB[il], r.gB[il], r.mB[il], r.vB[il], (uint64_t)r.K * DS4_N_EMBD, c.lr, 0.9f, 0.999f, 1e-8f, gs, step)) goto out;
+            if (!pt_opt_step(&c, &r, step, &gn, &clipped)) goto out;
             if (c.prof) {
                 const double s2 = pt_tick(&c);
                 r.tm[PT_TM_ADAM] += s2 - s1; r.tm[PT_TM_STEP] += s2 - s0; r.tm_steps++;
@@ -305,7 +331,7 @@ int ds4_engine_ptrain(ds4_engine *e, const char *spec) {
             if (lf) { fprintf(lf, "step %u ep %u loss %.5f gnorm %.4g t %.0f mem %ld\n", step, ep, nt ? ls / nt : 0.0, gn, now_sec() - t0, mem); fflush(lf); }
             if (step % 10 == 0 || last)
                 fprintf(stderr, "ds4: [ptrain] 轮 %u 步 %u: 批 KL %.4f, 梯度范数 %.3g%s, %.0f s, 可用内存 %ld MB(暂存 %.0f MB)\n", ep, step, nt ? ls / nt : 0.0, gn,
-                        gs < 1.f ? "(裁剪)" : "", now_sec() - t0, mem, (double)ds4_gpu_v41_scratch_bytes() / 1048576.0);
+                        clipped ? "(裁剪)" : "", now_sec() - t0, mem, (double)ds4_gpu_v41_scratch_bytes() / 1048576.0);
             if (c.max_steps && (step >= c.max_steps || last)) {   /* 轮先跑完也收: 计时模式不评估不存盘(10-09 实撞: 合并后一轮 63 步 < 67, 白跑了评估/探针/采样 13 分钟) */
                 pt_prof_print(&r, "终");
                 fprintf(stderr, "ds4: [ptrain] max_steps=%u 到了: 计时模式退出(不评估不存盘, 产物不能挂), 共 %.0f s\n", c.max_steps, now_sec() - t0);
@@ -313,9 +339,15 @@ int ds4_engine_ptrain(ds4_engine *e, const char *spec) {
             }
             if (last) break;
         }
+        if (c.sample_n) {   /* 步 2: 在本轮步 1 过的题上, 学生自己答、教师逐位打分、再训 */
+            pt_release("步 1");
+            if (!pt_onpolicy(e, &c, &r, &d, qs, nq, ep, &step, lf, t0)) goto out;
+            pt_release("步 2");
+        }
         double kt = 0, gain = 0, se = 0;
         if (!pt_eval(e, &c, &r, &d, 1, UINT32_MAX, &kl, 0, ev_cur, ev_m) || !pt_eval(e, &c, &r, &d, 0, 64, &kt, 0, NULL, NULL) ||
             !pt_eval(e, &c, &r, &d, 1, UINT32_MAX, &kh, 1, NULL, NULL)) goto out;
+        if (nevg && !pt_eval(e, &c, &r, &d, 2, UINT32_MAX, &kg, 0, NULL, NULL)) goto out;
         pt_paired_gain(ev_prev, ev_cur, ev_m, nev, &gain, &se);
         qall += eq;
         fprintf(stderr, "ds4: [ptrain] ★轮 %u 末(本轮 %u 题 %llu 行, 累计覆盖 %.2f 遍): 留出损失 %.4f(第 0 步 %.4f, %+.1f%%) / 训练前 64 题 %.4f(第 0 步 %.4f) / 保持料留出 KL %.4f(第 0 步 %.4f)★\n",
@@ -323,13 +355,19 @@ int ds4_engine_ptrain(ds4_engine *e, const char *spec) {
                 kl, kl_ev0, kl_ev0 > 0 ? (kl / kl_ev0 - 1.0) * 100.0 : 0.0, kt, kl_tr0, kh, kl_h0);
         fprintf(stderr, "ds4: [ptrain] 轮 %u 留出损失较上轮降 %.4f ± %.4f(%u 题逐题配对, %.1f 个标准误; 不到 2 个 = 这轮的进步分不清是学到了还是题目抽样)\n",
                 ep, gain, se, nev, se > 0 ? gain / se : 0.0);
-        if (lf) { fprintf(lf, "epoch %u eval_kl %.5f train_kl %.5f hold_kl %.5f gain %.5f se %.5f nq %u rows %llu\n", ep, kl, kt, kh, gain, se, eq, (unsigned long long)erows); fflush(lf); }
+        if (nevg) fprintf(stderr, "ds4: [ptrain] ★轮 %u 末泛化留出 %.4f(第 0 步 %.4f, %+.1f%%; eval= %u 题, 换了形式的题)★\n", ep, kg, kg0, kg0 > 0 ? (kg / kg0 - 1.0) * 100.0 : 0.0, nevg);
+        if (lf) {
+            fprintf(lf, "epoch %u eval_kl %.5f train_kl %.5f hold_kl %.5f gain %.5f se %.5f nq %u rows %llu", ep, kl, kt, kh, gain, se, eq, (unsigned long long)erows);
+            if (nevg) fprintf(lf, " gen_kl %.5f", kg);
+            fprintf(lf, "\n"); fflush(lf);
+        }
         char tag[16]; snprintf(tag, sizeof tag, "e%02u", ep);
         pt_heldout_dump(&c, &d, ev_cur, ev_m, tag);
         snprintf(ck, sizeof ck, "%s/ckpt_e%02u", c.out, ep);
         if (!pt_save_amp(&c, &r, ck)) goto out;
         pt_release("轮末评估");
-        if (!pt_probes(e, &c, &d, base, ck, tag)) goto out;
+        if (!pt_probes(e, &c, &d, base, &base_stop, ck, tag, &stop_k, &stop_n)) goto out;
+        if (lf) { fprintf(lf, "probe %s stop %u %u base %d\n", tag, stop_k, stop_n, base_stop); fflush(lf); }
         pt_release("轮末探针");
         double *t = ev_prev; ev_prev = ev_cur; ev_cur = t;
     }
@@ -340,8 +378,8 @@ int ds4_engine_ptrain(ds4_engine *e, const char *spec) {
     rc = 0;
 out:
     if (lf) fclose(lf);
-    for (uint32_t k = 0; k < c.probe_n + PT_PROBE_HOLD; k++) free(base[k]);
-    free(base); free(ord); free(bs); free(ev_prev); free(ev_cur); free(ev_m);
+    for (uint32_t k = 0; k < PT_PROBE_SLOTS(&c); k++) free(base[k]);
+    free(base); free(ord); free(qs); free(bs); free(ev_prev); free(ev_cur); free(ev_m);
     pt_run_free(&r);
     pt_data_free(&d);
     return rc;

@@ -8,6 +8,12 @@
  *   另一份固定的保持料(hold= 的 jsonl, 通用题 + 部署态自己的回答): 教师 = 不看任何材料的部署态自己, 把 ③ 在通用问题上钉住(10-01 实撞: 没有它局部性崩)。
  * 梯度反传到 ③ 的低秩放大器(每层 MoE 输出 y += xn·B·A, 与 ② 同构, 引擎 --posttrain 直接挂)。
  *
+ * ★一轮两步(10-11, docs/posttrain.md)★: 上面是步 1(记忆: 在给定答案上逼近教师/金标)。sample_n > 0 时每轮再走步 2(泛化, core_ptrain_onpolicy.c):
+ *   学生(挂当前 ③、不看材料)对本轮每道训练题自己采 sample_n 份答案 → 教师(看材料的部署态; 不带材料的题 = 把这条问答当示范放进上下文)
+ *   给学生采出来的那串 token 逐位打 top-K → 同一个 KL 核在学生自己的分布上训。为什么: 只在一种写法上训, 梯度走的是"看到这串补那串"的捷径,
+ *   换种问法/换种语言就不点火; 学生自己的采样就是"另一种写法", 教师告诉它每一位该怎么走(SDFT 2601.19897 / GRIN 2608.25243)。
+ *   判决多一个数: eval= 给的整份 jsonl 全部当留出(换了形式的题), 它的损失 = 泛化; 选轮有它就按它选。
+ *
  * ★10-10 砍掉的东西(用户: "本末倒置, 往定制化场景跑偏了")★: 账本硬目标 / 自采样 REINFORCE / 锚 KL / 锚行合并 / 采样器 / 自定义探针 / 部署态答案缓存 /
  * 清单 .list + .qa 私有格式。训练目标只剩上面两种, 判决只剩留出损失 + wt2 门(脚本)。
  *
@@ -23,6 +29,9 @@ typedef struct {
     char data[1024], out[1024];
     char hold[1024];               /* 保持料 jsonl(可空, 空就打一行警告): 题不带 context, 答案 = 部署态自己答的, 教师 = 部署态自己 */
     char init[1024];               /* 非空 = 放大器 A/B 从这个 ③ 目录的 amp_Lnn.bin 读起(续训 / 在非零点做梯度检查); 空 = A=0、B 随机 */
+    char evalf[1024];              /* eval=: 泛化留出 jsonl(料格式同 data), 整份不进训练; 空 = 没有泛化指标, 选轮退回同形式留出 */
+    uint32_t sample_n;             /* 步 2 每题采几份(0 = 不走步 2, 整趟与 10-10 版逐位同) */
+    uint32_t expand;               /* expand=N(缺省 4): 装料时让部署态把每道训练题改写成 N 组同格式 jsonl 新问答一起训, 缓存 <data>.expandN.jsonl(0 = 关, 老路逐位同), core_ptrain_expand.c */
     uint32_t layer_lo, layer_hi;   /* 训练哪几层的放大器(含两端); 只训末层时出口反传是闭式的, 不用穿注意力 */
     uint32_t rank, topk, epochs, batch, maxlen, probe_n, probe_tok, seed;
     uint32_t gradcheck;            /* 1 = 训练前先做有限差分梯度检查(每个训练层的 A 沿梯度方向 ±ε), 2 = 查完就退出 */
@@ -35,6 +44,7 @@ typedef struct {
     uint8_t hcmid[16];             /* hccheck 里层号后跟 m(如 32m) = 扰动点放在该层中段(注意力半层出口、ffn 半层入口) */
     uint32_t hcl[16], nhcl;        /* hccheck=a/b/..: 逐层定位反传错在哪 —— 在第 k 层入口沿解析梯度扰动 hc, 有限差分对解析(冻结选择), 打完就退出 */
     uint32_t diag;                 /* 1 = 逐位诊断(core_ptrain_diag.c): 每道题答案逐位并排 教师 / 挂 ③ / 部署态 前几名, 写 out/diag.txt, 不训练就退出 */
+    uint32_t teachercheck;         /* 1 = 教师表全部重算, 每题一块算两遍(必须逐位同) + 切三块算一遍(分块等价), 打完就退出(10-11: 超长续算改分块后的门); 2 加逐位解码参照; 3 再加 W=8(解码核)/W=9(预填核)对解码 —— 预填路与解码路差在哪的门 */
     uint32_t packcheck;            /* 1 = 合批的门(①一题一包与单题路逐位同 ②一包两份的有限差分), 2 = STE 尖峰普查(单题路按题长扫 L8 有限差分); 打完就退出(core_ptrain_diag.c) */
     uint32_t nopack;               /* 1 = 训练/评估不合批(一题一题过, 10-02 之前的路; 只作对照) */
     int32_t dbg_layer;             /* ≥0 = 该层 ffn 半层反传逐步打梯度范数(第一题那几行, core_ptrain_layer.c pt_dbg), 定位哪一步把梯度算大; 缺省 -1 */
@@ -50,7 +60,7 @@ typedef struct { char *name; char *text; uint32_t lcp; int hold, sft; } pt_chunk
  * raw(text 行): 学生序列 = BOS + 原文段(+ 末段 EOS), sa0 = 1, 没有问句 —— 探针不抽它(只有 BOS 的提示生成不出可比的东西), 评估照常算留出 NLL */
 typedef struct {
     uint32_t chunk;
-    int eval;                       /* 1 = 留出(措辞没进训练) */
+    int eval;                       /* 1 = 留出(措辞没进训练); 2 = eval= 文件的题(换了形式的整组留出, 量泛化) */
     int raw;                        /* 1 = text 原文段 */
     char *q, *a;
     int32_t *sids; uint32_t sn, sa0;   /* 学生 ids / 长度 / 答案第一个 token 的下标 */
@@ -58,7 +68,8 @@ typedef struct {
     uint32_t m;                     /* 答案 token 数(含 EOS) = 要对齐的分布行数 */
     int32_t *top_id; float *top_p, *top_rest;   /* 教师 [m][K] / [m][K] / [m]; NULL = 还没算 */
     int sft;                        /* 1 = 表是答案 token 的 one-hot(同一个 KL 核算出来就是交叉熵, 不过教师信念这一道; 装料时填好, 不进教师缓存) */
-    int src;                        /* 0 = data 文件, 1 = hold 文件: 教师缓存按文件各一份(<文件>.teacher.bin), 同一份保持料换料重训永远命中 */
+    int src;                        /* 0 = data 文件, 1 = hold 文件, 2 = eval 文件: 教师缓存按文件各一份(<文件>.teacher.bin), 同一份保持料换料重训永远命中 */
+    int32_t *dids; uint32_t dn;     /* 步 2 的教师提示(不带材料的题才有: 这条问答当示范放进上下文; 带材料的题步 2 直接用 tids 的提示段) */
 } pt_sample;
 
 typedef struct {
@@ -66,11 +77,25 @@ typedef struct {
     pt_sample *s; uint32_t ns;
 } pt_data;
 
+/* splitmix64: 采样种子由 (seed, 轮, 题号, 份号) 这类整数定, 两趟同配置逐份同种子(步 2 与改写都用它) */
+static inline uint64_t pt_mix64(uint64_t x) {
+    x += 0x9E3779B97F4A7C15ull; x = (x ^ (x >> 30)) * 0xBF58476D1CE4E5B9ull; x = (x ^ (x >> 27)) * 0x94D049BB133111EBull;
+    return x ^ (x >> 31);
+}
+
+/* core_ptrain_expand.c: 多形式扩展。d 里现有的训练题(src 0, 非留出, 非原文段)每道让部署态改写成 c->expand 种问法, 答案照抄,
+ * 写成与料同格式的 jsonl 到 cache(已有就不生成); 调用方再把它当 src 0 装进来并把这些行全标成训练(改写的是训练题的形式, 不许落到留出那边) */
+bool pt_expand(ds4_engine *e, const pt_cfg *c, const pt_data *d, const char *cache);
+
 /* core_ptrain_data.c */
 bool pt_cfg_load(pt_cfg *c, const char *path);
+bool pt_parse_line(const char *ln, char **sys, char **ctx, char **q, char **a, char **txt, const char **err);   /* 料行解析(唯一一份) */
 bool pt_data_load(ds4_engine *e, const pt_cfg *c, pt_data *d);
 void pt_data_free(pt_data *d);
+void pt_data_lcp(pt_data *d);   /* 每块的教师公共前缀(装料末尾算一次; 步 2 新造的样本同样要) */
+uint32_t pt_chunk_of(pt_data *d, const char *ctx, int hold, int raw);
 bool pt_teacher(ds4_engine *e, const pt_cfg *c, pt_data *d);   /* 教师 top-K(块前缀快照; 结果缓存到 <料文件>.teacher.bin), core_ptrain_teacher.c */
+bool pt_teacher_fresh(ds4_engine *e, const pt_cfg *c, pt_data *d);   /* 同一趟教师前向, 不读不写缓存(步 2 的采样答案每轮都是新串) */
 void pt_state_reset(ds4_v41_state *st);   /* 状态回到"位置 0、空缓存"(缓冲不动): 一条新序列从头算 */
 
 /* 第二阶段逐层反传的缓冲(core_ptrain_layer.c): 一次只活一层的重算中间量 + 梯度。按 maxlen 行分一次, 每层复用。 */
@@ -136,6 +161,11 @@ bool pt_run_alloc(ds4_engine *e, const pt_cfg *c, pt_run *r);
 void pt_run_free(pt_run *r);
 bool pt_step_sample(ds4_engine *e, const pt_cfg *c, pt_run *r, const pt_sample *s, int grad, double *loss_sum, uint32_t *ntok);
 bool pt_save_amp(const pt_cfg *c, pt_run *r, const char *dir);   /* ③ 落盘: amp_Lnn.bin(f32) + base.fnv */
+long pt_mem_mb(void);   /* 可用内存 MB(/proc/meminfo; 没有 = -1), core_ptrain.c */
+/* 一个优化步(core_ptrain.c): 全局梯度范数 → 裁剪系数 → 各训练层 A/B 的 Adam(step 从 1 起)。步 1 与步 2 共用, 同一个 Adam 状态 */
+bool pt_opt_step(const pt_cfg *c, pt_run *r, uint32_t step, double *gnorm, int *clipped);
+/* 步 2(core_ptrain_onpolicy.c): qs[0..nq) = 本轮步 1 过的训练题号; 当前 ③ 存到 out/live 挂上去采样 → 教师打分 → 训, 步数接着 *step 往下记 */
+bool pt_onpolicy(ds4_engine *e, const pt_cfg *c, pt_run *r, const pt_data *d, const uint32_t *qs, uint32_t nq, uint32_t ep, uint32_t *step, FILE *lf, double t0);
 bool pt_diag(ds4_engine *e, const pt_cfg *c, pt_run *r, const pt_data *d);   /* diag=1: 逐位诊断, core_ptrain_diag.c(会把 ③ 的 A 置零, 跑完只能退出) */
 
 /* core_ptrain_layer.c: 多层模式。alloc 分逐层缓冲与前向存档(层入口 hc/pre_mix/组号, engram 层另存门输入); bwd 从 r->ghc/r->gpre
@@ -143,6 +173,8 @@ bool pt_diag(ds4_engine *e, const pt_cfg *c, pt_run *r, const pt_data *d);   /* 
  * 出口梯度直接灌进第 hi 层, 中间没有别的层。分界层以下的压缩器与 engram 反传见 core_ptrain_layer.c 头注释。 */
 bool pt_layer_alloc(const pt_cfg *c, pt_run *r);
 void pt_layer_free(pt_run *r);
+void pt_bwd_park(pt_run *r);                         /* 步 2 采样/教师期间放掉反传专用缓冲(合批槽 + 逐层缓冲 + 前向存档) */
+bool pt_bwd_unpark(const pt_cfg *c, pt_run *r);      /* 步 2 训之前按原分配式分回来 */
 bool pt_layers_bwd(ds4_engine *e, const pt_cfg *c, pt_run *r, uint32_t n);
 
 /* core_ptrain_pack.c: 合批。alloc/free 开关请求槽; step = 一包(ss[0..nb), 总行数 ≤ maxlen)前向 + 各题损失(+ 反传),
@@ -160,7 +192,12 @@ bool pt_pack_check(ds4_engine *e, const pt_cfg *c, pt_run *r, const pt_data *d);
 /* core_ptrain_probe.c: 贪心探针(留出题, 部署态与挂 ③ 并排原样输出; 1 路一批, 与单请求路逐字节同)。pt_probes = probe_n 道料的留出题
  * + 至多 PT_PROBE_HOLD 道保持料留出题, 部署态答案在 base[] 里跨轮共用, 原样写 out/probe_<tag>.txt。 */
 #define PT_PROBE_HOLD 2u
-bool pt_probes(ds4_engine *e, const pt_cfg *c, const pt_data *d, char **base, const char *pt_dir, const char *tag);
+#define PT_PROBE_SLOTS(c) ((c)->probe_n * 2u + PT_PROBE_HOLD)   /* 料留出 probe_n + 保持料 + 泛化留出 probe_n(base[] 与选题缓冲的大小) */
+/* 收口探针(10-11)的生成上限 = 参考答案 token 数的这么多倍: 正常收口的答案不会比参考答案长 4 倍, 到了还没 EOS 就是不收口(B 臂 e02 实撞 37k token)。
+ * 上限按每道题的参考答案定, 不是全局常数(长答案题给长上限, 短答案题不白等) */
+#define PT_STOP_RATIO 4u
+/* base_stop: 部署态在这组题上的收口数, 一趟内只算一次(进来 <0 = 还没算); stop_k/stop_n = 这一轮挂 ③ 的收口数 / 题数(e00 没 init 时 = 部署态的) */
+bool pt_probes(ds4_engine *e, const pt_cfg *c, const pt_data *d, char **base, int *base_stop, const char *pt_dir, const char *tag, uint32_t *stop_k, uint32_t *stop_n);
 
 #endif
 #endif

@@ -74,6 +74,24 @@ void pt_layer_free(pt_run *r) {
     b->ready = 0;
 }
 
+/* 步 2 期间(采样 + 教师打分, core_ptrain_onpolicy.c)放掉只有前向 + 反传才用的缓冲: 合批槽、逐层重算/梯度缓冲、前向存档(每层入口 hc 一层 32 MB)。
+ * 为什么: 步 2 的生成路要开预填整状态、教师要再开一个整状态, 训练缓冲同时占着 5.5 GB 就撞看门狗(10-11 实撞: 教师第 2 块时 MemAvailable 1564 MB)。
+ * 放大器 A/B、梯度、Adam 状态、训练状态 r->st 不动; 回来时按同一分配式重建 —— 里面的内容本来就是每题前向时重写的, 不用存。只训末层时这些都没分配, 两个都是空操作。 */
+void pt_bwd_park(pt_run *r) {
+    pt_pack_free(r);
+    pt_layer_free(r);
+    for (uint32_t il = 0; il < DS4_MAX_LAYER; il++) {
+        if (r->save.hc_in[il]) { ds4_gpu_tensor_free(r->save.hc_in[il]); r->save.hc_in[il] = NULL; }
+        if (r->save.pm_in[il]) { ds4_gpu_tensor_free(r->save.pm_in[il]); r->save.pm_in[il] = NULL; }
+    }
+}
+bool pt_bwd_unpark(const pt_cfg *c, pt_run *r) {
+    if (c->layer_lo >= DS4_N_LAYER - 1u) return true;
+    bool ok = pt_layer_alloc(c, r);
+    if (ok && !c->nopack) ok = pt_pack_alloc(c, r);
+    return ok;
+}
+
 #define PT_CP(dst, src, bytes) ds4_gpu_tensor_copy((dst), 0, (src), 0, (bytes))
 #define PT_MT(gx, w, in, out, gy, acc) ds4_gpu_bwd_matmul_t_tensor((gx), m->map, m->size, (w)->type, (w)->abs_offset, (in), (out), (gy), n, (acc))
 
