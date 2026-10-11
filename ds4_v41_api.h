@@ -128,9 +128,11 @@ int ds4_engine_v41_dspark(void);   /* 投机开关现值(ds4_engine_v41_set_dspa
 void ds4_v41_req_close(struct ds4_v41_req *r);
 /* 合批生成驱动(2026-10-09, core_v41_gen.c): 作业 = 已渲染的提示 ids + 自己的采样面 + 上限 token 数(含 EOS 那一位)。至多 bcap 路一起解码;
  * refill = 0 整组跑完才开下一组(训练器探针/采样, 与 10-06 的组划分逐字节同), 1 = 哪路写完立刻补下一个作业(出题)。相邻同提示作业共享预填。
- * done 每个作业回调一次(text 只在回调内有效; eos = 1 以 EOS 收口, 0 = 到上限或上下文满)。返回 false = 中途失败, 没回调的作业没写完。 */
+ * done 每个作业回调一次(text 只在回调内有效; eos = 1 以 EOS 收口, 0 = 到上限或上下文满)。返回 false = 中途失败, 没回调的作业没写完。
+ * tok[0..ntok) = 采出来的 token id 原样(含收口的 EOS), 同样只在回调内有效 —— 训练器步 2 要在学生自己采的那串 id 上算损失,
+ * 文本再分词不保证逐 id 回得去(一个采出来的 token 解码后可能被规范分词拆成两个), 位置就对不上。 */
 typedef struct { const int *ids; uint32_t len; uint32_t max_tok; ds4_decode_sampling sp; } ds4_v41_gen_job;
-typedef void (*ds4_v41_gen_done_fn)(void *ud, uint32_t job, const char *text, size_t len, int eos, uint32_t ntok);
+typedef void (*ds4_v41_gen_done_fn)(void *ud, uint32_t job, const char *text, size_t len, const int *tok, int eos, uint32_t ntok);
 bool ds4_v41_gen_run(ds4_engine *e, const ds4_v41_gen_job *jobs, uint32_t n, uint32_t bcap, int refill, ds4_v41_gen_done_fn done, void *ud);
 void ds4_engine_v41_set_lanes(int on);              /* --no-lanes: 合批的缓存段不按路分流(默认分; 只作 A/B, 输出逐字节同) */
 uint64_t ds4_v41_req_prefill_bytes(int n_prompt);   /* 预填期设备峰值字节(行缓冲 + KV + 索引草稿), 服务端准入用 */

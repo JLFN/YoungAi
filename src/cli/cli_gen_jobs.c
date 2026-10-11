@@ -20,8 +20,9 @@ typedef struct { gj_meta *m; uint32_t n, done, fail; uint64_t tok; double t0; } 
 
 static double gj_now(void) { struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); return (double)ts.tv_sec + ts.tv_nsec * 1e-9; }
 
-static void gj_done(void *ud, uint32_t job, const char *text, size_t len, int eos, uint32_t ntok) {
+static void gj_done(void *ud, uint32_t job, const char *text, size_t len, const int *tok, int eos, uint32_t ntok) {
     gj_ctx *c = (gj_ctx *)ud;
+    (void)tok;
     const char *out = c->m[job].out;
     c->done++; c->tok += ntok;
     if (!eos) { c->fail++; fprintf(stderr, "★生成失败 %s: %u token 到上限没收口★\n", out, ntok); }
