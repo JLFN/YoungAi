@@ -1,6 +1,8 @@
 #!/bin/bash
 # studio_posttrain_probe.sh — 从工作台接口走一遍"上传 jsonl → 开始训练 → 训完自动挂 ③ → 聊天对比"(2026-10-10)。
-#   用法: studio_posttrain_probe.sh <jsonl> <问题文件(一行一题)> [页面端口 8000] [轮数 3]
+#   用法: studio_posttrain_probe.sh <jsonl> <问题文件(一行一题)> [页面端口 8000] [轮数 3] [extra k=v,k=v]
+#   extra 原样进发车表单的 extra 字段(页面同一个), 例: eval=gguf-tools/data/posttrain/x_eval.jsonl。
+#   料只有几行时必须给 eval=: 否则留出只剩保持料的通用题, 训完它不降反升, 选轮判"无效"不写 pick, 开关挂不上。
 #   全程只打主进程 ds4-train 的 HTTP 接口, 与浏览器页面同一套(上传 = POST /api/train/upload, 发车 = POST /api/train/start,
 #   聊天 = POST /v1/chat/completions 经主进程转发, 开关 ③ = POST /api/models/plugins); 不碰脚本内部, 这样验的就是用户在页面上
 #   真实走的那条路。三组回答原样进日志: 训前 / 训后挂 ③ / 训后卸 ③ —— 后两组一对比就知道 ③ 有没有写进东西。
@@ -8,7 +10,7 @@
 #   日志 /tmp/studio_probe_<MMDDHHMM>.log。
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"; cd "$ROOT" || exit 1
-JS="${1:?jsonl}"; QS="${2:?问题文件}"; PORT="${3:-8000}"; EP="${4:-3}"
+JS="${1:?jsonl}"; QS="${2:?问题文件}"; PORT="${3:-8000}"; EP="${4:-3}"; EXTRA="${5:-}"
 U="http://127.0.0.1:$PORT"
 LOG="/tmp/studio_probe_$(date +%m%d%H%M).log"
 C() { curl -s --noproxy '*' --max-time 900 "$@"; }
@@ -36,7 +38,7 @@ DATA="gguf-tools/data/posttrain/$NAME"
 say "训前装着: $(C "$U/api/models/list" | jq -c .loaded)"
 ask "训前"
 
-say "发车: $(C -H 'Content-Type: application/json' -d "{\"data\":\"$DATA\",\"epochs\":\"$EP\",\"layers\":\"0-39\",\"lr\":\"2e-4\",\"extra\":\"\"}" "$U/api/train/start")"
+say "发车: $(C -H 'Content-Type: application/json' -d "{\"data\":\"$DATA\",\"epochs\":\"$EP\",\"layers\":\"0-39\",\"lr\":\"2e-4\",\"extra\":\"$EXTRA\"}" "$U/api/train/start")"
 T0=$(date +%s); RUN=""
 while :; do
     sleep 30
