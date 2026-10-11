@@ -494,8 +494,13 @@ async function getJSON(url, opt) { const r = await fetch(url, Object.assign({ ca
 /* ---------------- 状态 ---------------- */
 let status = null, runs = [], detail = null, selected = null, userPicked = false, switching = 0, failCount = 0;
 const TABS = ["chat", "models", "train", "data", "runs"];   /* 标题 = t("tab_<名>"), 副标题 = t("hint_<名>")(没有就空) */
-function curTab() { const h = location.hash.slice(1); return TABS.includes(h) ? h : null; }
+/* 没有 #hash(直接开 http://host:8000/)时答"正显示的那页"(showTab 记下的): 曾经答 null, 页面明明在聊天页,
+   poll 却以为不在、不再拉 /api/models/list, 后训练开关一切换就永远卡在"切换中…"且按钮灰掉(10-11 实撞)。
+   起页前还没显示过任何页时仍是 null —— 起页那行靠它判"训练中就先开训练页" */
+let shownTab = null;
+function curTab() { const h = location.hash.slice(1); return TABS.includes(h) ? h : shownTab; }
 function showTab(tab) {
+  shownTab = tab;
   document.querySelectorAll("nav a[data-tab]").forEach(a => a.classList.toggle("on", a.dataset.tab === tab));
   document.querySelectorAll(".view").forEach(v => v.classList.toggle("on", v.id === "v-" + tab));
   text("page-title", t("tab_" + tab)); $("page-hint").textContent = I18N.zh["hint_" + tab] ? t("hint_" + tab) : "";
