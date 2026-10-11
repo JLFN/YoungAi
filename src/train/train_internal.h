@@ -110,12 +110,11 @@ bool tr_job_owns(const char *run_dir_abs);     /* 这趟目录是正在跑的作
 /* 训练/打分共用的 ./ds4 参数前缀: --cuda -m ① [--zchain ②] [--engram-dir …]; 返回 argv 项数 */
 int tr_ds4_base_argv(const char *argv[], int max, const char *mdl, const char *zch, char *const extra[], int nextra);
 
-/* train_gate.c: wt2 门 + 选轮 */
+/* train_gate.c: 选轮 + 通用漂移报数(10-11 口径: wt2 只报数不否决, 见该文件头注释) */
 #define TR_GATE_NTOK 512          /* 判决料长度: 发布包只带 wt2 512 token 的 FP 教师锚(265 MB) */
-#define TR_GATE_SMIN_PP (-0.5)    /* Σmin 相对 ② 态退不过 0.5pp(10-02 定: top-1 一致率太宽松, 主尺换成分布还原率) */
-#define TR_GATE_KLD_REL 0.03      /* Mean KLD 涨不过 3% */
-/* 对 run_dir 下每个 ckpt_eNN 跑 ② 臂(一次)与 ②+③ 臂, 判决全文落 eval/gate_ckpt_eNN.txt(先 ② 后 ②+③, 记录页同口径读), 过门里留出损失最低者写 pick.txt;
- * 返回选中的 ckpt 名(空串 = 没有一轮过门或失败) */
+#define TR_DRIFT_SE 3.0           /* 两臂配对差超过这么多个标准误才叫"真退/真进"; 以内 = 噪声内。老门线 −0.5pp 只有 1.3~1.5 SE, 同一趟三轮正负乱跳就是它(10-11) */
+/* 对 run_dir 下每个 ckpt_eNN: 留出损失比第 0 步低、收口不少于部署态、通用漂移不是真退(≥ TR_DRIFT_SE 个 SE)的轮里最低者写 pick.txt; ② 臂(一次)与 ②+③ 臂配对出漂移,
+ * 全文落 eval/gate_ckpt_eNN.txt(先 ② 后 ②+③, 末行"配对", 记录页同口径读)。返回 false = 跑挂了; pick 空串 = 这趟无效(没有一轮参选) */
 bool tr_gate_pick(const char *run_dir, const char *mdl, const char *zch, char *const extra[], int nextra, FILE *log, tr_cancel_fn cancel, void *ud, char *pick, size_t pn);
 
 /* train_models.c: 模型页路由; 不是 /api/models/ 开头返回 -1 */

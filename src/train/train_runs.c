@@ -1,6 +1,6 @@
 /* train_runs.c — ds4-train: 盘上训练产物 → JSON。总述见 train_internal.h。
- * 只读, 不解释: train.log 的 step/epoch 行照抄成数组, 门文件(v41_judge 两臂全文)按 kdpick 的 gate_read 同一口径抽四个数并判过不过,
- * pick.txt 是 kd_pick 写的选轮结果。train.log 是追加写的: 同目录重训时以最后一个 "step 0" 为界只认这一趟(与 kdpick 同规矩)。 */
+ * 只读, 不解释: train.log 的 step/epoch/probe 行照抄成数组, 漂移文件(两臂全文 + 配对行)抽数与标签照 train_gate.c 写的原样带出,
+ * pick.txt 是 train_gate.c 写的选轮结果。train.log 是追加写的: 同目录重训时以最后一个 "step 0" 为界只认这一趟(与 kdpick 同规矩)。 */
 #include "train_internal.h"
 #include <dirent.h>
 #include <sys/stat.h>
@@ -62,25 +62,30 @@ static bool cfg_get(const char *dir, const char *key, char *out, size_t n) {
     return got;
 }
 
-/* 门文件两臂: 先 ② 后 ②+③, 每臂各一行 "分布还原率 Σmin = X" / "Mean KLD = Y (中位 Z" / "Same top token = W%" / "PPL(student) = P" */
+/* 漂移文件两臂: 先 ② 后 ②+③, 每臂各一行 "分布还原率 Σmin = X" / "Mean KLD = Y (中位 Z" / "Same top token = W%" / "PPL(student) = P",
+ * 末行 "配对(n=N): ΔΣmin = +X.XXpp ± S (Z SE) ΔKLD = … | 真退/真进/噪声内"(train_gate.c 写; 标签照抄, 不在这里重判) */
 static void gate_json(ds4_buf *b, const char *dir, unsigned ep) {
     char p[TR_PATH + 64]; snprintf(p, sizeof p, "%s/eval/gate_ckpt_e%02u.txt", dir, ep);
     char *t = tr_slurp(p, NULL);
     if (!t) { ds4_buf_puts(b, "null"); return; }
-    double smin[2] = {0, 0}, kld[2] = {0, 0}, med[2] = {0, 0}, top[2] = {0, 0}, ppl[2] = {0, 0};
-    int ns = 0, nk = 0, nt = 0, np = 0; char *sv = NULL;
+    double smin[2] = {0, 0}, kld[2] = {0, 0}, med[2] = {0, 0}, top[2] = {0, 0}, ppl[2] = {0, 0}, dpp = 0, sepp = 0, zs = 0, dk = 0, sek = 0, zk = 0;
+    int ns = 0, nk = 0, nt = 0, np = 0, npair = 0; char *sv = NULL; const char *label = "none";
     for (char *ln = strtok_r(t, "\n", &sv); ln; ln = strtok_r(NULL, "\n", &sv)) {   /* strtok_r: 调用方(log_json)自己也在 strtok 一份缓冲 */
         char *s;
-        if ((s = strstr(ln, "Σmin =")) && ns < 2) ns += sscanf(s, "Σmin = %lf", &smin[ns]) == 1;
+        if (!strncmp(ln, "配对(n=", 9)) {
+            if (sscanf(ln, "配对(n=%d): ΔΣmin = %lfpp ± %lf (%lf SE) ΔKLD = %lf ± %lf (%lf SE)", &npair, &dpp, &sepp, &zs, &dk, &sek, &zk) == 7)
+                label = strstr(ln, "真退") ? "worse" : strstr(ln, "真进") ? "better" : "noise";
+        }
+        else if ((s = strstr(ln, "Σmin =")) && ns < 2) ns += sscanf(s, "Σmin = %lf", &smin[ns]) == 1;
         else if ((s = strstr(ln, "Mean KLD")) && nk < 2) { if (sscanf(s, "Mean KLD = %lf (中位 %lf", &kld[nk], &med[nk]) >= 1) nk++; }
         else if ((s = strstr(ln, "Same top token")) && nt < 2) nt += sscanf(s, "Same top token = %lf", &top[nt]) == 1;
         else if ((s = strstr(ln, "PPL(student)")) && np < 2) np += sscanf(s, "PPL(student) = %lf", &ppl[np]) == 1;
     }
     free(t);
     if (ns < 2 || nk < 2) { ds4_buf_puts(b, "null"); return; }
-    const double d = 100.0 * (smin[1] - smin[0]), r = kld[1] / kld[0] - 1.0;
-    ds4_buf_printf(b, "{\"smin\":[%.4f,%.4f],\"dpp\":%.2f,\"kld\":[%.5f,%.5f],\"dkld\":%.1f,\"kldmed\":[%.5f,%.5f],\"top\":[%.2f,%.2f],\"ppl\":[%.4f,%.4f],\"pass\":%s}",
-                   smin[0], smin[1], d, kld[0], kld[1], 100.0 * r, med[0], med[1], top[0], top[1], ppl[0], ppl[1], (d >= -0.5 && r <= 0.03) ? "true" : "false");
+    if (!npair) dpp = 100.0 * (smin[1] - smin[0]);   /* 10-11 之前的趟没有配对行: 只有差, 没有标准误 */
+    ds4_buf_printf(b, "{\"smin\":[%.4f,%.4f],\"dpp\":%.2f,\"se_pp\":%.2f,\"z_smin\":%.1f,\"kld\":[%.5f,%.5f],\"dkld\":%.1f,\"se_kld\":%.6f,\"z_kld\":%.1f,\"kldmed\":[%.5f,%.5f],\"top\":[%.2f,%.2f],\"ppl\":[%.4f,%.4f],\"n\":%d,\"drift\":\"%s\"}",
+                   smin[0], smin[1], dpp, sepp, zs, kld[0], kld[1], 100.0 * (kld[1] / kld[0] - 1.0), sek, zk, med[0], med[1], top[0], top[1], ppl[0], ppl[1], npair, label);
 }
 
 /* train.log → step0 / steps(可选) / epochs / steps_done / last。只认最后一个 "step 0" 之后的行。 */
@@ -89,26 +94,44 @@ static void log_json(ds4_buf *b, const char *dir, bool with_steps) {
     char *t = tr_slurp(p, NULL);
     char *start = t;
     if (t) for (char *q = t; (q = strstr(q, "step 0 ")); q += 7) if (q == t || q[-1] == '\n') start = q;
+    /* 收口探针行 "probe eNN stop k n base b"(10-11): 写在轮行之后, 先扫一遍攒成数组再按轮带出去(-1 = 那轮没有) */
+    int stop[100], stop_n[100], base_stop = -1;
+    for (int i = 0; i < 100; i++) stop[i] = stop_n[i] = -1;
+    if (t) for (char *q = start; (q = strstr(q, "probe e")); q += 7) {
+        unsigned ep, k, nn; int bs;
+        if ((q == t || q[-1] == '\n') && sscanf(q, "probe e%u stop %u %u base %d", &ep, &k, &nn, &bs) == 4 && ep < 100) { stop[ep] = (int)k; stop_n[ep] = (int)nn; if (bs >= 0) base_stop = bs; }
+    }
     ds4_buf_puts(b, "\"step0\":");
-    double e0 = 0, t0 = 0, h0 = 0; bool got0 = false;
+    double e0 = 0, t0 = 0, h0 = 0, g0 = -1; bool got0 = false;   /* g0/gen < 0 = 那趟没给 eval=(没有泛化留出) */
     unsigned steps_done = 0, last_ep = 0; double last_loss = 0, last_g = 0, last_t = 0; long last_mem = 0;
     ds4_buf steps = {0}, epochs = {0};
     ds4_buf_putc(&steps, '['); ds4_buf_putc(&epochs, '[');
     char *sv = NULL;
     if (t) for (char *ln = strtok_r(start, "\n", &sv); ln; ln = strtok_r(NULL, "\n", &sv)) {
         unsigned st, ep, nq; double loss, g, tt, ev, tr, hd, gain, se; long mem; unsigned long long rows;
-        if (sscanf(ln, "step 0 eval_kl %lf train_kl %lf hold_kl %lf", &e0, &t0, &h0) == 3) got0 = true;
+        const char *gk = strstr(ln, " gen_kl ");   /* 泛化留出(10-11 起, 给了 eval= 才有) */
+        double gen = -1;
+        if (gk) sscanf(gk, " gen_kl %lf", &gen);
+        if (sscanf(ln, "step 0 eval_kl %lf train_kl %lf hold_kl %lf", &e0, &t0, &h0) == 3) { got0 = true; g0 = gen; }
         else if (sscanf(ln, "step %u ep %u loss %lf gnorm %lf t %lf mem %ld", &st, &ep, &loss, &g, &tt, &mem) == 6) {
             steps_done = st; last_ep = ep; last_loss = loss; last_g = g; last_t = tt; last_mem = mem;
-            if (with_steps) ds4_buf_printf(&steps, "%s[%u,%u,%.5f,%.4g,%.0f,%ld]", steps.len > 1 ? "," : "", st, ep, loss, g, tt, mem);
+            const int ph = strstr(ln, " ph 2") ? 2 : 1;   /* 步 1 记忆 / 步 2 学生自己采样(10-11) */
+            if (with_steps) ds4_buf_printf(&steps, "%s[%u,%u,%.5f,%.4g,%.0f,%ld,%d]", steps.len > 1 ? "," : "", st, ep, loss, g, tt, mem, ph);
         } else if (sscanf(ln, "epoch %u eval_kl %lf train_kl %lf hold_kl %lf gain %lf se %lf nq %u rows %llu", &ep, &ev, &tr, &hd, &gain, &se, &nq, &rows) >= 4) {
-            ds4_buf_printf(&epochs, "%s{\"n\":%u,\"eval\":%.5f,\"train\":%.5f,\"hold\":%.5f,\"gain\":%.5f,\"se\":%.5f,\"gate\":", epochs.len > 1 ? "," : "", ep, ev, tr, hd, gain, se);
+            ds4_buf_printf(&epochs, "%s{\"n\":%u,\"eval\":%.5f,\"train\":%.5f,\"hold\":%.5f,\"gain\":%.5f,\"se\":%.5f,", epochs.len > 1 ? "," : "", ep, ev, tr, hd, gain, se);
+            if (gen >= 0) ds4_buf_printf(&epochs, "\"gen\":%.5f,", gen); else ds4_buf_puts(&epochs, "\"gen\":null,");
+            if (ep < 100 && stop[ep] >= 0) ds4_buf_printf(&epochs, "\"stop\":%d,\"stop_n\":%d,\"base_stop\":%d,", stop[ep], stop_n[ep], base_stop); else ds4_buf_puts(&epochs, "\"stop\":null,");
+            ds4_buf_puts(&epochs, "\"gate\":");
             gate_json(&epochs, dir, ep);
             ds4_buf_putc(&epochs, '}');
         }
     }
     ds4_buf_putc(&steps, ']'); ds4_buf_putc(&epochs, ']');
-    if (got0) ds4_buf_printf(b, "{\"eval\":%.5f,\"train\":%.5f,\"hold\":%.5f}", e0, t0, h0); else ds4_buf_puts(b, "null");
+    if (got0) {
+        ds4_buf_printf(b, "{\"eval\":%.5f,\"train\":%.5f,\"hold\":%.5f,", e0, t0, h0);
+        if (stop[0] >= 0) ds4_buf_printf(b, "\"stop\":%d,\"stop_n\":%d,\"base_stop\":%d,", stop[0], stop_n[0], base_stop); else ds4_buf_puts(b, "\"stop\":null,");
+        if (g0 >= 0) ds4_buf_printf(b, "\"gen\":%.5f}", g0); else ds4_buf_puts(b, "\"gen\":null}");
+    } else ds4_buf_puts(b, "null");
     ds4_buf_printf(b, ",\"steps_done\":%u,\"last\":{\"ep\":%u,\"loss\":%.5f,\"gnorm\":%.4g,\"t\":%.0f,\"mem\":%ld},\"epochs\":%s", steps_done, last_ep, last_loss, last_g, last_t, last_mem, epochs.ptr ? epochs.ptr : "[]");
     if (with_steps) ds4_buf_printf(b, ",\"steps\":%s", steps.ptr ? steps.ptr : "[]");
     ds4_buf_free(&steps); ds4_buf_free(&epochs); free(t);
@@ -133,7 +156,7 @@ static void out_json(ds4_buf *b, const char *dir, unsigned tail_lines) {
     free(t);
 }
 
-/* 状态: running(近两分钟还在写) / done(选了轮) / nopick(③ 落了但没过门或还没选) / failed(日志里有 失败) / stopped */
+/* 状态: running(近两分钟还在写) / done(选了轮) / nopick(③ 落了但这趟无效: 没有一轮比第 0 步低且收口不退, 或还没选) / failed(日志里有 失败) / stopped */
 static const char *run_status(const char *dir) {
     char p[TR_PATH + 32];
     if (tr_job_owns(dir) || tr_run_active(dir)) return "running";   /* 作业线程正做这趟就是 running(门阶段 train.out 不动, 只看文件时间会误报"没选轮"); 老目录重训时上一次的 pick.txt 还在 */

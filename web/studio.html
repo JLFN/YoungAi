@@ -273,6 +273,7 @@
           <div class="card-title" style="margin:0" data-i18n="t_dataset">数据集</div>
           <select id="data"></select>
           <a class="lnk" data-goto="data" data-i18n="t_manage">上传或管理语料 →</a>
+          <label class="f"><span data-i18n="t_evalf">泛化留出(可选)</span><select id="evalf"></select></label>
         </div>
         <div class="card sec">
           <div class="card-title" style="margin:0" data-i18n="t_hparams">超参数</div>
@@ -285,7 +286,7 @@
         </div>
         <button class="primary go" id="btn-train" data-i18n="t_start">开始训练</button>
         <button class="danger go" id="btn-stop" style="display:none" data-i18n="t_stop">停止训练</button>
-        <div class="note" data-i18n="t_note">开始训练会自动卸下模型(只能装一份), 训完或停止后自动装回来。每轮过一次 wt2 门, 过门的轮里留出损失最低者自动选中。</div>
+        <div class="note" data-i18n="t_note">开始训练会自动卸下模型(只能装一份), 训完或停止后自动装回来。选轮: 留出损失比训前低、生成收口不比训前少、通用文本(wt2)没有统计上坐实的退(≥3 个标准误)的轮里最低者自动选中; 噪声内的 wt2 波动不影响。</div>
       </div>
       <div class="right">
         <div class="card">
@@ -305,8 +306,8 @@
           <div class="card"><div class="card-title" data-i18n="c_eval">留出损失 / 保持料 KL · 逐轮</div><canvas id="c-eval"></canvas></div>
         </div>
         <div class="card">
-          <div class="card-title" data-i18n="ep_title">轮次 · wt2 门(Σmin 退 ≤0.5pp 且 KLD 涨 ≤3%)</div>
-          <div style="overflow:auto"><table><thead><tr><th data-i18n="ep_n">轮</th><th data-i18n="k_eval">留出损失</th><th data-i18n="ep_train64">训练前64题</th><th data-i18n="k_hold">保持料 KL</th><th data-i18n="ep_gain">较上轮降 ± SE</th><th>Σmin</th><th>Mean KLD</th><th data-i18n="ep_kldmed">中位 KLD</th><th>Same top</th><th data-i18n="ep_gate">门</th></tr></thead><tbody id="ep-rows"></tbody></table></div>
+          <div class="card-title" data-i18n="ep_title">轮次 · 学会了没(留出) / 还会不会正常说话(收口) / 通用退了多少(wt2 两臂配对 ± SE)</div>
+          <div style="overflow:auto"><table><thead><tr><th data-i18n="ep_n">轮</th><th data-i18n="k_eval">留出损失</th><th data-i18n="k_gen">泛化留出</th><th data-i18n="ep_train64">训练前64题</th><th data-i18n="k_hold">保持料 KL</th><th data-i18n="ep_gain">较上轮降 ± SE</th><th data-i18n="ep_stop">收口</th><th>Σmin</th><th>Mean KLD</th><th data-i18n="ep_kldmed">中位 KLD</th><th>Same top</th><th data-i18n="ep_gate">通用漂移</th></tr></thead><tbody id="ep-rows"></tbody></table></div>
         </div>
         <div class="card">
           <div class="card-title"><span class="seg"><button class="on" data-pane="probe" data-i18n="pane_probe">探针原文</button><button data-pane="log" data-i18n="pane_log">日志</button></span><select id="probe-sel" style="margin-left:auto;font-size:12.5px;padding:4px 8px"></select></div>
@@ -352,22 +353,22 @@ const I18N = {
     load_model: "加载模型", pt: "后训练", clear: "清空", send: "发送", stop: "停止", updated: "更新 {0}",
     eng_unreachable: "连不上", eng_connecting: "连接中", eng_switching: "切换中", eng_switching_sub: "停模型 / 装模型, 稍等", eng_unloading_sub: "卸下当前模型, 稍等",
     eng_serving: "模型已加载", eng_port: "端口 {0}", eng_loading: "加载模型中", eng_loading_sub: "装完、冒烟过了就能聊",
-    eng_train_gate: "训练中 · wt2 门", eng_training: "训练中", eng_handover: "交接中", eng_train_sub: "训完自动加载模型",
+    eng_train_gate: "训练中 · 选轮", eng_training: "训练中", eng_handover: "交接中", eng_train_sub: "训完自动加载模型",
     eng_lobby: "模型未加载", eng_lobby_sub: "可以直接开始训练", eng_avail: " · 可用 {0} GB",
     fail: "失败: {0}", not_sent: "请求没发出去: {0}", load_started: "开始加载模型(约 1~2 分钟)",
     pick_data_first: "先选数据集, 或去语料页上传", train_started: "已开始训练", stop_confirm: "停止训练? 停下后模型会自动装回来。", stopped_toast: "已停止, 模型稍后自动加载",
     st_running: "进行中", st_done: "完成", st_nopick: "落盘·未选中", st_failed: "失败", st_stopped: "已停",
-    ph_gate: "wt2 门", ph_pick: "落盘 / 选轮", ph_probe: "探针", ph_teacher: "教师表", ph_step0: "第 0 步评估", ph_train: "训练", ph_load: "装载",
+    ph_gate: "选轮 · 通用漂移", ph_pick: "落盘 / 选轮", ph_probe: "探针", ph_teacher: "教师表", ph_step0: "第 0 步评估", ph_train: "训练", ph_load: "装载",
     dur_hm: "{0} 小时 {1} 分", dur_ms: "{0} 分 {1} 秒", dur_s: "{0} 秒",
     sub_cfg: "数据集 {0} · 层 {1} · lr {2} · batch {3}", sub_ntr: " · 训练题 {0}", sub_prog: "轮 {0}/{1} · 步 {2} · 已用 {3}", sub_eta: " · 训练段约剩 {0}",
-    step_n: "第 {0} 步", step0: "第 0 步", step0_v: "第 0 步 {0}", step0_deploy: "第 0 步(部署态)", picked: "  ★ 选中", gate_pass: "过", gate_fail: "没过", gate_wait: "待门",
+    step_n: "第 {0} 步", step0: "第 0 步", step0_v: "第 0 步 {0}", step0_deploy: "第 0 步(部署态)", picked: "  ★ 选中", drift_worse: "真退", drift_better: "真进", drift_noise: "噪声内", drift_none: "无 SE", gate_wait: "待算", stop_base: "训前", ep_stop: "收口",
     no_probe: "这趟还没有探针", no_steps: "还没有步", steps_n: "步 {0}", no_eval: "还没有评估", lg_eval: "留出", lg_hold: "保持料", no_runs: "还没有训练过",
-    k_loss: "批损失", k_eval: "留出损失", k_hold: "保持料 KL", k_gn: "梯度范数", k_gn_s: "裁剪线 1.0", k_mem: "可用内存", k_mem_s: "看门狗线 2.5 GB",
+    k_loss: "批损失", k_eval: "留出损失", k_gen: "泛化留出", t_evalf: "泛化留出(可选)", t_evalf_none: "不用", k_hold: "保持料 KL", k_gn: "梯度范数", k_gn_s: "裁剪线 1.0", k_mem: "可用内存", k_mem_s: "看门狗线 2.5 GB",
     c_loss: "批损失 · 逐步(虚线 = 轮界)", c_eval: "留出损失 / 保持料 KL · 逐轮",
-    ep_title: "轮次 · wt2 门(Σmin 退 ≤0.5pp 且 KLD 涨 ≤3%)", ep_n: "轮", ep_train64: "训练前64题", ep_gain: "较上轮降 ± SE", ep_kldmed: "中位 KLD", ep_gate: "门",
+    ep_title: "轮次 · 学会了没(留出) / 还会不会正常说话(收口) / 通用退了多少(wt2 两臂配对 ± SE)", ep_n: "轮", ep_train64: "训练前64题", ep_gain: "较上轮降 ± SE", ep_kldmed: "中位 KLD", ep_gate: "通用漂移",
     pane_probe: "探针原文", pane_log: "日志",
     t_dataset: "数据集", t_manage: "上传或管理语料 →", t_hparams: "超参数", t_epochs: "轮数", t_lr: "学习率", t_layers: "训练层", t_adv: "高级(k=v, 逗号分隔)",
-    t_start: "开始训练", t_stop: "停止训练", t_note: "开始训练会自动卸下模型(只能装一份), 训完或停止后自动装回来。每轮过一次 wt2 门, 过门的轮里留出损失最低者自动选中。",
+    t_start: "开始训练", t_stop: "停止训练", t_note: "开始训练会自动卸下模型(只能装一份), 训完或停止后自动装回来。选轮: 留出损失比训前低、生成收口不比训前少、通用文本(wt2)没有统计上坐实的退(≥3 个标准误, 标'真退')的轮里最低者自动选中(选了泛化留出就按它选: 换了说法还答得对才算学会); 噪声内的 wt2 波动不影响选轮。",
     d_drop: "拖文件到这里, 或点击选择",
     d_drop_sub: ".jsonl 直接训: 一行一题 {\"messages\":[user, assistant], \"context\"?} 或一行一段原文 {\"text\": \"…\"} · .txt / .md = 文档, 进料目录后自动成为原文料(<目录>.text.jsonl) · 64 MB 以内",
     d_docdir: "文档放进料目录:", d_jsonl: "训练料(.jsonl)", d_file: "文件", d_rows: "行数", d_size: "大小", d_teacher: "教师表",
@@ -409,22 +410,22 @@ const I18N = {
     load_model: "Load model", pt: "Post-train", clear: "Clear", send: "Send", stop: "Stop", updated: "Updated {0}",
     eng_unreachable: "Unreachable", eng_connecting: "Connecting", eng_switching: "Switching", eng_switching_sub: "Stopping / loading the model, hold on", eng_unloading_sub: "Unloading the current model, hold on",
     eng_serving: "Model loaded", eng_port: "port {0}", eng_loading: "Loading model", eng_loading_sub: "Chat opens once it loads and passes the smoke test",
-    eng_train_gate: "Training · wt2 gate", eng_training: "Training", eng_handover: "Handing over", eng_train_sub: "Model reloads when training ends",
+    eng_train_gate: "Training · picking epoch", eng_training: "Training", eng_handover: "Handing over", eng_train_sub: "Model reloads when training ends",
     eng_lobby: "No model loaded", eng_lobby_sub: "You can start training right away", eng_avail: " · {0} GB free",
     fail: "Failed: {0}", not_sent: "Request not sent: {0}", load_started: "Loading model (about 1–2 min)",
     pick_data_first: "Pick a dataset first, or upload one on the Data page", train_started: "Training started", stop_confirm: "Stop training? The model reloads automatically afterwards.", stopped_toast: "Stopped; the model will reload shortly",
     st_running: "Running", st_done: "Done", st_nopick: "Saved · none picked", st_failed: "Failed", st_stopped: "Stopped",
-    ph_gate: "wt2 gate", ph_pick: "Saving / picking epoch", ph_probe: "Probes", ph_teacher: "Teacher cache", ph_step0: "Step-0 eval", ph_train: "Training", ph_load: "Loading",
+    ph_gate: "Picking epoch · drift readout", ph_pick: "Saving / picking epoch", ph_probe: "Probes", ph_teacher: "Teacher cache", ph_step0: "Step-0 eval", ph_train: "Training", ph_load: "Loading",
     dur_hm: "{0} h {1} min", dur_ms: "{0} min {1} s", dur_s: "{0} s",
     sub_cfg: "Dataset {0} · layers {1} · lr {2} · batch {3}", sub_ntr: " · {0} training items", sub_prog: "Epoch {0}/{1} · step {2} · elapsed {3}", sub_eta: " · ~{0} left in training",
-    step_n: "Step {0}", step0: "Step 0", step0_v: "Step 0: {0}", step0_deploy: "Step 0 (as deployed)", picked: "  ★ picked", gate_pass: "Pass", gate_fail: "Fail", gate_wait: "Pending",
+    step_n: "Step {0}", step0: "Step 0", step0_v: "Step 0: {0}", step0_deploy: "Step 0 (as deployed)", picked: "  ★ picked", drift_worse: "Real drop", drift_better: "Real gain", drift_noise: "Within noise", drift_none: "No SE", gate_wait: "Pending", stop_base: "base", ep_stop: "Terminates",
     no_probe: "No probes for this run yet", no_steps: "No steps yet", steps_n: "step {0}", no_eval: "No evals yet", lg_eval: "held-out", lg_hold: "retain", no_runs: "No training runs yet",
-    k_loss: "Batch loss", k_eval: "Held-out loss", k_hold: "Retain-set KL", k_gn: "Grad norm", k_gn_s: "clip at 1.0", k_mem: "Free memory", k_mem_s: "watchdog at 2.5 GB",
+    k_loss: "Batch loss", k_eval: "Held-out loss", k_gen: "Generalization", t_evalf: "Generalization set (optional)", t_evalf_none: "None", k_hold: "Retain-set KL", k_gn: "Grad norm", k_gn_s: "clip at 1.0", k_mem: "Free memory", k_mem_s: "watchdog at 2.5 GB",
     c_loss: "Batch loss · per step (dashed = epoch boundary)", c_eval: "Held-out loss / retain-set KL · per epoch",
-    ep_title: "Epochs · wt2 gate (Σmin drop ≤0.5pp and KLD rise ≤3%)", ep_n: "Epoch", ep_train64: "First 64 train items", ep_gain: "Drop vs prev ± SE", ep_kldmed: "Median KLD", ep_gate: "Gate",
+    ep_title: "Epochs · learned? (held-out) / still terminates? / general drift (wt2 paired ± SE)", ep_n: "Epoch", ep_train64: "First 64 train items", ep_gain: "Drop vs prev ± SE", ep_kldmed: "Median KLD", ep_gate: "General drift",
     pane_probe: "Probe outputs", pane_log: "Log",
     t_dataset: "Dataset", t_manage: "Upload or manage data →", t_hparams: "Hyperparameters", t_epochs: "Epochs", t_lr: "Learning rate", t_layers: "Layers", t_adv: "Advanced (k=v, comma-separated)",
-    t_start: "Start training", t_stop: "Stop training", t_note: "Starting training unloads the model (only one copy fits) and reloads it when training finishes or stops. Each epoch runs the wt2 gate; among epochs that pass, the lowest held-out loss is picked automatically.",
+    t_start: "Start training", t_stop: "Stop training", t_note: "Starting training unloads the model (only one copy fits) and reloads it when training finishes or stops. Picking: among epochs whose held-out loss is below step 0, whose generations terminate no less often than the base, and whose general-text (wt2) drift is not a statistically real drop (≥3 SE, flagged 'Real drop'), the lowest loss is picked (with a generalization set, that loss decides: answering a rephrased question is what counts as learned). wt2 noise never affects the pick.",
     d_drop: "Drop files here, or click to choose",
     d_drop_sub: ".jsonl trains as-is: one item per line {\"messages\":[user, assistant], \"context\"?} or one passage per line {\"text\": \"…\"} · .txt / .md = documents; they go into a folder and become raw-text data (<folder>.text.jsonl) · up to 64 MB",
     d_docdir: "Document folder:", d_jsonl: "Training data (.jsonl)", d_file: "File", d_rows: "Rows", d_size: "Size", d_teacher: "Teacher cache",
@@ -547,7 +548,8 @@ async function act(url, body, okMsg, sw) {
 /* 还没选过模型(刚解压的发布包)就去模型页: 直接起服会去找脚本里的默认模型, 新机器上没有那个文件 */
 $("btn-load").onclick = $("btn-load2").onclick = () => mdata && mdata.pick ? act("/api/train/serve", {}, t("load_started"), 2) : (location.hash = "models");
 $("btn-train").onclick = () => { if (!$("data").value) { toast(t("pick_data_first"), true); return; }
-  act("/api/train/start", { data: $("data").value, epochs: $("epochs").value, layers: $("layers").value, lr: $("lr").value, extra: $("extra").value }, t("train_started"), 1); };
+  const ex = [$("extra").value.trim(), $("evalf").value ? "eval=" + $("evalf").value : ""].filter(Boolean).join(",");
+  act("/api/train/start", { data: $("data").value, epochs: $("epochs").value, layers: $("layers").value, lr: $("lr").value, extra: ex }, t("train_started"), 1); };
 $("btn-stop").onclick = () => { if (confirm(t("stop_confirm"))) act("/api/train/stop", {}, t("stopped_toast"), 2); };
 
 /* ---------------- 训练 ---------------- */
@@ -592,16 +594,23 @@ function renderDetail() {
   const mem = status ? status.mem_avail_mb : -1, mv = $("t-mem"); mv.textContent = mem >= 0 ? (mem / 1024).toFixed(1) + " GB" : "–";
   mv.className = "v" + (mem >= 0 && mem < 3000 ? (mem < 2500 ? " err" : " warn") : "");
   const tb = $("ep-rows"); tb.replaceChildren();
-  [{ n: 0, eval: r.step0 && r.step0.eval, train: r.step0 && r.step0.train, hold: r.step0 && r.step0.hold }].concat(r.epochs).forEach(e => {
+  [{ n: 0, eval: r.step0 && r.step0.eval, gen: r.step0 && r.step0.gen, train: r.step0 && r.step0.train, hold: r.step0 && r.step0.hold,
+     stop: r.step0 ? r.step0.stop : null, stop_n: r.step0 && r.step0.stop_n, base_stop: r.step0 ? r.step0.base_stop : -1 }].concat(r.epochs).forEach(e => {
     const tr = node("tr"), g = e.gate, pick = r.pick && r.pick === `ckpt_e${String(e.n).padStart(2, "0")}`;
     tr.appendChild(node("td", null, e.n === 0 ? t("step0") : `e${String(e.n).padStart(2, "0")}${pick ? t("picked") : ""}`));
-    [f4(e.eval), f4(e.train), f4(e.hold), e.n ? `${f4(e.gain)} ± ${f4(e.se)}` : "–"].forEach(v => tr.appendChild(node("td", null, v)));
+    [f4(e.eval), f4(e.gen), f4(e.train), f4(e.hold), e.n ? `${f4(e.gain)} ± ${f4(e.se)}` : "–"].forEach(v => tr.appendChild(node("td", null, v)));
+    /* 收口: 挂 ③ 在上限内吐 EOS 的题数 / 题数(部署态同题同上限的数在括号里); 少于部署态 = 不参选(标红) */
+    if (e.stop === null || e.stop === undefined) tr.appendChild(node("td", "muted", "–"));
+    else tr.appendChild(node("td", e.base_stop >= 0 && e.stop < e.base_stop ? "bad" : "ok", `${e.stop}/${e.stop_n}` + (e.base_stop >= 0 ? ` (${t("stop_base")} ${e.base_stop})` : "")));
     if (g) {
-      tr.appendChild(node("td", g.dpp >= -0.5 ? "ok" : "bad", `${g.smin[0].toFixed(4)} → ${g.smin[1].toFixed(4)} (${g.dpp >= 0 ? "+" : ""}${g.dpp.toFixed(2)}pp)`));
-      tr.appendChild(node("td", g.dkld <= 3 ? "ok" : "bad", `${g.kld[0].toFixed(4)} → ${g.kld[1].toFixed(4)} (${g.dkld >= 0 ? "+" : ""}${g.dkld.toFixed(1)}%)`));
+      /* 两臂配对差 ± 标准误, 标签由后端按 3 SE 判(worse / better / noise); 老趟没有配对行时只有差没有 SE */
+      const sgn = v => (v >= 0 ? "+" : "") + v;
+      const cls = g.drift === "worse" ? "bad" : g.drift === "better" ? "ok" : null;
+      tr.appendChild(node("td", cls, `${g.smin[0].toFixed(4)} → ${g.smin[1].toFixed(4)} (${sgn(g.dpp.toFixed(2))}pp` + (g.n ? ` ± ${g.se_pp.toFixed(2)}, ${sgn(g.z_smin.toFixed(1))} SE` : "") + ")"));
+      tr.appendChild(node("td", cls, `${g.kld[0].toFixed(4)} → ${g.kld[1].toFixed(4)} (${sgn(g.dkld.toFixed(1))}%` + (g.n ? `, ${sgn(g.z_kld.toFixed(1))} SE` : "") + ")"));
       tr.appendChild(node("td", null, `${g.kldmed[0].toFixed(4)} → ${g.kldmed[1].toFixed(4)}`));
       tr.appendChild(node("td", null, `${g.top[0].toFixed(2)}% → ${g.top[1].toFixed(2)}%`));
-      const td = node("td"); td.appendChild(node("span", "badge " + (g.pass ? "green" : "red"), t(g.pass ? "gate_pass" : "gate_fail"))); tr.appendChild(td);
+      const td = node("td"); td.appendChild(node("span", "badge " + (g.drift === "worse" ? "red" : g.drift === "better" ? "green" : ""), t("drift_" + g.drift))); tr.appendChild(td);
     } else for (let k = 0; k < 5; k++) tr.appendChild(node("td", "muted", e.n ? t("gate_wait") : "–"));
     tb.appendChild(tr);
   });
@@ -676,6 +685,11 @@ async function loadData() {
   sel.replaceChildren();
   d.jsonl.filter(j => !j.path.endsWith("/hold.jsonl")).forEach(j => { const o = node("option", null, t("d_opt", short(j.path), j.rows)); o.value = j.path; sel.appendChild(o); });
   if (keep && [...sel.options].some(o => o.value === keep)) sel.value = keep;
+  /* 泛化留出: 同目录里另一份 jsonl(换了形式的题: 另一种语言 / 另一种问法), 整份不进训练, 只量"换个说法还会不会"; 不选 = 没有这个数 */
+  const es = $("evalf"), ekeep = es.value || lsGet("ds4.studio.evalf", "");
+  es.replaceChildren(); { const o = node("option", null, t("t_evalf_none")); o.value = ""; es.appendChild(o); }
+  d.jsonl.filter(j => !j.path.endsWith("/hold.jsonl")).forEach(j => { const o = node("option", null, t("d_opt", short(j.path), j.rows)); o.value = j.path; es.appendChild(o); });
+  if (ekeep && [...es.options].some(o => o.value === ekeep)) es.value = ekeep;
   const jt = $("jsonl-rows"); jt.replaceChildren();
   d.jsonl.forEach(j => {
     const tr = node("tr"), hold = j.path.endsWith("/hold.jsonl");
@@ -688,6 +702,7 @@ async function loadData() {
   });
 }
 $("data").onchange = () => lsSet("ds4.studio.data", $("data").value);
+$("evalf").onchange = () => lsSet("ds4.studio.evalf", $("evalf").value);
 async function preview(path) {
   text("pv-name", short(path)); const box = $("pv"); box.replaceChildren(node("div", "muted", t("pv_loading")));
   try {

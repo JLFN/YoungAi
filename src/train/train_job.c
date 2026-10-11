@@ -4,7 +4,7 @@
  *   (③ 的 base.fnv = 它的指纹), 聊天页切到那份侧车、打开"后训练"开关才挂, 切走就卸。
  * 训练用的 ①② = serve_pick.txt 里的那对(工作台选了哪套就训哪套; ③ 是对着这对解的, 对不上引擎拒挂); 第 3 行起只取 --engram-dir 给 ./ds4
  *   (发布包里模型在 gguf/hub, n-gram 表不在转换机的路径上, 训练器/打分器同样要它); ③ 不继承(起点恒为 ①+②)。
- * 出错会怎样: 训练失败/被停/没过门, 模型照样装回来, 页面回到能聊; 原因在 ui_logs/cycle_*.log 与那趟的 train.out。 */
+ * 出错会怎样: 训练失败/被停/这趟无效(没有一轮比第 0 步低且收口不退), 模型照样装回来, 页面回到能聊; 原因在 ui_logs/cycle_*.log 与那趟的 train.out。 */
 #include "train_internal.h"
 #include <pthread.h>
 #include <signal.h>
@@ -89,8 +89,8 @@ static void do_train(const char *mdl, const char *zch, char *const eng[], int ne
     if (rc != 0) { tr_logf(log, "★训练失败(rc=%d, 见 %s/train.out)★", rc, out); return; }
     set_phase(TR_JOB_GATE, 0);
     char pick[64];
-    if (!tr_gate_pick(out, mdl, zch, eng, neng, log, want_stop, NULL, pick, sizeof pick)) { tr_logf(log, "★门没跑完(见上)★"); return; }
-    tr_logf(log, "TRAIN_DONE %s 选中 %s (关联侧车 %s; 没挂, 聊天页开关挂)", out, pick[0] ? pick : "无(没过门)", zch[0] ? zch : "无");
+    if (!tr_gate_pick(out, mdl, zch, eng, neng, log, want_stop, NULL, pick, sizeof pick)) { tr_logf(log, "★选轮没跑完(见上)★"); return; }
+    tr_logf(log, "TRAIN_DONE %s 选中 %s (关联侧车 %s; 没挂, 聊天页开关挂)", out, pick[0] ? pick : "无(这趟无效: 没有一轮比第 0 步低且收口不退)", zch[0] ? zch : "无");
 }
 
 static void *job_thread(void *arg) {
