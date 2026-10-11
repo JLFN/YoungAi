@@ -70,7 +70,7 @@ make -C gguf-tools all amp legacy calib bench tools-test   # 工具链全目标(
 ./ds4-agent                      # in-process native coding agent (sessions in ~/.ds4/kvcache)
 ./ds4-train --port 8000          # ★工作台主进程, 永远不退★(10-10 用户定): GET / = web/studio.html(聊天/模型/训练/语料/记录), 全部 /api/*; spark 上 train_ui_spark.sh start
 #   模型 = 它直接 fork 的子进程 ds4-server(src/train/train_model.c, 绑 127.0.0.1:8001, 起跑清单/冒烟/看门狗都在 C 里), /v1/… /monitor /metrics 与热切(/api/models/plugins)、清单(/api/models/list)由主进程转发(src/train/train_proxy.c)
-#   训练 = 它自己的作业线程(src/train/train_job.c: 停模型子进程 → fork ./ds4 --ptrain → wt2 门+选轮(train_gate.c: ./ds4 --score-ids 两臂 + anchor_metrics) → 子进程按 serve_pick.txt 装回来)
+#   训练 = 它自己的作业线程(src/train/train_job.c: 停模型子进程 → fork ./ds4 --ptrain → 选轮(train_gate.c: 留出损失比第 0 步低且收口不少于部署态的轮里最低者; wt2 两臂配对 ± SE 只报数不否决, 10-11 用户定) → 子进程按 serve_pick.txt 装回来)
 #   ★页面不调任何 shell 脚本★(10-10 用户令, 只剩下载 hf_install.sh); serve_1m_spark.sh / z_nightly_spark.sh / v41_judge.sh 只是命令行工具, 产物目录与格式和 C 一致
 #   模型页"加载"= 写 gguf/serve_pick.txt(C 直接写, 格式与 serve_1m_spark.sh pick 同)+ 重起子进程; 聊天页下拉 = 热切侧车, "后训练"开关 = 挂/卸当前侧车关联的最新 ③(server_plugins.c, 不重装底座)
 #   ★训完不自动挂★(10-10 用户: "训练完就是训练完不要直接挂"): ③ 只落盘并关联训练时装着的侧车(base.fnv), 开关打开才挂, 切侧车跟着换

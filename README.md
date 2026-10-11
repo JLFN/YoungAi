@@ -125,12 +125,17 @@ layer you trained yourself (step 5); it only appears once there is one.
 
 Drop a `.jsonl` file on the *Data* page, pick it on the *Train* page and press *Start training*. Training
 needs the memory the model is using, so the Studio stops the model, trains, and loads it again; the page
-stays connected throughout. The best epoch that passed the general-ability check is picked, written to disk
-and tied to the domain sidecar that was loaded while training; the model comes back exactly as it was before
-training, nothing is mounted automatically. Back in *Chat*, switch to that domain and turn the *post-training*
-switch on to talk to the trained model; turning it off or switching domains unmounts it. A run that fails the
-check never shows up in the switch. A smoke run (18 questions, 1 epoch) takes about 6 minutes end to end,
-including the check.
+stays connected throughout. Before training, the model rewrites every question-answer pair in your file into
+four more pairs that state the same facts in different words (one of them in another language), so that what
+gets written into the weights is the fact, not one phrasing of it; the rewrites are saved next to your file
+as plain jsonl you can read. The epoch picked is the one with the lowest held-out loss among those whose
+answers still terminate and whose general English (WikiText-2) has not measurably drifted; it is written to
+disk and tied to the domain sidecar that was loaded while training. The model comes back exactly as it was
+before training, nothing is mounted automatically. Back in *Chat*, switch to that domain and turn the
+*post-training* switch on to talk to the trained model; turning it off or switching domains unmounts it. A run
+with no usable epoch never shows up in the switch. On 24 lines (12 facts, two phrasings each) the trained
+layer answered 11 of 12 questions asked in a third, unseen phrasing (0 of 12 before training), while eight
+general-knowledge questions were answered the same as before.
 
 Training data is one JSON object per line, in either of the two shapes Unsloth uses:
 

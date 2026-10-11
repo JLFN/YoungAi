@@ -302,11 +302,30 @@ through the engine's own GPU forward pass, from one jsonl file of questions and 
 with the deployed model's own answers) is mixed into every run, with the deployed model as its teacher. It
 pins ③ on everything the training file is not about.
 
-**Picking the epoch.** Every fifth question (by a hash of its text) is held out. After each epoch the run
-measures held-out loss and checks general English on WikiText-2: an epoch passes if Σmin drops by at most
-0.5 pp and mean KL rises by at most 3%. Among the epochs that pass, the one with the lowest held-out loss
-becomes ③. The teacher's distributions are computed once and cached next to the data file, so a second run
-on the same file skips that step.
+**Multi-form expansion (on by default).** With one phrasing per question the low-rank layer learns "after
+this string, emit that string" and fails on a new phrasing: 12 facts trained with 3 phrasings each answered
+only 8 of 13 rephrased questions. So at load time the deployed model rewrites every training pair into 4 more
+jsonl lines of the same format — question rephrased, answer reworded, facts unchanged, no answer names or
+numbers in the question, at least one pair in another language — and they train alongside the original. A
+rewritten line uses the original answer (or source text) as the teacher context, i.e. context distillation,
+not a gold label: if a rewrite slips in an invented detail, the teacher gives it no weight there. A version
+that only rephrased the question and copied the answer verbatim was tried and lost (the answer string stays
+identical, the model memorises it, and rephrased questions got worse). Rewrites are cached next to the data
+file (`<file>.expand4.jsonl`, the model's raw output in `.raw.txt`); held-out questions are never expanded.
+
+**Picking the epoch.** Three readings, each answering one question, never traded against each other:
+① learned? — held-out loss (the generalization set, if given) below its pre-training value; ② still talks? —
+the held-out questions generated with ③ mounted up to 4× the reference length, with no fewer answers
+terminating than the base model's; ③ general drift — the per-position paired difference of Σmin and KL on
+WikiText-2 between ② and ② + ③, with its standard error; a drop beyond 3 standard errors is a *real drop* and
+that epoch is excluded, anything within noise is ignored. Among the epochs meeting all three, the lowest
+held-out loss becomes ③; if none does, the run never reaches the switch. An earlier absolute line ("Σmin
+drops at most 0.5 pp") turned out to be only 1.3–1.5 standard errors wide: three epochs of one run flipped
+sign at random and the epoch it rejected was the one that had learned, hence the paired criterion. When a
+generalization set (the same questions in another form) is given, the data file itself is no longer split by
+hash: in a small file the fifth it removes is often the only line carrying a fact. The teacher's
+distributions are computed once and cached next to the data file, so a second run on the same file skips
+that step.
 
 **Why backpropagation and not a closed-form solve.** An earlier version linearised "the model should have
 written *a*, not *b*" onto last-layer gains and solved it in seconds. It flipped the targeted tokens
@@ -696,10 +715,14 @@ startup from `metal/*.metal` by relative path, so a binary copied elsewhere cann
 
 ## 8. Honest status and limits
 
-- **Post-training (③) is judged by held-out loss and the WikiText-2 gate**, on one real data set so far
-  (§4.3). It has not been scored on end-to-end business outcomes. Training from the Studio page currently
-  drives scripts written for our Spark (`gguf-tools/scripts/`, repository at `~/ds4-main`, models under
-  `gguf/v41/`).
+- **What post-training (③) can do: write your material into the weights, answer it in new phrasings, keep
+  general ability, mount and unmount at will.** A 24-line file produced a layer that answered 11 of 12
+  questions in an unseen third phrasing (0 of 12 before), with eight general-knowledge answers unchanged.
+  What it cannot do: make every exact number right from a few dozen lines, or teach a new skill — the
+  literature and our runs agree that takes an order of magnitude more material (the rewrite expansion is
+  how that price gets paid); many near-identical facts interfere, which expansion and keeping every line in
+  training contain but do not cure. One real business file so far (§4.3); not yet scored on end-to-end
+  business outcomes.
 - **Five domains.** Finance, code, law, medicine and science (§5.1), all five sidecars in the Hugging Face repository.
   All are judged teacher-forced on held-out text; none has been evaluated on end-to-end tasks (agentic coding, legal or clinical question answering).
 - **One machine type tested end to end.** All numbers on this page are from a DGX Spark. The Metal
