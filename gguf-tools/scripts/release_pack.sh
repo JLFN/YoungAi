@@ -18,7 +18,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"; cd "$ROOT"
 OUT="${1:-$ROOT/dist}"
 NAME="youngai-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m)-$(date +%Y%m%d)"
 # web/ 只收页面与图: spark 的工作树里 web/ 下还躺着老构建留下的 .o, 整目录拷会一起进包
-FILES=(ds4-server ds4-train ds4 gguf-tools/bench/anchor_metrics web/*.html web/*.jpg LICENSE LICENSE-DeepSeek README.md README.zh-CN.md
+# PWA 四件(manifest / sw.js / 图标)缺了不只是装不成 App: 穿透的公网检测取的就是 /manifest.webmanifest, 拿不到 200 设置里永远显示断线
+FILES=(ds4-server ds4-train ds4 gguf-tools/bench/anchor_metrics web/*.html web/*.jpg web/*.png web/manifest.webmanifest web/sw.js LICENSE LICENSE-DeepSeek README.md README.zh-CN.md
        gguf-tools/scripts/hf_install.sh
        gguf-tools/data/posttrain/hold.jsonl gguf/go-onebit/g7/wt2.ids gguf/v41judge/teacher_g7_wt2_n512.bin)
 # 只带一个脚本: 下载(hf CLI 的包装)。起服/训练/门/选轮全在 ds4-train 的 C 里(src/train/train_model.c train_job.c train_gate.c), 10-10 起不再随包发脚本。
