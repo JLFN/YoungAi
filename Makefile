@@ -236,6 +236,8 @@ src/common/ds4_quantfmt.o: src/common/ds4_quantfmt.c src/common/ds4_quantfmt.h s
 
 src/common/ds4_json.o: src/common/ds4_json.c src/common/ds4_json.h
 	$(CC) $(CFLAGS) -c -o $@ src/common/ds4_json.c
+src/common/ds4_sha256.o: src/common/ds4_sha256.c src/common/ds4_sha256.h
+	$(CC) $(CFLAGS) -c -o $@ src/common/ds4_sha256.c
 
 # 训练页(src/train/): 路由/产物解析/进程控制三件(TRAIN_API_OBJS)ds4-server 与 ds4-train 共用; ds4-train 只多一层薄 HTTP。
 # 纯主机 C, 不链引擎; Mac/Linux 同一条规则(nvcc 不参与)
@@ -410,11 +412,11 @@ else
 endif
 
 # src/common 共享格式库单测: 无模型/无 GPU, 纯主机 C。夹具路径相对仓库根。
-ds4_unit: tests/unit/test_common.c tests/unit/test_zmod.c tests/unit/t_zfinetune.c src/common/ds4_quantfmt.c src/common/ds4_gguf.c \
-          src/common/ds4_quantfmt.h src/common/ds4_gguf.h src/common/ds4_float.h src/common/ds4_fp8.h \
+ds4_unit: tests/unit/test_common.c tests/unit/test_zmod.c tests/unit/t_zfinetune.c tests/unit/t_sha256.c src/common/ds4_sha256.c src/common/ds4_sha256.h \
+          src/common/ds4_quantfmt.c src/common/ds4_gguf.c src/common/ds4_quantfmt.h src/common/ds4_gguf.h src/common/ds4_float.h src/common/ds4_fp8.h \
           ds4_z.c ds4_z.h ds4_zchain.c ds4_zchain.h ds4_zfinetune.c ds4_zfinetune.h ds4_loss.c ds4_loss.h
-	$(CC) $(CFLAGS) -Isrc/common -I. -o $@ tests/unit/test_common.c tests/unit/test_zmod.c tests/unit/t_zfinetune.c \
-	    src/common/ds4_quantfmt.c src/common/ds4_gguf.c ds4_z.c ds4_zchain.c ds4_zfinetune.c ds4_loss.c $(LDLIBS)
+	$(CC) $(CFLAGS) -Isrc/common -I. -o $@ tests/unit/test_common.c tests/unit/test_zmod.c tests/unit/t_zfinetune.c tests/unit/t_sha256.c \
+	    src/common/ds4_sha256.c src/common/ds4_quantfmt.c src/common/ds4_gguf.c ds4_z.c ds4_zchain.c ds4_zfinetune.c ds4_loss.c $(LDLIBS)
 
 test: ds4_test ds4-eval ds4_unit ds4_asst_test linecount
 	./ds4_unit

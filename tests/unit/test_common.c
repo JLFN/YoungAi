@@ -220,6 +220,7 @@ int main(void) {
     test_gguf_roundtrip();
     { extern int unit_zmod(void); g_fail += unit_zmod(); }   /* 引擎 z 双路对拍(2026-08-26) */
     { extern int unit_zfinetune(void); g_fail += unit_zfinetune(); }   /* 微调侧车按秩拼接(2026-09-08) */
+    { extern int unit_sha256(void); g_fail += unit_sha256(); }   /* 工作台登录的哈希基元(2026-10-12) */
     if (g_fail) { fprintf(stderr, "ds4_unit: %d failure(s)\n", g_fail); return 1; }
     puts("ds4_unit: ok");
     return 0;
