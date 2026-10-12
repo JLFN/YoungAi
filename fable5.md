@@ -11098,3 +11098,22 @@ A = 只在提示里找(Strata 默认索引范围), B = 提示 + 已生成都找;
 - README.md 252 → 208 行, README.zh-CN.md 208 → 173 行。结构: 一句话卖点 → 买 DGX Spark 截图 → 四块拼图表 → 一个真实任务(12 轮/43 次调用/1.6k→140k/写 36.8 t/s/读 759 t/s/16 分钟/KV 复用省 77.9 万→14 万读) → 质量/速度/占用 → 上手(5 步, 助理沙盒与审批写清) → 原理 → 局限。
 - 截图: docs/img/studio-agent.png(中文界面)/ studio-agent-en.png(英文界面), 会话 c77b06a316b6 终稿开头那屏, 1440×900, ssh 隧道 + Playwright 截; 侧栏对话列表里的测试会话照原样留着。旧 studio-chat.png 已 git rm; hf_publish_spark.sh README_ASSETS 同步换。
 - 两行料最小例子 + 18 行冒烟 / 24 行 11/12 读数从 README 迁到 TECHNICAL(中英)4.3 节末尾, README 只留链接。局限一条换成"要登录/验证码的购物站打不开"。未提交, 未推 HF/GitHub。
+
+## 10-12 · 设置弹窗: 云服务器 + frp 穿透 + HTTPS 证书(用户: "菜单最下面加设置…穿透…上传证书…最后实现互联网可以访问的 pwa")
+- 侧栏最底下 / 手机"更多"里的"设置" → 弹窗三段: 云服务器 SSH 账号(存 ~/.ds4/studio/cloud 0600, 接口不回传密码)、穿透开关、证书 zip 上传。服务端 src/train/train_{net,exec,frp,tunnel,cert}.c, 用法与排错表在 docs/pwa.md。
+- 链路: 手机 →https→ 云:443(frps, ssh 自动装成 systemd ds4-frps)⇒ frp 隧道 ⇒ 本机 frpc(https2http 插件在本机解 TLS, 私钥不出本机)→ 127.0.0.1:页面端口。没证书 = 公网口走 http(页面端口)。frp 钉 v0.71.0, 下载按官方 sha256 校验。ssh 密码经 askpass(~/.ds4/studio/ds4-askpass → ds4-train 自身), 不进命令行/环境变量; 文件上传走 ssh cat 不走 scp(新 scp 默认 SFTP)。
+- 踩到的: frpc 会照 http_proxy 走代理(Mac 开 Clash 时直接 "connect to server error: EOF"), 起 frpc 前去掉代理变量; 本机另有别的项目的 frpc, 我们只按 pid 文件认自己的。
+- 验证: tests/net/tunnel_e2e.sh 对 OrbStack Ubuntu(真 systemd + sshd 密码登录)16/16, root 与 sudo 普通用户两种账号各从零部署一遍; 安全组挡 7000 → 正确停在"检查 7000 端口"报 port_frp; ds4_asst_test 新增 studio net 24 项全过; linecount ok; spark 上新文件语法编译零警告。没有真云服务器 + 真域名的实测(公网 DNS / 真 CA 证书那一段)。未提交。
+- **公网端口可设**(10-12 用户: "再加一个设置对外暴露的端口更合理"): 设置里一个"公网端口"框, 留空 = 有证书 443 / 没证书页面端口; 为的是服务器 443 被占、大陆服务器域名没备案(厂商拦 80/443)两种情况。frpc remotePort / frps allowPorts / ufw·firewalld / 公网探测 / 公网地址只认 tr_pub_port 一处; 改它 = 重新部署。7000 拒(frp 自己的口)。e2e 加 8443 四项 → 20/20(ubu sudo 账号), 单测 29/29。未提交。
+- **真服务器(阿里云, Ubuntu 24.04 x86_64; 地址、账号、端口布局不入库)从 spark 跑通**(10-12 11:24): 公网 `http://<云服务器>:8443/` 200 出工作台页, 不登录的数据接口 401; frps 控制口外部连不上; 服务器上用户另一个项目的 frps 与隧道没动。spark 工作台已换新版并重启(模型进程没动)。
+- 真服务器撞出的情况全部进了代码(用户: "只填 IP 和端口, 穿透能力就要考虑各种情况"): ① 部署第一步以 root 普查 `ss -ltnpH` + frps 命令行 + 读它的配置(toml/ini, 经 /proc/<pid>/root 读, docker 里的也行), 能复用就复用(令牌认证 + 放行公网端口), 不能就另装、控制口换空口; 公网端口被占直接报占用者。② **frp 控制通道改走 ssh -L(用户定)**, frps bindAddr 127.0.0.1 + proxyBindAddr 0.0.0.0(不写后者公网口也会只听本机), 安全组只要 SSH + 公网端口; 通道断了 2→30 s 退避重连(train_sshtun.c)。③ sshd 偶发 "banner exchange" 超时(公网机被扫描时 MaxStartups 丢连接)只对这类报错重试 3 次。④ 公网探测改成真发 HTTP 取 manifest 拿 200 —— Mac 开着 Clash TUN 时任何 TCP 连接都成功(连必关的 12345 也通), 只连 TCP 会误报已连通。
+- 修掉的 bug: cloud 文件 ext_token 为空时 tr_hex 不写字节, 写进去的是栈上垃圾 → cloud_broken; 部署日志把读到的 frps 配置(含令牌)写进 0644 文件(已改 0600 且不落盘 cat 输出, spark 上那份已抹掉令牌); deploy.log 第一步时目录没建写不进去。
+- 未解决: 工作台机器连不上 GitHub 时下不了 frp(spark 就是: 主进程没带 mihomo 代理)。这次是在 Mac 下好、按官方 sha256 校验后手放进 spark 缓存。产品解法待定(发布包带上 frp / 代码里钉死各平台 sha256 后允许走镜像)。e2e 两场景(自装 / 复用)各 23 项全过; 单测 studio net 42。未提交。
+
+## 10-12 下午 · 工作台收尾: 监控原生页 / 控件样式 / 穿透误报 / 模型删除 / 默认侧车 / 隐私检查
+- **穿透误报"断了"的真因**(隧道其实一直通): ① 浏览器取消请求时 frpc 记 `[W] httputil/reverseproxy.go … context canceled`, 旧判定见 [W] 就算断线; ② 旧判定每次只截日志尾 32 KB 往回找, 公网口的 TLS 握手报错每分钟好几条, 起来约一小时 "start proxy success" 滑出窗口(spark 日志 38 KB, 成功那行在第 5 行)。改: 记读到哪儿只读新增行, 只认 client/service.go、client/control.go 的 [W]/[E]。spark 重启后灌明文请求, 状态仍 up、公网 200。
+- 监控: 侧栏"监控"从新窗口改成 studio.html 原生视图(训练页卡片/读数格/table.cards 复用, 只在本页开着且模型在服务时每秒拉 /metrics)。iframe 内嵌那版被用户否("不要用 iframe, 其他页面怎么实现你就怎么实现")。
+- 控件: 全部 <select> 拦系统列表改弹 #pick 菜单(电脑 mousedown / 触屏 touchstart); 6 处 confirm() → ask(); 全局深色细滚动条。
+- 模型删除: 只删 GGUF 本体, 侧车目录(反修产物, 几十 MB)与共用 n-gram 表不动; 在用 / 下次要装 / 训练加载中 / 下载中 / 软链一律拒。
+- **默认侧车 = 编程**(用户定): 模型页默认选中、install.sh `--domain` 默认、serve_1m_spark.sh 无参默认三处; 单给 `--posttrain` 自动用金融(③ 对着金融侧车解)。HF 上发布的 install.sh 未更新。
+- 隐私检查(用户令, 提交前): 待提交内容里拦下云服务器公网 IP、SSH 用户、工作台登录用户名、外部访问者 IP、spark 局域网 IP, 全部脱敏后才入库; .gitignore 补磁盘 KV(*.kv, 存对话原文)、--trace 输出、ui_logs/、.env。**已提交历史里本来就有**: spark 局域网 IP、quant_trading_flow 项目名与容器名、README 联系邮箱(有意公开) —— 清它们要改写已推送的历史, 未动。
