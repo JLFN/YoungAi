@@ -92,7 +92,8 @@ make cuda-spark
 4. **Phone / internet**: on a phone, *Add to Home Screen* makes it an app; for access from the internet, enter a cloud
    server in *Settings* and turn on the tunnel. Steps and troubleshooting:
    [docs/pwa.md](https://github.com/fodelf/YoungAi/blob/restructure/docs/pwa.md) (Chinese).
-5. **API**: `/v1/chat/completions`, `/v1/completions`, `/v1/responses`, `/v1/messages`. `"temperature": 0` gives
+5. **API**: `/v1/chat/completions`, `/v1/completions`, `/v1/responses`, `/v1/messages`. Create a key on the *API* tab
+   and send `Authorization: Bearer <key>` (also from localhost; without it you get 401). `"temperature": 0` gives
    byte-identical output every run; add `"reasoning_effort": "high"` for thinking.
 
 **API only, no Studio**, no build:

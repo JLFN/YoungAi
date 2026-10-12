@@ -63,8 +63,9 @@ make cuda-spark
    训完不会自动挂上，聊天页打开"后训练"开关才用训练后的模型。完整走一遍见[技术细节 4.3](https://github.com/fodelf/YoungAi/blob/restructure/docs/TECHNICAL.zh-CN.md#43-后训练文件)。
 4. **手机 / 外网**：手机打开后"添加到主屏幕"就是 App；要从外网访问，在"设置"里填一台云服务器，开穿透，
    步骤和排错见 [docs/pwa.md](https://github.com/fodelf/YoungAi/blob/restructure/docs/pwa.md)。
-5. **当 API 用**：`/v1/chat/completions`、`/v1/completions`、`/v1/responses`、`/v1/messages`。传 `"temperature": 0`
-   每次输出逐字节相同；要思考加 `"reasoning_effort": "high"`。
+5. **当 API 用**：`/v1/chat/completions`、`/v1/completions`、`/v1/responses`、`/v1/messages`。先在"API"页建一把密钥，
+   请求带 `Authorization: Bearer <密钥>`（本机调也要，不带会 401）。传 `"temperature": 0` 每次输出逐字节相同；
+   要思考加 `"reasoning_effort": "high"`。
 
 **只要 API、不要工作台**，不用编译：
 
