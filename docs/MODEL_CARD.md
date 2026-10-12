@@ -218,13 +218,14 @@ The model card lists vLLM and SGLang examples for OpenAI-compatible serving.
 For local deployment, it recommends:
 
 - `temperature = 1.0`
-- `top_p = 1.0`
+- `top_p = 0.95 or 1.0` (all official evaluations use 0.95)
 - At least 384K context for Think Max
 
-These are deployment recommendations from the model card, not necessarily the
-same settings used for deterministic benchmarking. DS4 keeps `top_p=1.0` but
-adds a local `min_p=0.05` default to avoid sampling tokens whose probability is
-far below the best token.
+DS4 defaults to `temperature=1.0`, `top_p=0.95`, no `min_p` (`DS4_DEFAULT_*` in
+`ds4.h`). `top_p=1.0` samples the whole 129k vocabulary; on the 2-bit quant that
+drops one token outside the top-32 every ~160 tokens (`#fant`, `排队` inside SVG
+hex colours), verified as faithful sampling of the model's own tail rather than
+an engine fault. 0.95 cuts that tail while changing ~2.4% of sampled positions.
 
 ## Licensing
 

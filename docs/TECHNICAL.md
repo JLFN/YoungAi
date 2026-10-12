@@ -676,7 +676,7 @@ SIDECAR=DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative-grrb-vqfin41_vqhalf_a_n8192-en
 
 Loading takes about two minutes. Endpoints: `/v1/chat/completions`, `/v1/completions`, `/v1/responses`
 (OpenAI style) and `/v1/messages` (Anthropic style). Sampling knobs a request leaves out follow the model
-card's recipe: `temperature` 1.0, `top_p` 1.0, no `min_p` — sampled on the GPU, speculative decoding kept on
+card's evaluation recipe: `temperature` 1.0, `top_p` 0.95, no `min_p` — sampled on the GPU, speculative decoding kept on
 (34–37 tokens/s across runs on the 14k-token agent request vs 45.5 greedy). For byte-reproducible output send
 `"temperature": 0` explicitly.
 Requests default to **non-thinking** mode. Turn thinking on per request with `"reasoning_effort": "high"` (or

@@ -576,7 +576,7 @@ SIDECAR=DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative-grrb-vqfin41_vqhalf_a_n8192-en
 ```
 
 加载大约两分钟。接口：`/v1/chat/completions`、`/v1/completions`、`/v1/responses`（OpenAI 风格）和
-`/v1/messages`（Anthropic 风格）。请求里没带的采样参数按模型卡的推荐配方：`temperature` 1.0、`top_p` 1.0、
+`/v1/messages`（Anthropic 风格）。请求里没带的采样参数按模型卡的评测配方：`temperature` 1.0、`top_p` 0.95、
 不设 `min_p`，在 GPU 上采样，投机解码照开（真实 14k token Agent 请求几趟 34–37 token/s，贪心 45.5）。要输出逐字节
 可复现就显式传 `"temperature": 0`。
 请求默认**不思考**。要思考按请求显式打开：`"reasoning_effort": "high"`（或 `"max"`）、`"thinking": {"type": "enabled"}`、

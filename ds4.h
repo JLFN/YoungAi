@@ -50,9 +50,12 @@ typedef struct {
     float logprob;
 } ds4_token_score;
 
-/* 采样默认=模型卡官方配方(温 1.0/top_p 1.0/无 min_p), 各入口不带参数都落这里; min_p 非 0 在复读区砍光备选=退回贪心(09-28 实测死循环) */
+/* 采样默认=模型卡官方评测配方(温 1.0/top_p 0.95/无 min_p), 各入口不带参数都落这里; min_p 非 0 在复读区砍光备选=退回贪心(09-28 实测死循环)。
+ * top_p 为什么是 0.95 不是 1.0(2026-10-12, 用户定): 1.0 = 整个 129,280 词表按分布抽, 对 2 位量化模型(p(top-1) 第 10 分位只有 0.3)
+ * 每 ~160 个 token 就抽出一个 top-32 外的词, 9.5k token 的 SVG 里混进 `#fant`/`排队`/`自行面`(忠实度门证明采样器没错, 是分布的尾巴);
+ * 0.95 是 hf 模型卡评测用的值, 只动 ~2.4% 的采样位, 把 ≤1e-4 的垃圾切掉。改回 1.0 乱码就回来。 */
 #define DS4_DEFAULT_TEMPERATURE 1.0f
-#define DS4_DEFAULT_TOP_P 1.0f
+#define DS4_DEFAULT_TOP_P 0.95f
 #define DS4_DEFAULT_MIN_P 0.0f
 /* session 默认 ctx: CLI 与 server 共用, help 文本经 DS4_STRINGIFY 同源(改此处代码与文档一起变) */
 #define DS4_DEFAULT_CTX_SIZE 32768
