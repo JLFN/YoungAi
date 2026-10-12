@@ -26,7 +26,7 @@ static void ancestors(ds4_buf *b, const char *path) {
 }
 
 /* bash 要读的系统目录(都已是 realpath 后的真名: /etc → /private/etc); 家目录、/tmp、/var/folders 一概不给 */
-static const char *const exec_ro[] = { "/usr", "/bin", "/sbin", "/System", "/Library/Apple", "/private/etc", "/opt/homebrew",
+static const char *const exec_ro[] = { "/usr", "/bin", "/sbin", "/System", "/Library/Apple", "/private/etc", "/opt/homebrew", "/Applications",   /* /Applications: LibreOffice 之类的工具箱程序(asst_toolbox.c) */
                                        "/private/var/db/timezone", "/private/var/db/dyld", "/dev/urandom", "/dev/random", "/dev/zero", NULL };
 
 bool asst_sbx_lock(const asst_sbx_spec *sp, char *err, size_t errn) {

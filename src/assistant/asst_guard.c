@@ -7,12 +7,12 @@
  *   ④ 污点: 上过网之后写工作区外 → 只能"仅这次"; 读过工作区外的私有文件之后再上网 → 只能"仅这次"(网址/搜索词就是外送通道);
  *   ⑤ 你在 policy 里给的目录 → 放行(写要该目录 write=true);
  *   ⑥ 永久授权 / 本会话授权 → 放行; 都没有 → 问你。
- *   bash: 默认关; 开了也每次问、只能"仅这次"; 命令里像密文的直接拒。网页: 本机/内网地址与非 http(s) 直接拒。
+ *   run: 沙盒里跑, 不审批(10-12 用户定; 安全靠沙盒: 没网络、只能写工作区); 命令里像密文的直接拒。网页: 本机/内网地址与非 http(s) 直接拒。
  * 守门只决定"问不问"; 真正能碰什么由 asst_guard_spec 给出的沙盒规则决定, 两层互不信任。 */
 #include "asst_internal.h"
 #include <strings.h>
 
-bool asst_policy_bash(void);
+bool asst_policy_run(void);
 bool asst_policy_dir(int i, char *path, size_t n, bool *write);
 bool asst_approved_always(const char *cls, const char *path);
 bool asst_approved_session(const char *sid, const char *cls, const char *path);
@@ -85,15 +85,18 @@ static bool url_host(const char *url, char *host, size_t n) {
 void asst_guard(const char *sid, const char *tool, const char *args, asst_gres *r) {
     memset(r, 0, sizeof *r);
     if (!strcmp(tool, "remember") || !strcmp(tool, "forget")) { snprintf(r->cls, sizeof r->cls, "mem"); set(r, ASST_ALLOW, "memory"); return; }
+    if (!strcmp(tool, "nearby")) { snprintf(r->cls, sizeof r->cls, "geo"); set(r, ASST_ALLOW, "places near the user"); return; }   /* 出门的只有查询词与坐标, key 由 C 填; 不置污点 */
+    if (asst_device_tool(tool)) { snprintf(r->cls, sizeof r->cls, "dev"); set(r, ASST_ALLOW, "device"); return; }   /* 在用户自己的设备上、由用户的浏览器执行(剪贴板读取 iOS 还要用户点一下): 放行, 不进沙盒 */
     if (!strcmp(tool, "read_file") || !strcmp(tool, "list_dir") || !strcmp(tool, "search_files")) { guard_file(sid, false, tool, args, r); return; }
     if (!strcmp(tool, "write_file") || !strcmp(tool, "edit_file")) { guard_file(sid, true, tool, args, r); return; }
-    if (!strcmp(tool, "bash")) {
-        snprintf(r->cls, sizeof r->cls, "exec"); snprintf(r->path, sizeof r->path, "%s", asst_ws); snprintf(r->target, sizeof r->target, "bash");
+    if (!strcmp(tool, "run")) {   /* 沙盒里跑, 不审批(10-12 用户: "确保在沙箱当中, 暂时不要审批"): 安全靠沙盒不靠审批 —— 没网络就没有外送通道, 只能写工作区且 .trash 留旧版; 污点态也不降级。
+                                   * 硬警告词只标红进审计(它在沙盒里本来就碰不到工作区以外); 像密文的仍拒: 密码不该出现在审计流水里 */
+        snprintf(r->cls, sizeof r->cls, "exec"); snprintf(r->path, sizeof r->path, "%s", asst_ws); snprintf(r->target, sizeof r->target, "run");
         char *cmd = NULL; asst_jstr(args, "command", &cmd);
-        if (!asst_policy_bash()) set(r, ASST_DENY, "bash is turned off; the user can turn it on in the Activity tab");
-        else if (!cmd || !cmd[0]) set(r, ASST_DENY, "bash requires command");
+        if (!asst_policy_run()) set(r, ASST_DENY, "run is turned off; the user can turn it on in the Activity tab");
+        else if (!cmd || !cmd[0]) set(r, ASST_DENY, "run requires command");
         else if (asst_secret_like(cmd)) set(r, ASST_DENY, "the command contains something that looks like a password, key or card number");
-        else { const char *w = hard_warn(cmd); r->once_only = true; r->warn = w != NULL; set(r, ASST_ASK, w ? "destructive-looking shell command" : "run a shell command (sandboxed: workspace only, no network)"); }
+        else { r->warn = hard_warn(cmd) != NULL; set(r, ASST_ALLOW, "sandboxed command (workspace only, no network)"); }
         free(cmd); return;
     }
     if (!strcmp(tool, "web_search") || !strcmp(tool, "visit_page")) {

@@ -78,7 +78,7 @@ extern char asst_token[65];            /* 非本机访问口令(asst_root/token,
 bool asst_init(const char *root, char *err, size_t errn);   /* root = NULL → ~/.ds4/assistant; 建目录、口令 */
 bool asst_id_ok(const char *id);
 void asst_spath(const char *id, const char *file, char *out, size_t n);   /* sessions/<id>/<file> */
-bool asst_session_new(char id[ASST_ID_LEN + 1], const char *title, const char *first_msg);   /* first_msg 定会话语言(system 冻结) */
+bool asst_session_new(char id[ASST_ID_LEN + 1], const char *title, const char *first_msg, bool phone);   /* first_msg 定会话语言, phone 定身份段里的手机段(system 冻结) */
 long asst_ev(const char *id, const char *json);   /* 追加一行事件(页面的唯一真相), 返回行号; 广播 asst_cv */
 void asst_msg(const char *id, const char *json);  /* 追加一条 OpenAI message */
 char *asst_messages(const char *id);              /* "[system, …]": system 取会话创建时冻结的 system.txt */
@@ -115,20 +115,58 @@ void asst_approvals_json(ds4_buf *b);
 bool asst_secret_like(const char *s);  /* 卡号(15~19 位且过 Luhn)/ 私钥头 / password= / 本机口令原文 */
 
 /* ---------------- 记忆(asst_memory.c) ---------------- */
-char *asst_system_prompt(const char *first_msg);   /* 身份段 + 规矩 + 关于你 + 现在 + 语言句; 中/英按第一条消息选; 会话创建时拍快照 */
+char *asst_system_prompt(const char *first_msg, bool phone);   /* 身份段(+手机段) + 规矩 + 关于你 + 现在 + 语言句; 中/英按第一条消息选; 会话创建时拍快照 */
 bool asst_lang_is_zh(const char *text);
 char *asst_remember(const char *session, const char *text);
 char *asst_forget(const char *text);
 void asst_memory_json(ds4_buf *b);     /* {profile, rules} */
 bool asst_memory_save(const char *body, char *err, size_t errn);
 
-/* ---------------- 工具(asst_tools.c) + 浏览器(asst_browser.c) ---------------- */
-const char *asst_tools_json(void);     /* OpenAI tools 数组 */
+/* ---------------- 工具(asst_tools.c): 一张注册表(总纲 docs/assistant_arch.md §2) + 浏览器(asst_browser.c) ---------------- */
+typedef struct { const char *caps, *apps; } asst_tctx;   /* 这条消息的上下文: 页面报的设备能力(逗号表) + 能打开的 app(逗号表); 工具表按它筛 */
+char *asst_tools_json(const asst_tctx *ctx);   /* OpenAI tools 数组(malloc): 注册表里 avail 为真的行 */
 char *asst_tool_exec(const char *session, const char *tool, const char *args, const asst_gres *g, int *ok);   /* 已过守门; 在沙盒里跑 */
+char *asst_tool_post(const char *session, const char *tool, const char *result);   /* 设备工具交回结果后的收尾(locate → 反查地址 + 记进会话); 返回新结果(malloc)或 NULL = 原样 */
+const char *asst_toolbox_desc(void);   /* asst_toolbox.c: run 工具的描述(启动探测本机装了哪些程序, 一次) */
+void asst_toolbox_json(ds4_buf *b);    /* {"have":[…],"missing":[…]} 给状态接口 */
+#ifdef __APPLE__
+#define ASST_SBX_PATH "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Applications/LibreOffice.app/Contents/MacOS"
+#else
+#define ASST_SBX_PATH "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+#endif
 char *asst_web_search(const char *query, char *err, size_t errn);
 char *asst_web_visit(const char *url, char *err, size_t errn);
+char *asst_web_text(const char *url, char *err, size_t errn);   /* 页面正文原文(document.body.innerText): 给 JSON 接口用, 不走正文抽取 */
 const char *asst_browser_kind(void);   /* "firefox" / "" (本机没有) */
 void asst_browser_shutdown(void);
+
+/* ---------------- 设备(asst_device.c): 设备事实行 + 设备工具通道(总纲 §3) ---------------- */
+char *asst_device_line(const char *device_json, const char *caps, bool zh, const char *sid);   /* "[设备: 手机 · 时间 · 时区 · 可用: … · 上次定位: …]"; 只放事实; sid 可 NULL(不查上次定位) */
+char *asst_attach_line(const char *files, bool zh);   /* files = 换行分隔的工作区相对路径(页面上传进 inbox/ 的); 每个存在的文件一行 "[附件: inbox/x (N KB)]"; 没有 → NULL */
+bool asst_device_request(const char *sid, const char *client, const char *call_id, const char *kind, const char *args, char **out);   /* 写 device 事件, 等页面答复或停止; 返回 true = 设备做成了 */
+bool asst_device_answer(const char *sid, const char *call_id, bool ok, const char *data, size_t n, char *err, size_t errn);
+bool asst_device_waiting(void);        /* asst_mu 下读 */
+bool asst_run_stopping(void);          /* 当前运行被按了停止(asst_mu 下读) */
+int asst_device_tool(const char *name);   /* 0 = 不是设备工具; 1 = 要等设备交结果(定位/剪贴板/选文件); 2 = 交出去的动作(分享/打开/导航/拨打/复制/开 app), 页面出按钮, 不等 */
+
+/* ---------------- 地点(asst_geo.c): 高德 Web 服务, key 在 secrets/amap_key ---------------- */
+bool asst_secret_get(const char *name, char *out, size_t n);
+bool asst_secret_set(const char *name, const char *value, char *err, size_t errn);   /* 空值 = 删 */
+bool asst_geo_ready(void);             /* 反查地址可用: 本机有火狐(不要 key: 走高德网页版自用接口) */
+bool asst_geo_nearby_ready(void);      /* 周边 POI 可用: 有 key 且有火狐 */
+char *asst_geo_regeo(double lat, double lng, char *err, size_t errn);   /* 坐标 → 一句地址(malloc); 失败 NULL */
+char *asst_geo_nearby(double lat, double lng, const char *addr, const char *query, long radius, char *err, size_t errn);   /* 没 key 时按 addr 降级成网页搜索 */
+char *asst_geo_parse_regeo(const char *json, char *err, size_t errn);   /* 两个解析器单独露出来给单测喂夹具 */
+char *asst_geo_parse_around(const char *json, char *err, size_t errn);
+char *asst_geo_parse_regeo_free(const char *json, char *err, size_t errn);
+bool asst_geo_loc_get(const char *sid, double *lat, double *lng, long *acc, char *addr, size_t n, long *t);   /* 会话里记住的上次定位(meta.loc); 没有 false */
+char *asst_geo_locate_post(const char *sid, const char *raw);   /* locate 工具的收尾: 设备交回 {lat,lng,acc} → 反查地址 → 记进 meta.loc → 给模型看的文本 */
+
+/* ---------------- 交付(asst_file.c): 工作区文件 → 页面下载/分享; 设备传上来的文件 → 工作区 inbox/(方案稿 §13.2) ---------------- */
+#define ASST_FILE_MAX (64u << 20)      /* 单个文件 64 MiB: 与工作台上传料上限同 */
+bool asst_qget(const char *query, const char *key, char *out, size_t n);   /* 查询串取一项(百分号解码) */
+int asst_file_get(const char *path, ds4_buf *out, const char **ctype);     /* 200 + 文件体; 工作区外 403; 没有 404 */
+char *asst_file_save(const char *name, const char *data, size_t n);        /* 存进 workspace/inbox/<净化过的名字>, 返回给模型看的一句话 */
 
 /* ---------------- 模型客户端(asst_llm.c): 127.0.0.1:<模型端口> 的流式 chat/completions ---------------- */
 #define ASST_MAX_CALLS 16
@@ -154,10 +192,10 @@ bool asst_sse_feed(ds4_buf *pending, const char *data, size_t n, const asst_llm_
 
 /* ---------------- 运行(asst_run.c): 一条工人线程, FIFO ---------------- */
 void asst_run_start(int model_port);
-bool asst_run_submit(const char *session, const char *text, char *err, size_t errn);
+bool asst_run_submit(const char *session, const char *text, const char *device, const char *client, const char *caps, const char *apps, const char *files, char *err, size_t errn);   /* device = 页面报的设备 JSON(可 NULL): 工人线程拼成事实行放在 user content 前(不进页面事件); client = 发消息的页面 id; caps/apps = 它报的能力表与 app 表; files = 附件(换行分隔) */
 void asst_run_stop(const char *session);
 bool asst_run_answer(const char *session, const char *call_id, const char *decision, char *err, size_t errn);
-const char *asst_run_state(const char *session);   /* idle / queued / running / waiting_approval(asst_mu 下读) */
+const char *asst_run_state(const char *session);   /* idle / queued / running / waiting_approval / waiting_device(asst_mu 下读) */
 
 /* ---------------- HTTP(asst_api.c + asst_sse.c): 挂在 ds4-train 主进程上 ---------------- */
 typedef struct {

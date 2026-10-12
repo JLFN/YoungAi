@@ -1,7 +1,7 @@
-/* asst_policy.c — 守门的数据面: 路径解析、policy.json(你给的目录与 bash 开关)、approvals.jsonl(永久授权)、会话内授权、"像密文"的识别。
+/* asst_policy.c — 守门的数据面: 路径解析、policy.json(你给的目录与 run 开关)、approvals.jsonl(永久授权)、会话内授权、"像密文"的识别。
  * 决策序本身在 asst_guard.c。两张表都每次现读盘: 页面上一改立刻生效, 不存在"内存里还是旧规则"的窗口。
- * policy.json 形如 {"bash": false, "dirs": [{"path": "/home/x/Documents", "write": false}]}; 没有这个文件 = 只有工作区, bash 关。
- * ★包含助理根目录(~/.ds4/assistant)的目录不许加★: 加了家目录, bash 就能 cat 到口令、改 policy 给自己开权限(Landlock 只能白名单, 挖不掉子目录)。 */
+ * policy.json 形如 {"run": true, "dirs": [{"path": "/home/x/Documents", "write": false}]}; 没有这个文件 = 只有工作区, run 开(沙盒里跑, 不审批)。
+ * ★包含助理根目录(~/.ds4/assistant)的目录不许加★: 加了家目录, run 就能 cat 到口令、改 policy 给自己开权限(Landlock 只能白名单, 挖不掉子目录)。 */
 #include "asst_internal.h"
 #include <arpa/inet.h>
 #include <ctype.h>
@@ -53,10 +53,11 @@ static bool dir_contains_root(const char *dir) { return asst_under(asst_root, di
 char *asst_policy_json(void) {
     char p[ASST_PATH + 16]; snprintf(p, sizeof p, "%s/policy.json", asst_root);
     char *s = asst_slurp(p, NULL);
-    return s ? s : strdup("{\"bash\":false,\"dirs\":[]}");
+    return s ? s : strdup("{\"run\":true,\"dirs\":[]}");
 }
 
-bool asst_policy_bash(void) { char *p = asst_policy_json(); bool b = false; asst_jbool(p, "bash", &b); free(p); return b; }
+/* run 默认开(10-12 用户定: 沙盒里跑不审批); 只有 policy 里明写 "run": false 才关。老文件里的 "bash" 键不认 */
+bool asst_policy_run(void) { char *p = asst_policy_json(); bool b = true; asst_jbool(p, "run", &b); free(p); return b; }
 
 /* 第 i 个 policy 目录; 返回 false = 没有了。write 给 true/false */
 bool asst_policy_dir(int i, char *path, size_t n, bool *write) {
@@ -67,8 +68,8 @@ bool asst_policy_dir(int i, char *path, size_t n, bool *write) {
     return ok;
 }
 
-static bool policy_write(bool bash, const char *dirs_json) {
-    ds4_buf b = {0}; ds4_buf_printf(&b, "{\"bash\":%s,\"dirs\":%s}\n", bash ? "true" : "false", dirs_json);
+static bool policy_write(bool run, const char *dirs_json) {
+    ds4_buf b = {0}; ds4_buf_printf(&b, "{\"run\":%s,\"dirs\":%s}\n", run ? "true" : "false", dirs_json);
     char p[ASST_PATH + 16]; snprintf(p, sizeof p, "%s/policy.json", asst_root);
     const bool ok = asst_write_file(p, b.ptr, b.len, 0600);
     ds4_buf_free(&b);
@@ -130,14 +131,14 @@ void asst_guard_grant(const char *sid, const char *cls, const char *target, cons
     }
 }
 
-/* 页面操作: {"op":"bash","value":true} / {"op":"dir_add","path":…,"write":false} / {"op":"dir_del","path":…} / {"op":"revoke","index":N} */
+/* 页面操作: {"op":"run","value":true} / {"op":"dir_add","path":…,"write":false} / {"op":"dir_del","path":…} / {"op":"revoke","index":N} */
 bool asst_policy_op(const char *body, char *err, size_t errn) {
     char *op = NULL; bool ok = false;
     if (!asst_jstr(body, "op", &op)) { snprintf(err, errn, "missing op"); return false; }
-    char *pj = asst_policy_json(), *dirs = NULL; bool bash = false;
-    asst_jbool(pj, "bash", &bash);
+    char *pj = asst_policy_json(), *dirs = NULL; bool run = true;
+    asst_jbool(pj, "run", &run);
     if (!asst_jraw(pj, "dirs", &dirs)) dirs = strdup("[]");
-    if (!strcmp(op, "bash")) { bool v = false; asst_jbool(body, "value", &v); ok = policy_write(v, dirs); }
+    if (!strcmp(op, "run")) { bool v = true; asst_jbool(body, "value", &v); ok = policy_write(v, dirs); }
     else if (!strcmp(op, "dir_add") || !strcmp(op, "dir_del")) {
         char *in = NULL, real[ASST_PATH]; bool w = false; asst_jbool(body, "write", &w);
         const bool add = !strcmp(op, "dir_add");
@@ -150,7 +151,7 @@ bool asst_policy_op(const char *body, char *err, size_t errn) {
             for (int i = 0; asst_jarr_at(dirs, i, &d); i++, free(d), d = NULL) { char *s = NULL; asst_jstr(d, "path", &s); if (!s || strcmp(s, real)) { ds4_buf_puts(&nd, k++ ? "," : ""); ds4_buf_puts(&nd, d); } free(s); }
             if (add) { ds4_buf_puts(&nd, k++ ? "," : ""); ds4_buf_puts(&nd, "{\"path\":"); ds4_json_escape(&nd, real); ds4_buf_printf(&nd, ",\"write\":%s}", w ? "true" : "false"); }
             ds4_buf_putc(&nd, ']');
-            ok = policy_write(bash, nd.ptr);
+            ok = policy_write(run, nd.ptr);
             ds4_buf_free(&nd);
         }
         free(in);

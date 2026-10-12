@@ -15,6 +15,7 @@
     { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
     { "src": "/icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ],
+  "share_target": { "action": "/", "method": "GET", "params": { "title": "title", "text": "text", "url": "url" } },
   "shortcuts": [
     { "name": "助理", "url": "/#chat", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
     { "name": "训练", "url": "/#train", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] }

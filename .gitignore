@@ -102,3 +102,4 @@ ui_logs/
 # 环境变量文件常放令牌(本仓库不读 env, 但别的工具会在这里放)
 .env
 .env.*
+tests/asst/fake/

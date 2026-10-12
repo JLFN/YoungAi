@@ -257,6 +257,11 @@ ds4-train: src/train/train_main.o src/train/train_http.o src/train/train_proxy.o
 src/train/train_main.o: src/assistant/asst_internal.h
 src/assistant/%.o: src/assistant/%.c src/assistant/asst_internal.h src/common/ds4_json.h
 	$(CC) $(CFLAGS) -c -o $@ $<
+# 助理页面端到端门(方案稿 docs/assistant.md §13.5): 假模型(叫 ds4-server 才能被主进程认领)+ 系统 Chrome 的 Playwright 脚本; 不进 make test(要浏览器)
+tests/asst/fake/ds4-server: tests/asst/fake_model.c
+	mkdir -p tests/asst/fake && $(CC) $(CFLAGS) -o $@ $<
+asst-e2e: ds4-train tests/asst/fake/ds4-server
+	node tests/asst/e2e_device.mjs
 # 沙盒逃逸单测 + 纯逻辑单测 + 工作台登录单测(不要模型, 秒级; make test 里跑)
 ds4_asst_test: tests/asst/t_asst_sbx.c tests/asst/t_asst_logic.c tests/asst/t_studio_auth.c tests/asst/t_studio_net.c tests/asst/t_studio_models.c $(ASST_OBJS) $(WEB_OBJS) $(TRAIN_API_OBJS) $(TRAIN_AUTH_OBJS) $(TRAIN_NET_OBJS) src/common/ds4_json.o
 	$(CC) $(CFLAGS) -o $@ tests/asst/t_asst_sbx.c tests/asst/t_asst_logic.c tests/asst/t_studio_auth.c tests/asst/t_studio_net.c tests/asst/t_studio_models.c $(ASST_OBJS) $(WEB_OBJS) $(TRAIN_API_OBJS) $(TRAIN_AUTH_OBJS) $(TRAIN_NET_OBJS) src/common/ds4_json.o $(LDLIBS)

@@ -1,5 +1,8 @@
 # 聊天页 → 个人助理(对标 Meta Muse)方案稿
 
+**先读 `docs/assistant_arch.md`（10-12 架构总纲：进 → 干 → 出、能力注册表、零场景提示词）；
+两份冲突以总纲为准。** 本稿保留记忆、守门、沙盒、页面、接口的细节。
+
 2026-10-11。读者=第一次接触这个项目的人。先说要做成什么样、代码放哪、怎么验证；
 对标与取舍放后面。本稿是方案，不是记录；落地过程与判决进 `fable5.md`。
 
@@ -373,6 +376,141 @@ POST /api/assistant/policy    {op: dir_add|dir_del|approval_revoke|…}
 ## 12. 已定（10-11 用户）
 
 三个 tab；安全沙盒第一；有火狐的机器先跑通流程；旧对话暂不导入（浏览器里的 `ds4.studio.conv` 不读也不删）。
+
+## 13. 进 → 干 → 出：手机是传感器，也是出口（10-12 用户："我们的定位就是可以在 Agent 里面干任何事情，然后再衔接出来"）
+
+读者先知道现状：页面只是看事件流的窗口。你在手机上问"附近有什么好吃的"，模型收到的就是这七个字，
+不知道你在手机上、不知道你在哪；它写完一份分析，也只是一段 markdown 躺在屏幕上，没有下一步。
+§0~§12 只做了中间的"干"。本节补两头：
+
+```
+ 进(设备 → Agent)                 干(现有循环)                 出(Agent → 别的 app)
+ ─────────────────                ───────────                 ────────────────────
+ 每条消息自带: 手机/电脑、时区、    模型 ⇄ 工具若干轮           工作区文件 → 交付卡: 下载 / 分享 / 打开
+   位置坐标 + 地址                                             终稿 → 自动复制 + 链接/电话/地址按钮
+ 模型主动要: 剪贴板、照片/文件                                 链接 → 深链直接拉起对应 app
+```
+
+### 13.1 原则：设备能力 = 工具 schema，不写死任何链接格式（10-12 用户："Agent 正常框架不是写死文本"）
+
+第一版把"高德 URL 怎么拼、钉钉深链怎么写"塞进身份段，再让页面用正则从正文里抽链接变按钮——被用户叫停。
+改成和 MCP / 各家 client tools 一样的做法：
+
+**第二次叫停（同日）："不应该写死提示词……遇到问题就改提示词，后面怎么维护"。** 当时我在提示词里写了一条"问附近：
+有 nearby 就用，没有就 navigate 或问商圈"，真机上模型照做——丢个导航按钮就收工，一家店都不推荐。场景规则进提示词的
+后果就是这样：每撞一个场景加一句，句子之间互相打架，模型按字面执行。现在的分工固定如下，以后新场景照这张表落位，
+提示词不再加任何"遇到 X 就做 Y"：
+
+| 层 | 放什么 | 不放什么 |
+|---|---|---|
+| 提示词（`asst_memory.c`） | 通用做事方式：设备行是什么、工具表就是这台设备能做的事、干完要交出去、每次调用要带来新信息 | 任何场景（"附近""翻译""钉钉"）、任何 URL、任何"没有 X 就 Y" |
+| 设备行（`asst_device.c`） | 事实：手机/电脑、时间、时区、坐标、地址 | 指令（"不要上网查坐标"这种已删） |
+| 工具表（`asst_tools.c`） | 这条消息真能做的事；一个工具内部自己降级（`nearby` 有 key 回 POI，没 key 按地址搜网页，连地址都没有就在错误文本里说下一步） | 按配置时有时无的工具（模型会学到"有时候没有"然后自己绕路） |
+| 运行循环（`asst_run.c`） | 机械护栏：同一调用连续 3 次提示换路；超 10 次调用提示收口 | 语义判断 |
+
+- 页面开页时**报告这台设备能做什么**（`caps`：`clipboard_read` `clipboard_write` `share` `open_url` `navigate` `call` `file`），
+  只报真有的（`navigator.share` 不存在就不报 share；http 打开时剪贴板/分享都不报）。
+- 服务端 `asst_tools_json(caps)` 把固定工具 + caps 对应的设备工具一起随请求发给模型。模型看到的工具表就是这台设备真能做的事。
+- 模型调 `share(text, path)` / `navigate(query, lat, lng)` / `call(number)` / `copy_text(text)` / `open_url(url)` /
+  `read_clipboard()` / `pick_file(kind)`，**页面执行**。怎么拼地图链接（iPhone → `maps://`、安卓 → 包着 `geo:` 的 `intent:` 链接、电脑 → 高德网页）
+  是页面按平台定的一张表，模型只说"去哪"。
+  导航 / 打开 / 拨打在卡上是**真的 `<a>` 链接**，不用 `window.open`：iPhone 装成 App 后 `window.open` 开出来是一张白页
+  （10-12 真机实撞）。链接由系统接手，本页不动。
+  安卓别用裸 `geo:`：10-12 小米真机点了没反应。手机里没有 App 认领 `geo:`、或者浏览器不往外抛时，裸链接就是静默失败。
+  现在用 `intent://…#Intent;scheme=geo;S.browser_fallback_url=高德网页;end`：有地图 App 认领就交给它（多个弹选择框），
+  一个都没有就开高德网页，网页带 `callnative=1` 再试着拉起高德 App。
+- 页面渲染是**增量**的：每个条目的节点只建一次，流式时只改最后一条回答的文字；思考过程边想边展开，正文一出就自动收起。
+  之前每 90 ms 整段 `replaceChildren` 重建，模型思考时一秒几十条事件，手指按下到抬起之间按钮已经换成新节点，点击就丢
+  （10-12 真机："点击不灵敏"）。事件流 40 s 没字节（服务端每 15 s 一个 ping）自己掐了重连，切回前台 / 按停止也重连：
+  手机锁屏后旧连接死了但不报错，页面就一直"进行中"，发送和停止看起来都没反应。
+- 身份段只讲做事方式："把活干完只是一半，另一半是交出去：结论要发给别人就 share，要去的地方就 navigate……可以在最后一轮一起调。"
+  不列任何 URL。
+
+### 13.2 进：两条路，按"谁发起"分
+
+| 路 | 什么时候用 | 怎么做 | 代价 |
+|---|---|---|---|
+| **随消息附带** | 每条消息都有用的：设备类型、时区、位置 | 页面 `POST /send` 带 `client`(页面随机 id)、`device:{kind,tz,lang,loc:{lat,lng,acc,t,addr}}`、`caps`；服务端把设备拼成一行放在用户文本**前面**（存进 messages.jsonl 的 user content），system 不动 | 零模型轮；每条多 ~40 token |
+| **设备工具（要结果的）** | `read_clipboard`、`pick_file` | 运行线程写 `{"ev":"device","id","kind","args","client","wait":true}` → 睡在 `asst_cv` 上（和审批同一套，状态 `waiting_device`）→ 发消息的那台设备执行 → `POST /api/assistant/device`（文本）或 `POST /api/assistant/device_file?session=&id=&name=`（原始体 = 文件字节，存进工作区 `inbox/`）→ 线程醒，结果回填 | 多一轮模型 |
+| **设备工具（交出去的）** | `share` `navigate` `call` `copy_text` `open_url` | 同样写 `device` 事件但 `wait:false`，**不等**：结果立刻回"已交给用户的设备，那里显示成按钮，用户点了才执行"。页面上这张卡就是一个按钮（浏览器要手势才许开分享面板/新页/拨号） | 多一轮模型；模型自己决定该交给谁 |
+
+为什么位置不做成工具：模型要先想到"该问位置"再调一轮（开思考 ~1 分钟）；问"附近"的那一刻位置就该在手里。
+附带的那一行长这样（中文会话）：
+```
+[设备: 手机 · 2026-10-12 15:03 CST · Asia/Shanghai · 位置 30.2741,120.1551 ±35 m · 杭州市西湖区文三路]
+附近有什么好吃的
+```
+位置由页面拿（`navigator.geolocation`，浏览器只问一次；10 分钟内的上一个定位还算数，再旧就不冒充"现在在这"）。地址页面自己反查
+Nominatim（响应头带 CORS *；走 `rawFetch`，不然包过的 fetch 会把登录票头带给第三方），3 位小数（≈100 m）一格缓存；查不到只给坐标。
+电脑端不附位置（桌面只有 IP 定位，差几公里）。
+
+多台设备同时开着页面：`device` 事件带 `client`，只有发消息的那台自动执行；别的设备上显示"等发消息的那台设备回答"加一个
+"用这台设备回答"按钮。先到的答案算数，后到的服务端拒（id 对不上当前等的那条）。
+
+出错会怎样：手机用 `http://局域网IP:8000` 打开，`navigator.geolocation` / `clipboard` / `share` 全是 undefined——浏览器只在 https 或
+localhost 下给这些 API。页面检测到就在输入框上方提示一行，并且 caps 里不报这些能力（模型也就不会去调）。frp + 证书那条 https 路是前提。
+
+### 13.3 出：产物 = 工作区文件，页面自动出交付卡
+
+- **不加新工具**：模型要交给你的东西 `write_file` 到工作区。页面看 `tool_end`：这次运行里 `write_file`/`edit_file` 写过的、在工作区内、
+  不在 `.` 开头目录里的文件，每个一张**交付卡**：文件名 · [下载] [分享] [预览]。
+- **下载**：`GET /api/assistant/file?session=&path=`，只认工作区内（realpath 后比前缀），过鉴权。★`.html`/`.svg` 一律按 `text/plain` 给★：
+  这个接口和工作台同源，模型写的网页若按 `text/html` 返回，里面的脚本就能拿登录票、打 `/api` 下所有接口。
+- **分享**：`navigator.share({files})` → 系统分享面板 → 钉钉/微信里就是附件。模型要主动发给别人就调 `share(path=…)`，同一条路。
+- **终稿卡**：最后一条回答下面 [复制全文] [分享回答]——页面自己的便利按钮，不替模型做决定。
+
+### 13.4 地点数据源：高德 Web 服务（10-12 手机实测后加）
+
+"附近有什么吃的"这种问题需要**地点数据源**，通用搜索不做地理检索：手机给了 ±9 m 的坐标，模型拿着一串数字用 Bing 猜它在哪条街，
+11 轮 30 次调用没出结果。页面反查地址用的 OSM 在国内手机网络连不上，所以地址也没有。
+
+- **key**：到 lbs.amap.com 注册，建"Web 服务"类型的 Key，填进工作台设置（`POST /api/assistant/secret {name:"amap_key", value}`）。
+  存 `~/.ds4/assistant/secrets/amap_key`（0600，§4.5）：C 在发请求那一刻填进 URL，模型的上下文里永远没有它；页面只知道有没有。
+  工具守门的"控制目录一律拒"把 `secrets/` 也盖住了（有单测）。
+- **怎么发请求**：经火狐走 https（本项目不引 TLS 库）。火狐配置里关掉 JSON 查看器（`devtools.jsonview.enabled=false`），
+  `document.body.innerText` 就是原始 JSON（`asst_web_text`）。一次 ~1.6 s。
+- **反查地址在服务端做，不要 key**（`asst_geo_regeo`，run_one 里）：高德网页版自己用的 `www.amap.com/service/regeo` 不带 key 就回
+  省市区 + 最近几条路，设备行里是"江苏省南京市浦口区 西江路附近(121 m)"；配了 key 走正式接口，到门牌号。页面不再碰 OSM。
+  网页版接口不是公开接口，哪天改了地址退回坐标，别的不受影响。周边 POI（`service/poiInfo`）带不带浏览器指纹都回验证码页，所以 `nearby` 仍要 key。
+  手机 iframe 嵌高德这条路走不通：跨域 iframe 读不到内容、高德设了 X-Frame-Options、它定位用的也是同一个 GPS。
+- **工具 `nearby(query, radius)`**：这条消息带了位置、本机有火狐就进工具表（和设备能力同一套协商），**有没有 key 是工具自己的事**：
+  有 key 一次回 ≤10 家真实 POI（名字 · 距离 · 类型 · 评分 · 人均 · 地址 · 电话 · 坐标）；没 key 降级成"省市区 + 路名 + 关键词"的
+  Bing 搜索（`nearby_by_search`），结果头一行写明"没有地图数据源，名字来自点评/列表页，距离未核"；连地址都没有时错误文本里直接
+  给下一步（问用户在哪个商圈 / navigate）。坐标由设备行来，模型不用传。提示词里没有任何"附近"字样——模型只看工具描述。
+- 出错会怎样：高德回 `status != "1"`（key 错、额度用完）→ 原文 `info` 给模型，它会如实告诉你（spark 假 key 探针：3 轮 40 s 收口，
+  答"高德 key 失效拿不到数据"）。没火狐（Mac 开发机）：设备行只有坐标，`nearby` 不在工具表。
+
+### 13.5 第一刀只做文本格式的文档
+
+md / txt / csv / html 现在就能写、能下载、能分享。docx / xlsx / pdf 不是写不了，是要在 C 里写 zip + OOXML
+生成器（本项目零依赖，不引库），排在这一节跑通之后。过渡办法：模型写 `.html`，手机分享面板里"打印 → 存为 PDF"。
+
+### 13.6 代码落点（已落地 10-12）
+
+```
+src/assistant/asst_geo.c      凭证存取(secrets/<name>) + 高德 regeo / around 请求与解析
+```
+
+```
+src/assistant/asst_device.c   设备上下文行(拼进 user content) + 设备工具通道(要结果的等答复; 交出去的立刻回)
+src/assistant/asst_file.c     GET /api/assistant/file(工作区内 → 字节; html 降纯文本) + 设备上传存 inbox/(名字净化、重名编号)
+src/assistant/asst_tools.c    DEVICE_TOOLS 表(名字/能力/schema/要不要等) + asst_tools_json(caps) 按能力拼工具表
+asst_run.c                    job 带 ctx/client/caps; run_call 里设备工具走 asst_device_request; 状态 waiting_device
+asst_memory.c                 身份段"设备与交付"段(只讲做事方式) + 手机一句(屏幕小结论放前)
+asst_api.c                    send 收 client/device/caps; 新路由 device / device_file / file
+web/studio.html               deviceCaps(); 发消息前取位置+反查地址; device 事件: 等结果的自动做/出按钮, 动作的出按钮(mapUrl 按平台拼); 交付卡; 终稿卡; https 提示
+tests/asst/t_asst_logic.c     设备行格式、通道状态机、动作工具立刻回、工具表按能力筛、file 路径越界、上传名净化
+tests/asst/fake_model.c       假模型(叫 ds4-server): 读剪贴板 → 写报告 → 四个动作 → 终稿
+tests/asst/e2e_device.mjs     make asst-e2e: 系统 Chrome 仿真 iPhone 跑整条链, 19 项
+```
+
+### 13.7 门
+
+- **离线（Mac）**：`make test`（ds4_asst_test 含上面的单测）+ `make asst-e2e`（19 项：设备行、剪贴板自动读回、报告写入、四个动作工具立刻回、
+  下载字节一致、交付卡分享带文件、导航按钮按 iPhone 开 Apple 地图、复制按钮写剪贴板、share 动作带文字+文件、拨打按钮带号码、
+  http 打开出提示且能力表不报剪贴板/分享）。
+- **真模型（spark，待跑）**：手机 https 开页问"附近有什么好吃的" → 模型拿设备行里的位置搜 → 终稿前调 navigate/share；
+  "把我剪贴板里的英文翻成中文" → read_clipboard；"整理成报告发给同事" → write_file + share(path)。原文进 fable5。
 
 ## 来源
 

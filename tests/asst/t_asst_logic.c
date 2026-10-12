@@ -28,7 +28,7 @@ static asst_gres G(const char *sid, const char *tool, const char *args) { asst_g
 
 static void test_guard(const char *base) {
     char sid[ASST_ID_LEN + 1], sid2[ASST_ID_LEN + 1], a[8192], p[4400], err[256];
-    CHECKL(asst_session_new(sid, "t1", "读文件") && asst_session_new(sid2, "t2", "read a file"), "session_new");
+    CHECKL(asst_session_new(sid, "t1", "读文件", false) && asst_session_new(sid2, "t2", "read a file", false), "session_new");
     asst_gres r;
     r = G(sid, "read_file", "{\"path\":\"notes/a.txt\"}");
     snprintf(p, sizeof p, "%s/notes/a.txt", asst_ws);
@@ -48,15 +48,19 @@ static void test_guard(const char *base) {
     r = G(sid, "write_file", a); CHECKL(r.dec == ASST_ALLOW, "after session grant: %s", dec_name(r.dec));
     r = G(sid2, "write_file", a); CHECKL(r.dec == ASST_ASK, "session grant does not leak to other session: %s", dec_name(r.dec));
     asst_guard_grant(sid2, r.cls, r.target, "always");
-    char sid3[ASST_ID_LEN + 1]; asst_session_new(sid3, "t3", "x");
+    char sid3[ASST_ID_LEN + 1]; asst_session_new(sid3, "t3", "x", false);
     r = G(sid3, "write_file", a); CHECKL(r.dec == ASST_ALLOW, "always grant: %s", dec_name(r.dec));
     snprintf(a, sizeof a, "{\"path\":\"%s/.ssh/id_rsa\"}", asst_home);
     r = G(sid, "read_file", a); CHECKL(r.dec == ASST_ASK && r.once_only && r.warn, "ssh key: %s once=%d warn=%d", dec_name(r.dec), r.once_only, r.warn);
-    r = G(sid, "bash", "{\"command\":\"ls\"}"); CHECKL(r.dec == ASST_DENY, "bash off by default: %s", dec_name(r.dec));
-    CHECKL(asst_policy_op("{\"op\":\"bash\",\"value\":true}", err, sizeof err), "bash on: %s", err);
-    r = G(sid, "bash", "{\"command\":\"ls\"}"); CHECKL(r.dec == ASST_ASK && r.once_only && !r.warn, "bash on asks once: %s", dec_name(r.dec));
-    r = G(sid, "bash", "{\"command\":\"rm -rf build\"}"); CHECKL(r.dec == ASST_ASK && r.warn, "rm -rf warns");
-    r = G(sid, "bash", "{\"command\":\"echo 4111111111111111\"}"); CHECKL(r.dec == ASST_DENY, "card number in bash: %s", dec_name(r.dec));
+    /* run: 沙盒里跑, 默认开、不审批(10-12 用户定); 硬警告词只标红; 像密文的仍拒; 污点态不降级; 关掉才拒 */
+    r = G(sid, "run", "{\"command\":\"ls\"}"); CHECKL(r.dec == ASST_ALLOW && !r.warn && !strcmp(r.cls, "exec"), "run allowed by default without approval: %s", dec_name(r.dec));
+    r = G(sid, "run", "{\"command\":\"rm -rf build\"}"); CHECKL(r.dec == ASST_ALLOW && r.warn, "rm -rf in run: allowed, flagged");
+    r = G(sid, "run", "{\"command\":\"echo 4111111111111111\"}"); CHECKL(r.dec == ASST_DENY, "card number in run: %s", dec_name(r.dec));
+    r = G(sid, "run", "{\"command\":\"\"}"); CHECKL(r.dec == ASST_DENY, "run without command: %s", dec_name(r.dec));
+    r = G(sid, "bash", "{\"command\":\"ls\"}"); CHECKL(r.dec == ASST_DENY, "bash is not a tool any more: %s", dec_name(r.dec));
+    CHECKL(asst_policy_op("{\"op\":\"run\",\"value\":false}", err, sizeof err), "run off: %s", err);
+    r = G(sid, "run", "{\"command\":\"ls\"}"); CHECKL(r.dec == ASST_DENY, "run off → deny: %s", dec_name(r.dec));
+    CHECKL(asst_policy_op("{\"op\":\"run\",\"value\":true}", err, sizeof err), "run on again: %s", err);
     r = G(sid, "visit_page", "{\"url\":\"http://127.0.0.1:8001/v1/models\"}"); CHECKL(r.dec == ASST_DENY, "loopback url: %s", dec_name(r.dec));
     r = G(sid, "visit_page", "{\"url\":\"http://x@localhost/\"}"); CHECKL(r.dec == ASST_DENY, "userinfo@localhost: %s", dec_name(r.dec));
     r = G(sid, "visit_page", "{\"url\":\"http://192.168.2.1/\"}"); CHECKL(r.dec == ASST_DENY, "lan url: %s", dec_name(r.dec));
@@ -69,6 +73,7 @@ static void test_guard(const char *base) {
     snprintf(a, sizeof a, "{\"path\":\"%s/outside/new.txt\",\"content\":\"x\"}", base);
     r = G(sid2, "write_file", a); CHECKL(r.dec == ASST_ASK && r.once_only, "write after web is once-only even with always grant: %s once=%d", dec_name(r.dec), r.once_only);
     r = G(sid2, "write_file", "{\"path\":\"ok.txt\",\"content\":\"x\"}"); CHECKL(r.dec == ASST_ALLOW, "ws write after web still fine: %s", dec_name(r.dec));
+    r = G(sid2, "run", "{\"command\":\"ls\"}"); CHECKL(r.dec == ASST_ALLOW, "run after web still allowed (no network in the sandbox = no exfiltration): %s", dec_name(r.dec));
     CHECKL(!asst_policy_op("{\"op\":\"dir_add\",\"path\":\"/\"}", err, sizeof err), "dir_add / refused");
     char op[4600]; snprintf(op, sizeof op, "{\"op\":\"dir_add\",\"path\":\"%s\"}", base);
     CHECKL(!asst_policy_op(op, err, sizeof err), "dir_add of a folder containing the assistant root refused");
@@ -82,7 +87,6 @@ static void test_guard(const char *base) {
     asst_sbx_spec sp; r = G(sid3, "read_file", "{\"path\":\"a.txt\"}"); asst_guard_spec(&r, false, &sp);
     bool has_outside = false; for (int i = 0; i < sp.nro; i++) if (strstr(sp.ro[i], "/outside")) has_outside = true;
     CHECKL(!has_outside && sp.nrw == 1, "spec only ws(rw) + policy dirs: nrw=%d nro=%d", sp.nrw, sp.nro);
-    asst_policy_op("{\"op\":\"bash\",\"value\":false}", err, sizeof err);
 }
 
 static void test_secret(void) {
@@ -146,7 +150,7 @@ static void test_store_memory(void) {
     r = asst_remember("abcdef123456", "卡号 4111111111111111"); CHECKL(!strncmp(r, "error", 5), "remember refuses card: %s", r); free(r);
     r = asst_remember("999999123456", "住在杭州 周三晚上不排事"); CHECKL(!strncmp(r, "already", 7), "remember dedupes: %s", r); free(r);
     r = asst_remember("999999123456", "住在杭州"); CHECKL(!strncmp(r, "remembered", 10), "a prefix of an existing line is a new fact: %s", r); free(r);
-    CHECKL(asst_session_new(sid, "记忆测试", "记住我住在哪"), "session");
+    CHECKL(asst_session_new(sid, "记忆测试", "记住我住在哪", false), "session");
     asst_msg(sid, "{\"role\":\"user\",\"content\":\"hi\"}");
     char *m = asst_messages(sid);
     CHECKL(m && !strncmp(m, "[{\"role\":\"system\"", 17) && strstr(m, "住在杭州 周三晚上不排事") && strstr(m, "{\"role\":\"user\",\"content\":\"hi\"}]"), "messages: %.200s", m ? m : "(null)");
@@ -164,10 +168,139 @@ static void test_lang(void) {
     CHECKL(!asst_lang_is_zh("Open https://bot.sannysoft.com/ and list the WebDriver rows."), "en");
     CHECKL(!asst_lang_is_zh("Open the file 测试.txt"), "en with a chinese filename");
     CHECKL(asst_lang_is_zh("记住"), "short zh");
-    char *z = asst_system_prompt("你好"), *e = asst_system_prompt("hello");
+    char *z = asst_system_prompt("你好", true), *e = asst_system_prompt("hello", false);
     CHECKL(z && strstr(z, "回答语言:") && !strstr(z, "Reply language"), "zh prompt ends with zh language line");
     CHECKL(e && strstr(e, "Reply language:") && !strstr(e, "回答语言"), "en prompt ends with en language line");
+    /* 提示词只有做事方式(总纲 §1/§7): 没有场景词、没有 URL、没有"没有 X 就 Y"; 手机段只在手机会话 */
+    CHECKL(z && strstr(z, "屏幕小") && strstr(z, "交出去") && !strstr(z, "http") && !strstr(z, "附近") && !strstr(z, "钉钉") && !strstr(z, "navigate") && !strstr(z, "share"), "zh phone prompt: working style only, no scenario words / tool mapping / links");
+    CHECKL(e && strstr(e, "handing it over") && !strstr(e, "small screen") && !strstr(e, "nearby") && !strstr(e, "navigate") && !strstr(e, "http"), "en desktop prompt: no phone segment, no scenario words");
     free(z); free(e);
+    /* 工具表 = 注册表里 avail 为真的行: 没报能力 = 只有固定工具; 报了哪些就多哪些; 名字只认整词(share 不匹配 share_files); open_app 还要 apps 非空; run 永远在, 描述带工具箱 */
+    const asst_tctx c0 = { NULL, NULL }, c1 = { "clipboard_read,share_files,navigate,geolocation", NULL }, c2 = { "", "" }, c3 = { "open_app", "douyin,wechat" }, c4 = { "open_app", "" };
+    char *t0 = asst_tools_json(&c0), *t1 = asst_tools_json(&c1), *t2 = asst_tools_json(&c2), *t3 = asst_tools_json(&c3), *t4 = asst_tools_json(&c4), *t5 = asst_tools_json(NULL);
+    CHECKL(t0 && strstr(t0, "\"name\":\"run\"") && strstr(t0, "\"write_file\"") && !strstr(t0, "read_clipboard") && !strstr(t0, "\"locate\"") && !strstr(t0, "\"bash\"") && t0[strlen(t0) - 1] == ']', "no caps: base tools only, run instead of bash");
+    CHECKL(t0 && strstr(t0, "Run a shell command inside the sandbox") && strstr(t0, asst_toolbox_desc()[0] ? "no network" : "x"), "run description comes from the toolbox probe");
+    CHECKL(t1 && strstr(t1, "\"read_clipboard\"") && strstr(t1, "\"navigate\"") && strstr(t1, "\"locate\"") && !strstr(t1, "\"name\":\"share\"") && !strstr(t1, "pick_file") && !strstr(t1, "open_app"), "caps pick device tools, whole-word match");
+    CHECKL(t2 && !strcmp(t2, t0) && t5 && !strcmp(t5, t0), "empty caps == no caps == NULL ctx");
+    CHECKL(t3 && strstr(t3, "\"open_app\"") && strstr(t3, "\"enum\":[\"douyin\",\"wechat\"]"), "open_app lists the device's apps as enum: %.0s", t3);    CHECKL(t4 && !strstr(t4, "open_app"), "open_app cap without apps → no tool");
+    CHECKL(asst_device_tool("locate") == 1 && asst_device_tool("read_clipboard") == 1 && asst_device_tool("share") == 2 && asst_device_tool("open_app") == 2 && asst_device_tool("write_file") == 0 && asst_device_tool("run") == 0, "device tool kinds");
+    CHECKL(t0 && (!!strstr(t0, "\"nearby\"") == asst_geo_ready()) && (!!strstr(t0, "\"web_search\"") == asst_geo_ready()), "nearby/web tools listed iff a browser exists (key or not: nearby degrades itself): %s", asst_geo_ready() ? "listed" : "absent");
+    ds4_buf tb = {0}; asst_toolbox_json(&tb); CHECKL(tb.ptr && strstr(tb.ptr, "{\"have\":[") && strstr(tb.ptr, "\"missing\":["), "toolbox json: %s", tb.ptr); ds4_buf_free(&tb);
+    free(t0); free(t1); free(t2); free(t3); free(t4); free(t5);
+}
+
+/* 事实行(总纲 §3.1): 设备 · 时间 · 时区 · 可用能力 · 上次定位(locate 过才有) ; 页面报的 loc 不再读; 只放事实没有指令; ] 与换行被抹平(行是方括号包的) */
+static void test_device_line(void) {
+    char sid[ASST_ID_LEN + 1]; asst_session_new(sid, "loc", "附近", true);
+    char *l = asst_device_line("{\"kind\":\"phone\",\"tz\":\"Asia/Shanghai\",\"loc\":{\"lat\":30.2741,\"lng\":120.1551}}", "geolocation,clipboard_read,share,call,open_app,share_files", true, sid);
+    CHECKL(l && !strncmp(l, "[设备: 手机 · ", 16) && strstr(l, "Asia/Shanghai · 可用: 定位/读剪贴板/分享/拨号/打开app]") && !strstr(l, "位置") && !strstr(l, "30.27"), "phone zh line: caps as facts, page loc ignored: %s", l ? l : "(null)");
+    free(l);
+    l = asst_device_line("{\"kind\":\"desktop\"}", "", false, sid);
+    CHECKL(l && !strncmp(l, "[device: computer · ", 20) && !strstr(l, "can:") && !strstr(l, "last fix") && l[strlen(l) - 1] == ']', "desktop en line, no caps, no fix yet: %s", l ? l : "(null)");
+    free(l);
+    l = asst_device_line(NULL, NULL, true, NULL); CHECKL(l && !strncmp(l, "[设备: 电脑 · ", 16) && l[strlen(l) - 1] == ']', "no device json: %s", l ? l : "(null)"); free(l);
+    /* locate 收尾: 设备交回 {lat,lng,acc} → 记进 meta.loc → 之后的事实行带"上次定位"; 失败文本原样(NULL) */
+    char *p = asst_tool_post(sid, "locate", "{\"lat\":31.99338,\"lng\":118.59934,\"acc\":9}");
+    CHECKL(p && strstr(p, "lat,lng: 31.993380,118.599340 (±9 m)") && strstr(p, "remembered for this conversation"), "locate post text: %s", p ? p : "(null)"); free(p);
+    double la, lg; long acc, t; char addr[128];
+    CHECKL(asst_geo_loc_get(sid, &la, &lg, &acc, addr, sizeof addr, &t) && la > 31.99 && la < 32 && acc == 9 && t > 0, "meta.loc saved: %.5f %.5f ±%ld", la, lg, acc);
+    /* 有火狐的机器(spark)这里会真的反查到地址, 夹在 ±9 m 和 (0 分钟前) 之间; 没火狐就紧挨着 */
+    l = asst_device_line("{\"kind\":\"phone\"}", "geolocation", true, sid);
+    CHECKL(l && strstr(l, " · 上次定位: 31.99338,118.59934 ±9 m") && strstr(l, " (0 分钟前)]"), "later messages carry the last fix as a fact: %s", l ? l : "(null)"); free(l);
+    l = asst_device_line("{\"kind\":\"phone\"}", "geolocation", false, sid);
+    CHECKL(l && strstr(l, " · last fix: 31.99338,118.59934 ±9 m") && strstr(l, " (0 min ago)]"), "en last fix: %s", l ? l : "(null)"); free(l);
+    CHECKL(!asst_tool_post(sid, "locate", "GeolocationPositionError: denied") && !asst_tool_post(sid, "read_clipboard", "hi"), "non-location answers pass through unchanged");
+    asst_meta_set(sid, "loc", "{\"lat\":1,\"lng\":2,\"acc\":3,\"t\":0,\"addr\":\"路]名\\n2号\"}");
+    l = asst_device_line("{\"kind\":\"phone\"}", "", true, sid); CHECKL(l && strstr(l, "上次定位: 1.00000,2.00000 ±3 m 路 名 2号]") && l[strlen(l) - 1] == ']', "address cleaned of ] and newline: %s", l ? l : "(null)"); free(l);
+    /* 附件行: 只认工作区内存在的相对路径 */
+    char *s = asst_file_save("合同.docx", "0123456789", 10); free(s);
+    char *a = asst_attach_line("inbox/合同.docx\n../token\n/etc/passwd\ninbox/nope.docx", true);
+    CHECKL(a && !strcmp(a, "[附件: inbox/合同.docx (1 KB)]"), "attachment line: only real workspace files: %s", a ? a : "(null)"); free(a);
+    CHECKL(!asst_attach_line("", true) && !asst_attach_line(NULL, false) && !asst_attach_line("../token", true), "no attachments → NULL");
+}
+
+/* 高德: 凭证存取(0600, 值不回传, 空值删) + 两个解析器喂真实形状的夹具(空字段是 [] 不是 "") */
+static void test_geo(void) {
+    char err[256] = "", v[257];
+    CHECKL(!asst_secret_set("Bad Name", "x", err, sizeof err), "secret name rule: %s", err);
+    CHECKL(!asst_secret_set("amap_key", "has space", err, sizeof err), "secret value rule: %s", err);
+    CHECKL(asst_secret_set("amap_key", "abc123DEF", err, sizeof err) && asst_secret_get("amap_key", v, sizeof v) && !strcmp(v, "abc123DEF"), "secret set/get: %s", v);
+    char p[ASST_PATH + 64]; snprintf(p, sizeof p, "%s/secrets/amap_key", asst_root); struct stat st;
+    CHECKL(!stat(p, &st) && (st.st_mode & 0777) == 0600, "secret file 0600");
+    char ga[ASST_PATH + 96]; snprintf(ga, sizeof ga, "{\"path\":\"%s\"}", p);
+    asst_gres g; asst_guard("abcdefabcdef", "read_file", ga, &g);
+    CHECKL(g.dec == ASST_DENY, "tools cannot read secrets (control folder): %s", g.reason);
+    char *a = asst_geo_parse_regeo("{\"status\":\"1\",\"info\":\"OK\",\"regeocode\":{\"formatted_address\":\"江苏省南京市浦口区江浦街道文德路8号\",\"addressComponent\":{\"city\":\"南京市\"}}}", err, sizeof err);
+    CHECKL(a && !strcmp(a, "江苏省南京市浦口区江浦街道文德路8号"), "regeo parse: %s", a ? a : err); free(a);
+    a = asst_geo_parse_regeo("{\"status\":\"0\",\"info\":\"INVALID_USER_KEY\",\"infocode\":\"10001\"}", err, sizeof err);
+    CHECKL(!a && !strcmp(err, "amap: INVALID_USER_KEY"), "regeo bad key → info to model: %s", err);
+    const char *around = "{\"status\":\"1\",\"count\":\"2\",\"pois\":[{\"id\":\"B1\",\"name\":\"龙井草堂\",\"type\":\"餐饮服务;中餐厅;中餐厅\",\"address\":\"文三路1号\",\"location\":\"120.155,30.274\",\"tel\":\"0571-88888888\",\"distance\":\"230\",\"biz_ext\":{\"rating\":\"4.6\",\"cost\":\"88\"}},"
+                         "{\"id\":\"B2\",\"name\":\"无名小面\",\"type\":\"餐饮服务;快餐厅\",\"address\":[],\"location\":\"120.156,30.275\",\"tel\":[],\"distance\":\"410\",\"biz_ext\":{\"rating\":[],\"cost\":[]}}]}";
+    a = asst_geo_parse_around(around, err, sizeof err);
+    CHECKL(a && strstr(a, "1. 龙井草堂 · 230 m · 餐饮服务;中餐厅;中餐厅 · rating 4.6 · avg cost 88\n   address: 文三路1号\n   tel: 0571-88888888\n   location(lng,lat): 120.155,30.274\n2. 无名小面 · 410 m · 餐饮服务;快餐厅\n   location(lng,lat): 120.156,30.275\n"), "around parse(empty fields skipped): %s", a ? a : err); free(a);
+    /* 网页版 regeo(免 key): 省市区 + 最近的路; 直辖市 province==city 不重复 */
+    a = asst_geo_parse_regeo_free("{\"status\":\"1\",\"data\":{\"code\":\"1\",\"province\":\"江苏省\",\"city\":\"南京市\",\"district\":\"浦口区\",\"desc\":\"江苏省,南京市,浦口区\",\"road_list\":[{\"direction\":\"SouthWest\",\"distance\":\"121\",\"name\":\"西江路\"},{\"name\":\"张村路\",\"distance\":\"190\"}]}}", err, sizeof err);
+    CHECKL(a && !strcmp(a, "江苏省南京市浦口区 西江路附近(121 m)"), "web regeo parse: %s", a ? a : err); free(a);
+    a = asst_geo_parse_regeo_free("{\"status\":\"1\",\"data\":{\"province\":\"上海市\",\"city\":\"上海市\",\"district\":\"徐汇区\",\"road_list\":[]}}", err, sizeof err);
+    CHECKL(a && !strcmp(a, "上海市徐汇区"), "web regeo municipality not doubled: %s", a ? a : err); free(a);
+    a = asst_geo_parse_regeo_free("<!DOCTYPE html><html>punish</html>", err, sizeof err); CHECKL(!a && strstr(err, "bad response"), "web regeo html → error");
+    if (!asst_geo_nearby_ready()) {   /* 没 key: nearby 工具不消失, 降级成按地址搜; 连地址都没有才报错, 错误文本里给模型下一步(问商圈 / navigate), 不靠提示词 */
+        a = asst_geo_nearby(31.99, 118.6, "", "烤肉", 0, err, sizeof err);
+        CHECKL(!a && strstr(err, "no map data source") && strstr(err, "ask the user"), "nearby without key and without address → actionable error: %s", err);
+    }
+    /* nearby 坐标是参数; 没给就用会话记住的上次定位; 都没有 → 让模型先 locate(工具内部的降级, 不进提示词) */
+    char nsid[ASST_ID_LEN + 1]; asst_session_new(nsid, "n", "x", false); asst_gres ng; asst_guard(nsid, "nearby", "{\"query\":\"烤肉\"}", &ng); int ok = 0;
+    a = asst_tool_exec(nsid, "nearby", "{\"query\":\"烤肉\"}", &ng, &ok); CHECKL(a && !ok && strstr(a, "call locate first"), "nearby without any coordinates: %s", a ? a : "(null)"); free(a);
+    a = asst_geo_parse_around("{\"status\":\"1\",\"count\":\"0\",\"pois\":[]}", err, sizeof err);
+    CHECKL(a && strstr(a, "no places found"), "around empty: %s", a ? a : err); free(a);
+    CHECKL(asst_secret_set("amap_key", "", err, sizeof err) && !asst_secret_get("amap_key", v, sizeof v), "empty value deletes");
+}
+
+/* 设备工具通道: 请求线程睡着等; 错 id 的答复被拒; 对的答复把它叫醒并拿到原文; 第二次用"停止"叫醒 */
+typedef struct { char sid[ASST_ID_LEN + 1]; char *out; bool ok; } dev_job;
+static void *dev_thread(void *a) { dev_job *j = a; j->ok = asst_device_request(j->sid, "c1", "call_7", "read_clipboard", "{}", &j->out); return NULL; }
+static void test_device_channel(void) {
+    dev_job j = { "abcdefabcdef", NULL, false }; char err[256];
+    pthread_t th; pthread_create(&th, NULL, dev_thread, &j);
+    for (int i = 0; i < 200; i++) { pthread_mutex_lock(&asst_mu); const bool w = asst_device_waiting(); pthread_mutex_unlock(&asst_mu); if (w) break; usleep(5000); }
+    pthread_mutex_lock(&asst_mu); CHECKL(asst_device_waiting(), "request is waiting"); pthread_mutex_unlock(&asst_mu);
+    CHECKL(!asst_device_answer("abcdefabcdef", "call_8", true, "x", 1, err, sizeof err), "wrong id refused: %s", err);
+    CHECKL(!asst_device_answer("000000000000", "call_7", true, "x", 1, err, sizeof err), "wrong session refused");
+    CHECKL(asst_device_answer("abcdefabcdef", "call_7", true, "hello 剪贴板", 15, err, sizeof err), "right id accepted");
+    pthread_join(th, NULL);
+    CHECKL(j.ok && j.out && !strcmp(j.out, "hello 剪贴板"), "request got the data: %s", j.out ? j.out : "(null)");
+    free(j.out);
+    CHECKL(!asst_device_answer("abcdefabcdef", "call_7", true, "late", 4, err, sizeof err), "late duplicate refused");
+    j.out = NULL; j.ok = false;
+    pthread_create(&th, NULL, dev_thread, &j);
+    for (int i = 0; i < 200; i++) { pthread_mutex_lock(&asst_mu); const bool w = asst_device_waiting(); pthread_mutex_unlock(&asst_mu); if (w) break; usleep(5000); }
+    CHECKL(asst_device_answer("abcdefabcdef", "call_7", false, "NotAllowedError", 15, err, sizeof err), "failure answer accepted");
+    pthread_join(th, NULL);
+    CHECKL(!j.ok && j.out && !strncmp(j.out, "error: NotAllowedError", 22), "failure reaches the model as error: %s", j.out ? j.out : "(null)");
+    free(j.out);
+    char *o = NULL; CHECKL(asst_device_request("abcdefabcdef", "c1", "call_9", "share", "{\"text\":\"hi\"}", &o) && o && strstr(o, "handed to the user's device"), "action tool returns at once: %s", o ? o : "(null)");
+    pthread_mutex_lock(&asst_mu); CHECKL(!asst_device_waiting(), "action tool leaves nothing pending"); pthread_mutex_unlock(&asst_mu);
+    free(o);
+}
+
+/* 交付: 上传名净化 + 重名编号; 取文件只认工作区内; 查询串解码 */
+static void test_file(void) {
+    char *r = asst_file_save("../../evil.txt", "abc", 3); CHECKL(r && !strcmp(r, "saved: inbox/evil.txt (3 bytes)\n"), "save sanitizes: %s", r ? r : "(null)"); free(r);
+    r = asst_file_save("evil.txt", "abcd", 4); CHECKL(r && !strcmp(r, "saved: inbox/evil-2.txt (4 bytes)\n"), "save dedupes: %s", r ? r : "(null)"); free(r);
+    r = asst_file_save(".hidden", "x", 1); CHECKL(r && !strcmp(r, "saved: inbox/hidden (1 bytes)\n"), "no leading dot: %s", r ? r : "(null)"); free(r);
+    r = asst_file_save("照片 1.jpg", "x", 1); CHECKL(r && !strcmp(r, "saved: inbox/照片1.jpg (1 bytes)\n"), "utf-8 kept, space dropped: %s", r ? r : "(null)"); free(r);
+    ds4_buf b = {0}; const char *ct = "";
+    CHECKL(asst_file_get("inbox/evil-2.txt", &b, &ct) == 200 && b.len == 4 && !memcmp(b.ptr, "abcd", 4) && !strncmp(ct, "text/plain", 10), "get in ws: %zu %s", b.len, ct);
+    ds4_buf_free(&b); b = (ds4_buf){0};
+    CHECKL(asst_file_get("../token", &b, &ct) == 403, "get control folder refused"); ds4_buf_free(&b); b = (ds4_buf){0};
+    CHECKL(asst_file_get("~/.ssh/id_rsa", &b, &ct) == 403, "get home refused"); ds4_buf_free(&b); b = (ds4_buf){0};
+    CHECKL(asst_file_get("nope.md", &b, &ct) == 404, "get missing 404"); ds4_buf_free(&b); b = (ds4_buf){0};
+    char p[64]; CHECKL(asst_qget("session=abc&path=%E6%8A%A5%E5%91%8A%2Fa+b.md&x=1", "path", p, sizeof p) && !strcmp(p, "报告/a b.md"), "qget decode: %s", p);
+    CHECKL(!asst_qget("a=1", "path", p, sizeof p) && !p[0], "qget missing");
+    /* 上传接口(输入框旁的附件按钮): 原始体 → inbox/, 回 path */
+    asst_req up = { "POST", "/api/assistant/upload", "name=%E5%90%88%E5%90%8C.docx", "DOCX", 4, true, "localhost", "", "1", true };
+    ds4_buf o = {0}; const char *ct2 = "";
+    CHECKL(asst_api(&up, &o, &ct2) == 200 && o.ptr && strstr(o.ptr, "{\"path\":\"inbox/合同-2.docx\""), "upload → inbox path: %s", o.ptr ? o.ptr : "(null)"); ds4_buf_free(&o);
 }
 
 int asst_test_logic(const char *base) {
@@ -176,7 +309,7 @@ int asst_test_logic(const char *base) {
     if (!asst_init(root, err, sizeof err)) { printf("FAIL asst_init: %s\n", err); return fails + 1; }
     char link[4600], tgt[4600]; snprintf(link, sizeof link, "%s/link_to_secret", asst_ws); snprintf(tgt, sizeof tgt, "%s/outside/secret.txt", base);
     if (symlink(tgt, link)) perror("symlink");
-    test_lang(); test_secret(); test_auth(); test_store_memory(); test_guard(base); test_sse();
+    test_lang(); test_secret(); test_auth(); test_store_memory(); test_guard(base); test_sse(); test_device_line(); test_device_channel(); test_file(); test_geo();
     printf("asst logic: %d passed, %d failed\n", passes, fails);
     return fails;
 }

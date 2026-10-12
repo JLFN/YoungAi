@@ -1,34 +1,105 @@
-/* asst_tools.c — 助理的工具: OpenAI tools 定义(随每个请求发给 ds4-server, 它按官方 TOOLS_TEMPLATE 渲染)+ 执行分发。
- * 执行前守门已经点过头(asst_guard); 这里按类走: 记忆 = 主进程直接写 memory/(路径固定, 模型给不了路径);
- * 文件/bash = asst_guard_spec 给的沙盒规则里 fork 子进程跑; 网页 = 火狐(asst_browser.c)。
+/* asst_tools.c — 助理的能力注册表(总纲 docs/assistant_arch.md §2): 每个工具一行 —— 名字 / OpenAI schema / 执行点 / 守门类别 / 可用条件。
+ * asst_tools_json 遍历这张表把 avail 为真的行随请求发给 ds4-server(它按官方 TOOLS_TEMPLATE 渲染); asst_tool_exec 查表分发执行。
+ * 新能力 = 加一行 + 一个执行函数, 不碰提示词、不碰循环、不碰页面渲染(10-12 用户: 通用助手, 不要任何定制化提示词)。
+ * 场景知识只许住在三处: 工具的 description(模型什么时候用它、结果长什么样、拿不到数据会怎样)、设备端平台表(链接怎么拼)、工具内部的降级(没 key 怎么办)。
+ * 执行点: MEM = 主进程直接写 memory/; SBX = asst_guard_spec 给的沙盒规则里 fork 子进程跑; NET = 火狐(asst_browser.c / asst_geo.c); DEV = 用户正在用的那台设备, 页面执行。
+ * 可用条件按设备与本机稳定(报了能力 / 装了火狐), 不按 key 有无忽隐忽现: 模型会学到"这个工具有时候没有"然后自己绕路。
  * 网页正文太长时只给模型头 16 KB, 全文落工作区 .web/ 下, 模型要更多就 read_file 分页 —— 一页 900 KB 的正文直接塞进上下文是 30 万 token 的预填。 */
 #include "asst_internal.h"
 #include <sys/stat.h>
 #include <time.h>
 
 #define WEB_HEAD ASST_READ_BYTES   /* 与 read_file 一页同量(16 KB ≈ 5~6k token); 以前 48 KB, 一页就是 1.5 万 token 的预填 */
-#define BASH_TMO_DEFAULT 60
-#define BASH_TMO_MAX 600
+#define RUN_TMO_DEFAULT 60
+#define RUN_TMO_MAX 600
 
 #define TOOL(name, desc, props, req) "{\"type\":\"function\",\"function\":{\"name\":\"" name "\",\"description\":\"" desc "\",\"parameters\":{\"type\":\"object\",\"properties\":{" props "},\"required\":[" req "]}}}"
 #define S(n, d) "\"" n "\":{\"type\":\"string\",\"description\":\"" d "\"}"
 #define I(n, d) "\"" n "\":{\"type\":\"integer\",\"description\":\"" d "\"}"
+#define N(n, d) "\"" n "\":{\"type\":\"number\",\"description\":\"" d "\"}"
 #define B(n, d) "\"" n "\":{\"type\":\"boolean\",\"description\":\"" d "\"}"
 
-static const char tools_json[] = "["
-    TOOL("remember", "Save one fact or preference the user explicitly told you, for future conversations. One fact per call. Never store passwords, codes or other people's private details.", S("text", "The fact, as a short sentence"), "\"text\"") ","
-    TOOL("forget", "Delete remembered lines that contain the given text.", S("text", "Text contained in the lines to delete"), "\"text\"") ","
-    TOOL("read_file", "Read a text file with line numbers (up to 400 lines per call). Relative paths are inside the workspace.", S("path", "File path") "," I("start", "First line to show, 1-based (default 1)") "," I("lines", "How many lines (default and max 400)"), "\"path\"") ","
-    TOOL("list_dir", "List a directory. Relative paths are inside the workspace; empty = workspace root.", S("path", "Directory path"), "") ","
-    TOOL("search_files", "Find lines containing a substring in files under a directory (recursive, skips hidden folders).", S("pattern", "Substring to find") "," S("path", "Directory or file to search (default workspace)") "," S("glob", "Only file names matching this pattern, e.g. *.md"), "\"pattern\"") ","
-    TOOL("write_file", "Create or overwrite a whole text file. Parent folders are created. The old version is kept in .trash.", S("path", "File path") "," S("content", "Full file content"), "\"path\",\"content\"") ","
-    TOOL("edit_file", "Replace an exact piece of text in a file. old_string must appear exactly once unless replace_all is true.", S("path", "File path") "," S("old_string", "Exact text to replace") "," S("new_string", "Replacement text") "," B("replace_all", "Replace every occurrence"), "\"path\",\"old_string\",\"new_string\"") ","
-    TOOL("bash", "Run a shell command in the workspace (sandboxed: no network, only the workspace and allowed folders are writable). Needs the user's approval each time.", S("command", "Shell command") "," I("timeout_sec", "Timeout in seconds (default 60, max 600)"), "\"command\"") ","
-    TOOL("web_search", "Search the web (Bing) and get result titles and links.", S("query", "Search query"), "\"query\"") ","
-    TOOL("visit_page", "Open a web page and get its readable text and links.", S("url", "http(s) URL"), "\"url\"")
-    "]";
+enum { MEM, SBX, NET, DEV };
+typedef struct {
+    const char *name, *schema;   /* schema 为 NULL 的行由 build 按上下文拼(run 的工具箱、open_app 的 app 枚举) */
+    int site, wait;              /* wait: DEV 工具要不要等设备交回结果 */
+    const char *cap;             /* 非 NULL: 页面报了这个能力才有 */
+    bool need_browser;           /* 本机要有火狐 */
+    bool (*build)(const asst_tctx *, ds4_buf *);   /* 返回 false = 这条消息没有这个工具 */
+} asst_tool;
 
-const char *asst_tools_json(void) { return tools_json; }
+static bool has_item(const char *list, const char *item) {   /* 逗号表整词匹配: share 不匹配 share_files */
+    const size_t n = strlen(item);
+    for (const char *p = list; p && (p = strstr(p, item)); p += n) if ((p == list || p[-1] == ',') && (p[n] == 0 || p[n] == ',')) return true;
+    return false;
+}
+
+static bool build_run(const asst_tctx *c, ds4_buf *b) {
+    (void)c;
+    ds4_buf_puts(b, "{\"type\":\"function\",\"function\":{\"name\":\"run\",\"description\":"); ds4_json_escape(b, asst_toolbox_desc());
+    ds4_buf_puts(b, ",\"parameters\":{\"type\":\"object\",\"properties\":{" S("command", "Shell command (bash -c)") "," I("timeout_sec", "Timeout in seconds (default 60, max 600)") "},\"required\":[\"command\"]}}}");
+    return true;
+}
+
+/* open_app 的 app 参数是枚举, 值 = 页面报的、这台设备平台表里有的 app 名(抖音/微信/钉钉/支付宝…); 怎么拼 scheme 是页面的事 */
+static bool build_open_app(const asst_tctx *c, ds4_buf *b) {
+    if (!c->apps || !c->apps[0]) return false;
+    ds4_buf_puts(b, "{\"type\":\"function\",\"function\":{\"name\":\"open_app\",\"description\":\"Open an app on the user's device, optionally at a search or a page: douyin opens its search for `query`; dingtalk and alipay can open `url` inside the app; wechat only opens (it accepts no content; to send text or a file into WeChat/DingTalk use share, which opens the system share sheet).\","
+                      "\"parameters\":{\"type\":\"object\",\"properties\":{\"app\":{\"type\":\"string\",\"enum\":[");
+    int k = 0;
+    for (const char *p = c->apps; *p; ) { const char *e = strchr(p, ','); const size_t n = e ? (size_t)(e - p) : strlen(p); if (n) { ds4_buf_puts(b, k++ ? ",\"" : "\""); ds4_buf_append(b, p, n); ds4_buf_putc(b, '"'); } p += n + (e ? 1 : 0); }
+    ds4_buf_puts(b, "]}," S("query", "Search text, for apps that can open a search") "," S("url", "Web page to open inside the app, for apps that support it") "},\"required\":[\"app\"]}}}");
+    return k > 0;
+}
+
+static const asst_tool TOOLS[] = {
+    { "remember", TOOL("remember", "Save one fact or preference the user explicitly told you, for future conversations. One fact per call. Never store passwords, codes or other people's private details.", S("text", "The fact, as a short sentence"), "\"text\""), MEM, 0, NULL, false, NULL },
+    { "forget", TOOL("forget", "Delete remembered lines that contain the given text.", S("text", "Text contained in the lines to delete"), "\"text\""), MEM, 0, NULL, false, NULL },
+    { "read_file", TOOL("read_file", "Read a text file with line numbers (up to 400 lines per call). Relative paths are inside the workspace.", S("path", "File path") "," I("start", "First line to show, 1-based (default 1)") "," I("lines", "How many lines (default and max 400)"), "\"path\""), SBX, 0, NULL, false, NULL },
+    { "list_dir", TOOL("list_dir", "List a directory. Relative paths are inside the workspace; empty = workspace root.", S("path", "Directory path"), ""), SBX, 0, NULL, false, NULL },
+    { "search_files", TOOL("search_files", "Find lines containing a substring in files under a directory (recursive, skips hidden folders).", S("pattern", "Substring to find") "," S("path", "Directory or file to search (default workspace)") "," S("glob", "Only file names matching this pattern, e.g. *.md"), "\"pattern\""), SBX, 0, NULL, false, NULL },
+    { "write_file", TOOL("write_file", "Create or overwrite a whole text file in the workspace (reports, tables, lists, drafts). Parent folders are created; the old version is kept in .trash. To hand the file to the user or to another app, call share with its path afterwards.", S("path", "File path") "," S("content", "Full file content"), "\"path\",\"content\""), SBX, 0, NULL, false, NULL },
+    { "edit_file", TOOL("edit_file", "Replace an exact piece of text in a file. old_string must appear exactly once unless replace_all is true.", S("path", "File path") "," S("old_string", "Exact text to replace") "," S("new_string", "Replacement text") "," B("replace_all", "Replace every occurrence"), "\"path\",\"old_string\",\"new_string\""), SBX, 0, NULL, false, NULL },
+    { "run", NULL, SBX, 0, NULL, false, build_run },
+    { "web_search", TOOL("web_search", "Search the web (Bing) and get result titles and links.", S("query", "Search query"), "\"query\""), NET, 0, NULL, true, NULL },
+    { "visit_page", TOOL("visit_page", "Open a web page and get its readable text and links.", S("url", "http(s) URL"), "\"url\""), NET, 0, NULL, true, NULL },
+    { "nearby", TOOL("nearby", "Places around a location (restaurants, shops, hotels, stations, ...). Use this, not web_search, for anything 'nearby' / 'around here'. Coordinates come from locate (or the last fix shown in the user's message); omit lat/lng to use that last fix. With a map data source configured the result is real POIs (name, distance, address, phone, rating, coordinates); without one it is a web search scoped to the user's street, so names come from review sites and distances are not given.",
+                      S("query", "What to look for, e.g. 美食 / 咖啡 / 药店 / 地铁站") "," N("lat", "Latitude (default: last fix)") "," N("lng", "Longitude (default: last fix)") "," I("radius", "Search radius in meters (default 1500)"), "\"query\""), NET, 0, NULL, true, NULL },
+    /* 设备工具: 在用户正在用的那台设备上执行; wait=1 的等设备交回结果, wait=0 的是交出去的动作(页面出按钮, 浏览器要手势才许分享/开新页, 结果立刻回"已交给设备") */
+    { "locate", TOOL("locate", "Get the user's current position from their device: latitude, longitude, accuracy in meters and, when a map service is reachable, the address. The result is remembered for this conversation and shown in later messages as the last fix, so call it again only if the user may have moved or the fix is old.", "", ""), DEV, 1, "geolocation", false, NULL },
+    { "read_clipboard", TOOL("read_clipboard", "Read the text currently in the clipboard of the device the user is chatting from. Use it when the user refers to something they copied.", "", ""), DEV, 1, "clipboard_read", false, NULL },
+    { "pick_file", TOOL("pick_file", "Ask the user to pick a photo or a file on their device. It is saved into the workspace folder inbox/ and the saved path is returned.", S("kind", "photo or file") "," S("prompt", "What to pick, shown to the user"), "\"kind\""), DEV, 1, "file", false, NULL },
+    { "copy_text", TOOL("copy_text", "Put text on the clipboard of the user's device: use it for text the user will paste somewhere else.", S("text", "Text to copy"), "\"text\""), DEV, 0, "clipboard_write", false, NULL },
+    { "share", TOOL("share", "Hand a result to the user or to another app on their device: a workspace file (the user gets a download button and a share button that opens the system share sheet: DingTalk, WeChat, Mail, ...) and/or text. Use it for conclusions meant for someone else and for every file the user should receive.", S("text", "Message text") "," S("path", "Workspace file to hand over") "," S("title", "Short title"), ""), DEV, 0, "share", false, NULL },
+    { "open_url", TOOL("open_url", "Open a web page on the user's device.", S("url", "http(s) URL"), "\"url\""), DEV, 0, "open_url", false, NULL },
+    { "navigate", TOOL("navigate", "Open the user's map app at a place the user wants to go to: search text and/or coordinates. The device picks the map app.", S("query", "Place name or search text") "," N("lat", "Latitude, if known") "," N("lng", "Longitude, if known"), "\"query\""), DEV, 0, "navigate", false, NULL },
+    { "call", TOOL("call", "Open the phone dialer with a number the user wants to contact.", S("number", "Phone number"), "\"number\""), DEV, 0, "call", false, NULL },
+    { "open_app", NULL, DEV, 0, "open_app", false, build_open_app },
+};
+#define NTOOLS (sizeof TOOLS / sizeof TOOLS[0])
+
+static const asst_tool *find(const char *name) { for (size_t i = 0; i < NTOOLS; i++) if (!strcmp(name, TOOLS[i].name)) return &TOOLS[i]; return NULL; }
+
+int asst_device_tool(const char *name) { const asst_tool *t = find(name); return t && t->site == DEV ? (t->wait ? 1 : 2) : 0; }
+
+char *asst_tools_json(const asst_tctx *ctx) {
+    const asst_tctx none = { "", "" };
+    if (!ctx) ctx = &none;
+    ds4_buf b = {0}; int k = 0;
+    ds4_buf_putc(&b, '[');
+    for (size_t i = 0; i < NTOOLS; i++) {
+        const asst_tool *t = &TOOLS[i];
+        if (t->cap && !has_item(ctx->caps ? ctx->caps : "", t->cap)) continue;
+        if (t->need_browser && !asst_browser_kind()[0]) continue;
+        const size_t mark = b.len;
+        if (k) ds4_buf_putc(&b, ',');
+        if (t->schema) ds4_buf_puts(&b, t->schema);
+        else if (!t->build(ctx, &b)) { b.len = mark; continue; }
+        k++;
+    }
+    ds4_buf_putc(&b, ']');
+    return ds4_buf_take(&b);
+}
 
 static char *arg(const char *args, const char *key) { char *v = NULL; asst_jstr(args, key, &v); return v; }
 
@@ -45,18 +116,37 @@ static char *web_result(const char *text, const char *url) {
     return ds4_buf_take(&b);
 }
 
+static char *err_text(const char *err) { ds4_buf b = {0}; ds4_buf_printf(&b, "error: %s\n", err); return ds4_buf_take(&b); }
+
+/* nearby: 坐标是参数; 没给就用会话里记住的上次定位(locate 的结果); 连那个都没有 → 让模型先 locate。key 有没有是 asst_geo_nearby 内部的事 */
+static char *exec_nearby(const char *sid, const char *args, int *ok) {
+    double lat = 0, lng = 0; long acc = 0, t = 0; char addr[512] = "", err[512] = "";
+    char *ls = NULL, *gs = NULL;
+    const bool given = asst_jraw(args, "lat", &ls) && asst_jraw(args, "lng", &gs) && ls[0] != '"' && gs[0] != '"' && ls[0] != 'n' && gs[0] != 'n';
+    if (given) { lat = atof(ls); lng = atof(gs); asst_geo_loc_get(sid, &(double){0}, &(double){0}, &acc, addr, sizeof addr, &t); }
+    free(ls); free(gs);
+    if (!given && !asst_geo_loc_get(sid, &lat, &lng, &acc, addr, sizeof addr, &t)) return strdup("error: no coordinates: pass lat/lng, or call locate first\n");
+    char *q = arg(args, "query"); long radius = 0; asst_jint(args, "radius", &radius);
+    char *r = asst_geo_nearby(lat, lng, addr, q, radius, err, sizeof err); free(q);
+    if (!r) return err_text(err);
+    *ok = 1; return r;
+}
+
 char *asst_tool_exec(const char *sid, const char *tool, const char *args, const asst_gres *g, int *ok) {
     *ok = 0;
-    if (!strcmp(tool, "remember")) { char *t = arg(args, "text"); char *r = asst_remember(sid, t); free(t); *ok = strncmp(r, "error", 5) != 0; return r; }
-    if (!strcmp(tool, "forget")) { char *t = arg(args, "text"); char *r = asst_forget(t); free(t); *ok = 1; return r; }
-    if (!strcmp(tool, "web_search") || !strcmp(tool, "visit_page")) {
+    const asst_tool *t = find(tool);
+    if (!t || t->site == DEV) return strdup("error: unknown tool\n");
+    if (!strcmp(tool, "remember")) { char *s = arg(args, "text"); char *r = asst_remember(sid, s); free(s); *ok = strncmp(r, "error", 5) != 0; return r; }
+    if (!strcmp(tool, "forget")) { char *s = arg(args, "text"); char *r = asst_forget(s); free(s); *ok = 1; return r; }
+    if (!strcmp(tool, "nearby")) return exec_nearby(sid, args, ok);
+    if (t->site == NET) {
         char err[512] = "";
         char *r = !strcmp(tool, "web_search") ? asst_web_search(g->path, err, sizeof err) : asst_web_visit(g->path, err, sizeof err);
-        if (!r) { ds4_buf b = {0}; ds4_buf_printf(&b, "error: %s\n", err); return ds4_buf_take(&b); }
+        if (!r) return err_text(err);
         char *out = web_result(r, g->path); free(r); *ok = 1;
         return out;
     }
-    const bool exec = !strcmp(tool, "bash");
+    const bool exec = !strcmp(tool, "run");
     asst_sbx_spec sp; asst_guard_spec(g, exec, &sp);
     char trash[ASST_PATH + 16]; snprintf(trash, sizeof trash, "%s/.trash", asst_ws);
     char *out = NULL; asst_sbx_rc rc;
@@ -80,16 +170,21 @@ char *asst_tool_exec(const char *sid, const char *tool, const char *args, const 
         asst_edit_args a = { g->path, o, n ? n : "", all, trash };
         rc = asst_sbx_run(&sp, asst_fs_edit, &a, &out);
         free(o); free(n);
-    } else if (exec) {
-        char *cmd = arg(args, "command"); long tmo = BASH_TMO_DEFAULT; asst_jint(args, "timeout_sec", &tmo);
+    } else {   /* run: 沙盒里 bash -c(asst_bash.c); 没有网络、只能写工作区, 所以不审批(10-12 用户定) */
+        char *cmd = arg(args, "command"); long tmo = RUN_TMO_DEFAULT; asst_jint(args, "timeout_sec", &tmo);
         if (tmo < 1) tmo = 1;
-        if (tmo > BASH_TMO_MAX) tmo = BASH_TMO_MAX;
+        if (tmo > RUN_TMO_MAX) tmo = RUN_TMO_MAX;
         sp.timeout_s = (int)tmo + 5;   /* bash 自己先到点收尾(交回已有输出), 外层墙钟是最后一道 */
         asst_bash_args a = { cmd ? cmd : "", asst_ws, (int)tmo };
         rc = asst_sbx_run(&sp, asst_bash_exec, &a, &out);
         free(cmd);
-    } else return strdup("error: unknown tool\n");
+    }
     *ok = rc == ASST_SBX_OK && out && strncmp(out, "error", 5) != 0;
     if (rc == ASST_SBX_LOCK_FAILED) { ds4_buf b = {0}; ds4_buf_printf(&b, "error: refused to run without a sandbox: %s\n", out ? out : ""); free(out); return ds4_buf_take(&b); }
     return out ? out : strdup("");
+}
+
+char *asst_tool_post(const char *sid, const char *tool, const char *result) {
+    if (!strcmp(tool, "locate")) return asst_geo_locate_post(sid, result);
+    return NULL;
 }

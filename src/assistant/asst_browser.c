@@ -79,7 +79,9 @@ static void write_prefs(void) {
          * navigator.geolocation / mediaDevices / Notification 整个消失, 普通火狐没有这种样子, 反爬脚本一查就露(10-11 sannysoft 日志: Notification is not defined) */
         "permissions.default.geo\", 2", "permissions.default.camera\", 2", "permissions.default.microphone\", 2", "permissions.default.desktop-notification\", 2",
         "browser.download.folderList\", 2", "browser.download.useDownloadDir\", true", "browser.aboutwelcome.enabled\", false", "browser.startup.page\", 0",
-        "webgl.force-enabled\", true", NULL };
+        "webgl.force-enabled\", true",
+        "devtools.jsonview.enabled\", false",   /* JSON 接口(高德)的回应按原文显示, document.body.innerText 就是 JSON; 开着查看器拿到的是它渲染的树 */
+        NULL };
     for (int i = 0; prefs[i]; i++) fprintf(f, "user_pref(\"%s);\n", prefs[i]);
     fprintf(f, "user_pref(\"browser.download.dir\", \"%s/downloads\");\n", ff_prof);
     fclose(f);
@@ -273,3 +275,4 @@ char *asst_web_search(const char *query, char *err, size_t errn) {
 }
 
 char *asst_web_visit(const char *url, char *err, size_t errn) { return run_js(url, ds4_web_extract_page_js(), err, errn); }
+char *asst_web_text(const char *url, char *err, size_t errn) { return run_js(url, "document.body ? document.body.innerText : ''", err, errn); }

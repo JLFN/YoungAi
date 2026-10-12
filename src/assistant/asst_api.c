@@ -49,6 +49,30 @@ static void title_of(const char *text, char *out, size_t n) {   /* 首条消息�
     out[k] = 0;
 }
 
+/* 请求体里的字符串数组 → 分隔表。name_list 只收 [a-z_] 的名字(能力/app 名, 别的字符进不了工具表匹配); path_list 收附件相对路径(不许 / ~ 开头、不许换行, 真伪由 asst_attach_line 再核) */
+static void name_list(const char *body, const char *key, char *out, size_t n, char sep) {
+    char *arr = NULL; size_t k = 0; out[0] = 0;
+    if (!asst_jraw(body, key, &arr)) return;
+    for (int i = 0; ; i++) {
+        char *c = NULL; if (!asst_jarr_at(arr, i, &c)) break;
+        char *v = NULL; const char *cp = c;
+        if (json_string(&cp, &v) && v[0] && strspn(v, "abcdefghijklmnopqrstuvwxyz_") == strlen(v) && k + strlen(v) + 2 < n) { if (k) out[k++] = sep; memcpy(out + k, v, strlen(v) + 1); k += strlen(v); }
+        free(v); free(c);
+    }
+    free(arr);
+}
+static void path_list(const char *body, char *out, size_t n) {
+    char *arr = NULL; size_t k = 0; out[0] = 0;
+    if (!asst_jraw(body, "files", &arr)) return;
+    for (int i = 0; ; i++) {
+        char *c = NULL; if (!asst_jarr_at(arr, i, &c)) break;
+        char *v = NULL; const char *cp = c;
+        if (json_string(&cp, &v) && v[0] && v[0] != '/' && v[0] != '~' && !strchr(v, '\n') && k + strlen(v) + 2 < n) { if (k) out[k++] = '\n'; memcpy(out + k, v, strlen(v) + 1); k += strlen(v); }
+        free(v); free(c);
+    }
+    free(arr);
+}
+
 static void audit_tail(ds4_buf *b, int max) {
     char p[ASST_PATH + 24]; snprintf(p, sizeof p, "%s/audit.jsonl", asst_root);
     size_t n = 0; char *all = asst_slurp(p, &n);
@@ -76,7 +100,9 @@ int asst_api(const asst_req *rq, ds4_buf *out, const char **ctype) {
     if (!strcmp(r, "status")) {
         ds4_buf_printf(out, "{\"sandbox\":\"%s\",\"browser\":\"%s\",\"workspace\":", asst_sbx_kind(), asst_browser_kind());
         ds4_json_escape(out, asst_ws); ds4_buf_puts(out, ",\"root\":"); ds4_json_escape(out, asst_root);
-        ds4_buf_printf(out, ",\"local\":%s}", rq->peer_local ? "true" : "false");
+        char k[257]; const bool amap = asst_secret_get("amap_key", k, sizeof k); memset(k, 0, sizeof k);   /* 只报有没有, 值不出门 */
+        ds4_buf_printf(out, ",\"local\":%s,\"amap_key\":%s,\"geo\":%s,\"nearby\":%s,\"toolbox\":", rq->peer_local ? "true" : "false", amap ? "true" : "false", asst_geo_ready() ? "true" : "false", asst_geo_nearby_ready() ? "true" : "false");
+        asst_toolbox_json(out); ds4_buf_putc(out, '}');
         return 200;
     }
     if (!strcmp(r, "sessions")) { asst_sessions_json(out); return 200; }
@@ -90,23 +116,66 @@ int asst_api(const asst_req *rq, ds4_buf *out, const char **ctype) {
         char *pj = asst_policy_json(); ds4_buf_printf(out, ",\"policy\":%s}", pj); free(pj);
         return 200;
     }
+    if (!strcmp(r, "file")) {   /* 交付卡的下载/分享取字节(§13.2); session 只用来和页面的其它请求同形, 文件按工作区路径找 */
+        char path[ASST_PATH]; asst_qget(rq->query, "path", path, sizeof path);
+        return asst_file_get(path, out, ctype);
+    }
     if (!post) return jerr(out, 405, "use POST");
     if (!strcmp(r, "policy")) { if (!asst_policy_op(rq->body, err, sizeof err)) return jerr(out, 400, err); ds4_buf_puts(out, "{\"ok\":true}"); return 200; }
+    if (!strcmp(r, "secret")) {   /* {name, value}: 凭证进 secrets/<name>(0600); 空 value = 删; 页面永远拿不回原文 */
+        char *name = NULL, *value = NULL; asst_jstr(rq->body, "name", &name); asst_jstr(rq->body, "value", &value);
+        const bool ok = asst_secret_set(name ? name : "", value, err, sizeof err);
+        free(name); free(value);
+        if (!ok) return jerr(out, 400, err);
+        ds4_buf_puts(out, "{\"ok\":true}"); return 200;
+    }
+    if (!strcmp(r, "upload")) {   /* 用户主动给的附件(输入框旁的按钮): 原始体 = 文件字节 → workspace/inbox/; 发消息时把回的 path 放进 files, 事实行里就有 [附件: …] */
+        char name[256]; asst_qget(rq->query, "name", name, sizeof name);
+        char *msg = asst_file_save(name, rq->body, rq->body_len);
+        if (!strncmp(msg, "error", 5)) { const int c = jerr(out, 400, msg); free(msg); return c; }
+        const char *p = strstr(msg, "saved: "), *sp = p ? strchr(p + 7, ' ') : NULL;   /* "saved: inbox/x (N bytes)" → 只要路径 */
+        ds4_buf_puts(out, "{\"path\":"); if (p && sp) { char path[300]; snprintf(path, sizeof path, "%.*s", (int)(sp - p - 7), p + 7); ds4_json_escape(out, path); } else ds4_buf_puts(out, "\"\"");
+        ds4_buf_puts(out, ",\"note\":"); ds4_json_escape(out, msg); ds4_buf_putc(out, '}'); free(msg);
+        return 200;
+    }
+    if (!strcmp(r, "device_file")) {   /* pick_file 的答复: 原始体 = 文件字节, 名字与请求 id 在查询串里 */
+        char sid[ASST_ID_LEN + 1], id[64], name[256];
+        asst_qget(rq->query, "session", sid, sizeof sid); asst_qget(rq->query, "id", id, sizeof id); asst_qget(rq->query, "name", name, sizeof name);
+        if (!asst_id_ok(sid)) return jerr(out, 400, "bad session id");
+        char *msg = asst_file_save(name, rq->body, rq->body_len);
+        const bool ok = strncmp(msg, "error", 5) != 0;
+        if (!asst_device_answer(sid, id, ok, msg, strlen(msg), err, sizeof err)) { free(msg); return jerr(out, 409, err); }
+        ds4_buf_puts(out, "{\"ok\":"); ds4_json_escape(out, msg); ds4_buf_putc(out, '}'); free(msg);
+        return 200;
+    }
     char *sid = NULL; asst_jstr(rq->body, "session", &sid);
     int code = 200;
     if (!strcmp(r, "send")) {
-        char *text = NULL; asst_jstr(rq->body, "text", &text);
+        char *text = NULL, *client = NULL, *device = NULL, *kind = NULL;
+        asst_jstr(rq->body, "text", &text); asst_jstr(rq->body, "client", &client); asst_jraw(rq->body, "device", &device);
+        if (device) asst_jstr(device, "kind", &kind);
+        char caps[256], apps[256], files[4096];
+        name_list(rq->body, "caps", caps, sizeof caps, ','); name_list(rq->body, "apps", apps, sizeof apps, ',');   /* 页面报的能力表与 app 表: 只收 [a-z_] 的名字 */
+        path_list(rq->body, files, sizeof files);
+        const bool phone = kind && !strcmp(kind, "phone");
         char id[ASST_ID_LEN + 1];
         if (!text || !text[0]) code = jerr(out, 400, "empty message");
         else if (sid && sid[0] && !asst_id_ok(sid)) code = jerr(out, 400, "bad session id");
+        else if (client && strlen(client) > 32) code = jerr(out, 400, "client id too long");
         else {
             if (sid && sid[0]) snprintf(id, sizeof id, "%s", sid);
-            else { char t[64]; title_of(text, t, sizeof t); if (!asst_session_new(id, t, text)) { free(text); free(sid); return jerr(out, 500, "cannot create session"); } }
-            if (!asst_run_submit(id, text, err, sizeof err)) code = jerr(out, 409, err);
+            else { char t[64]; title_of(text, t, sizeof t); if (!asst_session_new(id, t, text, phone)) { free(text); free(sid); free(client); free(device); free(kind); return jerr(out, 500, "cannot create session"); } }
+            if (!asst_run_submit(id, text, device, client, caps, apps, files, err, sizeof err)) code = jerr(out, 409, err);
             else ds4_buf_printf(out, "{\"session\":\"%s\"}", id);
         }
-        free(text);
+        free(text); free(client); free(device); free(kind);
     } else if (!asst_id_ok(sid)) code = jerr(out, 400, "bad or missing session id");
+    else if (!strcmp(r, "device")) {   /* 设备工具的文本答复(剪贴板内容 / 失败原因) */
+        char *id = NULL, *data = NULL; bool ok = false;
+        asst_jstr(rq->body, "id", &id); asst_jstr(rq->body, "data", &data); asst_jbool(rq->body, "ok", &ok);
+        if (!asst_device_answer(sid, id ? id : "", ok, data ? data : "", data ? strlen(data) : 0, err, sizeof err)) code = jerr(out, 409, err); else ds4_buf_puts(out, "{\"ok\":true}");
+        free(id); free(data);
+    }
     else if (!strcmp(r, "stop")) { asst_run_stop(sid); ds4_buf_puts(out, "{\"ok\":true}"); }
     else if (!strcmp(r, "approve")) {
         char *id = NULL, *dec = NULL; asst_jstr(rq->body, "id", &id); asst_jstr(rq->body, "decision", &dec);

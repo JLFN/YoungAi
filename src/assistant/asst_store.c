@@ -84,7 +84,7 @@ void asst_spath(const char *id, const char *file, char *out, size_t n) { snprint
 
 static void meta_write(const char *id, const char *body) { char p[ASST_PATH + 64]; asst_spath(id, "meta.json", p, sizeof p); asst_write_file(p, body, strlen(body), 0600); }
 
-bool asst_session_new(char id[ASST_ID_LEN + 1], const char *title, const char *first_msg) {
+bool asst_session_new(char id[ASST_ID_LEN + 1], const char *title, const char *first_msg, bool phone) {
     unsigned char rnd[6]; const int fd = open("/dev/urandom", O_RDONLY);
     if (fd < 0 || read(fd, rnd, sizeof rnd) != (ssize_t)sizeof rnd) { if (fd >= 0) close(fd); return false; }
     close(fd);
@@ -96,7 +96,7 @@ bool asst_session_new(char id[ASST_ID_LEN + 1], const char *title, const char *f
     ds4_buf_puts(&m, "{\"title\":"); ds4_json_escape(&m, title ? title : "");
     ds4_buf_printf(&m, ",\"created\":%ld,\"updated\":%ld,\"taint_web\":false,\"taint_priv\":false}", now, now);
     meta_write(id, m.ptr); ds4_buf_free(&m);
-    char *sys = asst_system_prompt(first_msg);
+    char *sys = asst_system_prompt(first_msg, phone);
     char p[ASST_PATH + 64]; asst_spath(id, "system.txt", p, sizeof p);
     const bool ok = asst_write_file(p, sys, strlen(sys), 0600);
     free(sys);

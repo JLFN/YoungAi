@@ -5,7 +5,7 @@
  * 浏览器只在 https 或 localhost / 127.0.0.1 下注册 service worker: 手机用 http://局域网IP:8000 打开时注册会静默失败,
  * 页面照常能用, 只是装不成 PWA(要装就套一层 https, 见 docs/pwa.md)。
  * 改了这里的缓存清单要把 CACHE 的版本号 +1: 新 worker 激活时删掉旧版本的缓存。 */
-const CACHE = "ds4-studio-v1";
+const CACHE = "ds4-studio-v2";   /* v2: manifest 加了 share_target(分享目标), 装过的手机要换掉缓存里的旧 manifest */
 const SHELL = ["/", "/manifest.webmanifest", "/logo.jpg", "/icon-192.png", "/icon-512.png", "/icon-maskable.png", "/apple-touch-icon.png"];
 const STATIC = new Set(SHELL.slice(1));
 const PAGES = new Set(["/", "/index.html", "/studio", "/train"]);   /* 同 src/train/train_api.c 里 serve_page 认的路径 */

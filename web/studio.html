@@ -145,11 +145,13 @@
   .cursor::after { content: "▍"; color: var(--accent-2); animation: pulse 1s infinite; }
   details.think { margin-bottom: 8px; color: var(--dim); font-size: 13px; }
   details.think summary { cursor: pointer; }
-  details.think div { white-space: pre-wrap; border-left: 2px solid var(--border); padding-left: 10px; margin-top: 6px; }
+  details.think div { white-space: pre-wrap; border-left: 2px solid var(--border); padding-left: 10px; margin-top: 6px; max-height: 40vh; overflow: auto; }   /* 思考流式直接展开给人看, 封顶 40vh 自己滚, 不把正文顶出屏幕 */
   .stats { color: var(--faint); font-size: 12px; margin-top: 6px; }
   .empty { margin: 12vh auto 0; text-align: center; color: var(--dim); }
   .empty img { width: 84px; height: 84px; border-radius: 50%; display: block; margin: 0 auto 14px; box-shadow: 0 10px 32px rgba(59,124,246,.45); }
   .empty h2 { color: var(--text); font-size: 20px; margin: 0 0 6px; }
+  .empty > div { max-width: 520px; margin: 0 auto; padding: 0 8px; }   /* 一句话上百字: 不封宽在电脑上拉成 860 px 一长行, 读不下去 */
+  .empty .note { margin-top: 12px; font-size: 12.5px; color: var(--faint); }
   .banner { max-width: 860px; margin: 14px auto 0; width: calc(100% - 44px); display: none; align-items: center; gap: 12px; padding: 11px 14px; border-radius: 10px; border: 1px solid var(--accent-line); background: var(--accent-soft); font-size: 13.5px; }
   .banner.on { display: flex; }
   .banner .bar { flex: 1; height: 6px; border-radius: 99px; background: rgba(255,255,255,.08); overflow: hidden; }
@@ -193,6 +195,22 @@
   .appr { padding: 4px 12px 12px; display: flex; flex-direction: column; gap: 8px; } .appr .why { font-weight: 600; } .appr pre.box { max-height: 220px; }
   .abtns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   .aend { margin-left: 42px; } .aerr { margin-left: 42px; font-size: 13px; }
+  /* 进/出(方案稿 §13): 设备卡 = 等这台设备做事(剪贴板/选文件); 交付卡 = 模型写进工作区的文件; 终稿卡 = 复制/分享 + 正文里抽出的链接·电话·导航 */
+  .tool.dev { border-color: var(--accent-line); }
+  .deliver { margin: 8px 0 8px 42px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; }
+  .deliver { border: 1px solid var(--accent-line); background: var(--accent-soft); border-radius: 10px; padding: 8px 12px; }
+  .deliver .fname { font: 600 13px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--accent-2); word-break: break-all; flex: 1; min-width: 120px; }
+  .deliver button { font-size: 12.5px; padding: 5px 11px; }
+  .tool.dev .appr button.primary, .tool.dev .appr a.primary { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tool.dev .appr a.primary { display: block; box-sizing: border-box; text-align: center; text-decoration: none; background: var(--grad); border: 1px solid transparent; border-radius: 8px; padding: 7px 10px; color: #fff; font-weight: 600; }   /* 导航/打开/拨打是真链接(见 actionHref), 长得和按钮一样 */
+    .deliver pre.box { width: 100%; max-height: 300px; }
+  .devnote { max-width: 860px; margin: 0 auto 6px; font-size: 12px; color: var(--amber); display: none; } .devnote.on { display: block; }
+  .attach { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; } .attach:empty { display: none; }
+  .attach .chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 3px 8px; border: 1px solid var(--accent-line); background: var(--accent-soft); border-radius: 999px; color: var(--accent-2); max-width: 100%; }
+  .attach .chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .attach .chip button { border: 0; background: none; color: inherit; padding: 0 2px; font-size: 14px; line-height: 1; cursor: pointer; }
+  #btn-attach { padding: 4px 9px; font-size: 15px; line-height: 1; }
+  .sdot.waiting_device { background: var(--accent-2); animation: pulse .9s infinite; }
+  @media (max-width: 760px) { .deliver { margin-left: 0; } }
   .mem-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
   textarea.memtxt { width: 100%; min-height: 360px; resize: vertical; font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; margin: 10px 0; }
   #v-act .card { margin-bottom: 16px; } #v-act td.wrap { white-space: normal; word-break: break-all; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; } #v-act td .act { font-size: 12.5px; padding: 3px 9px; }
@@ -493,9 +511,12 @@
     <div class="banner" id="chat-banner"><span id="chat-banner-text"></span><div class="bar"><div id="chat-banner-bar"></div></div><button class="primary" id="btn-load2" style="display:none" data-i18n="load_model">加载模型</button></div>
     <div class="chat-scroll" id="chat-scroll"><div class="chat-inner" id="chat"></div></div>
     <div class="composer">
+      <div class="devnote" id="dev-note"></div>
       <div class="box">
+        <div class="attach" id="attach-list"></div>
         <textarea id="input" rows="1"></textarea>
         <div class="tools">
+          <button class="ghost" id="btn-attach" title="附件">📎</button><input type="file" id="attach-in" multiple style="display:none">
           <select id="plug" class="picked" style="display:none"></select><button class="ghost pickbtn" id="plug-btn" style="display:none"></button><label id="pt-sw" class="switch" style="display:none"><input type="checkbox" id="pt-on"><span class="knob"></span><span data-i18n="pt">后训练</span></label><span class="muted" id="plug-st" style="font-size:12px"></span>
           <div class="spacer"></div>
           <button class="primary" id="btn-send"></button>
@@ -520,7 +541,8 @@
   <section class="view" id="v-act">
     <div class="card"><div class="card-title" data-i18n="act_sec">安全</div>
       <div class="muted" id="act-info" style="margin-bottom:10px"></div>
-      <label class="switch" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="act-bash"><span class="knob"></span><span data-i18n="act_bash"></span></label></div>
+      <div class="muted" id="act-toolbox" style="margin-bottom:10px"></div>
+      <label class="switch" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="act-run"><span class="knob"></span><span data-i18n="act_run"></span></label></div>
     <div class="card"><div class="card-title" data-i18n="act_dirs">允许的目录</div><div class="muted" data-i18n="act_dirs_sub" style="margin-bottom:10px"></div>
       <table class="cards flow"><tbody id="act-dirs"></tbody></table>
       <div style="display:flex;gap:10px;align-items:center;margin-top:10px"><input id="act-path" data-i18n-ph="act_dir_ph" style="flex:1"><label class="ck" style="padding:0"><input type="checkbox" id="act-write"><span data-i18n="act_write">可写</span></label><button class="primary" id="act-add" data-i18n="act_add">添加</button></div></div>
@@ -737,6 +759,14 @@
     <div class="serr" id="cert-err"></div>
     <div class="srow"><button id="cert-up" data-i18n="set_cert_up">上传证书压缩包</button><button class="danger" id="cert-del" data-i18n="set_cert_del">删除证书</button><input type="file" id="cert-file" accept=".zip,application/zip" hidden></div>
   </div>
+  <div class="ssec">
+    <div class="card-title" data-i18n="set_amap">地图(高德 Web 服务 Key)</div>
+    <div class="muted" data-i18n="set_amap_sub"></div>
+    <div class="tunst" id="amap-st"></div>
+    <div class="sgrid"><label class="f"><span data-i18n="set_amap_key">Key</span><input id="set-amap" type="password" autocomplete="off" maxlength="64" spellcheck="false"></label></div>
+    <div class="serr" id="amap-err"></div>
+    <div class="srow"><div class="spacer"></div><button class="danger" id="amap-del" data-i18n="set_amap_del">删除</button><button class="primary" id="amap-save" data-i18n="set_save">保存</button></div>
+  </div>
 </div></div>
 
 <script>
@@ -814,7 +844,12 @@ const I18N = {
     pv_loading: "读取中…", pv_text: "原文", pv_q: "问", pv_a: "答", pv_ctx: "材料: {0}", pv_empty: "空文件", pv_err: "读不了: {0}",
     up_bad: "{0}: 只收 .jsonl / .txt / .md", up_ing: "上传 {0}…", up_ok: "已存 {0}", up_text: " → 原文料 {0}", up_rows: " · {0} 行", up_fail: "{0} 上传失败: {1}",
     r_title: "全部训练(点一行进训练页查看)", r_run: "训练", r_cfg: "轮 / 层 / lr", r_status: "状态", r_eval: "留出 第0步 → 末", r_pick: "选中", r_started: "开始于",
-    copy: "复制", copied: "已复制", me: "我", thinking: "思考过程", empty_h: "有什么可以帮你?", empty_sub: "助理住在这台机器上: 对话与记忆存在 ~/.ds4/assistant(纯文本, 你能打开改), 每个工具都在沙盒里跑, 越界的事先问你。",
+    copy: "复制", copied: "已复制", me: "我", thinking: "思考过程", empty_h: "想做什么，直接说",
+    /* 空对话页(10-12 用户: "没有表达出无限可能, 其实什么都能做"): 第一行用"会自己写程序"讲清为什么没有清单, 例子只起个头; 不写字面的"什么都能做"(点不了图形界面、不能付钱, 一个反例就戳破)。
+       手机例子挑自己做着费劲的事(用户: "打电话开微信人家不会自己弄吗"), 每个都有真工具撑着: 合同 = 附件 + pdftotext, 剪视频 = 选文件 + ffmpeg + 分享卡, 行程 = 上网 + 定位 + 导航按钮 */
+    empty_sub: "它会上网，会读写文件，会自己写程序跑起来，所以能做的事没有清单。查资料、算表格、改图剪片、规划行程……说一句就行。",
+    empty_sub_app: "它会上网，会读写文件，会自己写程序跑起来，所以能做的事没有清单。甩个合同 PDF 让它挑坑、一段视频剪成 15 秒、周末去哪玩连路线一起排好……说一句就行。",
+    empty_note: "全程在你自己的机器上跑。记住的事随时能改，超出你允许范围的事先问你。",
     ph_input: "输入消息, Enter 发送, Shift+Enter 换行", ph_noinput: "模型没装着, 现在不能聊",
     ban_switch: "正在切换(停模型 / 装模型), 稍等…", ban_train: "模型正在训练{0}, 训完模型自动装回来(新训出的后训练件用开关挂)",
     ban_loading: "正在加载模型(装完、冒烟过了就能聊), 稍等…", ban_lobby: "模型还没加载(换哪个模型去左边\"模型\"页选)。",
@@ -853,10 +888,14 @@ const I18N = {
     a_need: "等你批准", a_running: "执行中…", a_thinking: "思考中…", a_args: "参数", a_result: "结果 · {0} 字节", a_reason: "要做: {0}", a_target: "范围: {0}",
     a_once: "仅这次", a_session: "本会话都允许", a_always: "总是允许", a_deny: "拒绝", a_once_only: "这类操作只能逐次批准",
     dec_auto: "自动放行", dec_once: "你批准了", dec_session: "本会话已允许", dec_always: "永久允许", dec_denied: "你拒绝了", dec_blocked: "规则拦下", dec_cancelled: "已取消",
-    a_end_stopped: "已停止", a_end_error: "出错了", a_usage: "提示 {0} · 生成 {1} token", s_running: "进行中", s_waiting_approval: "等你批准", s_queued: "排队中…", ph_busy: "助理正在干活, 点停止可打断",
+    a_end_stopped: "已停止", a_end_error: "出错了", a_usage: "提示 {0} · 生成 {1} token", s_running: "进行中", s_waiting_approval: "等你批准", s_waiting_device: "等设备回答", s_queued: "排队中…", ph_busy: "助理正在干活, 点停止可打断",
+    dec_device: "设备答复了", dev_doing: "这台设备正在做…", dev_other: "在等发消息的那台设备回答; 它不在了就用这台:", dev_mine: "用这台设备回答", dev_tap_read_clipboard: "需要你点一下才能读剪贴板:", dev_tap_pick_file: "请选一个文件:", dev_tap_pick_photo: "请选一张照片:",
+    dev_btn_read_clipboard: "读取剪贴板", dev_btn_pick_file: "选择文件", dev_btn_pick_photo: "选择照片", dev_tap_locate: "需要你点一下才能定位:", dev_btn_locate: "定位", dev_no_api: "这个浏览器不支持", dev_http: "位置、剪贴板、分享这些能力浏览器只在 https(或本机地址)下开放; 现在是 http 打开的, 助理拿不到位置、读不了剪贴板、分享不了文件",
+    dl_download: "下载", dl_share: "分享", dl_preview: "预览", dl_fail: "取文件失败: {0}", share_fail: "分享没成: {0}", share_type_blocked: "这个浏览器不让分享 .{0} 文件, 点文件卡上的「下载」, 再从文件夹里发", copied_answer: "回答已复制到剪贴板", attach_fail: "附件没传上: {0}", attach_title: "附件",
+    act_copy_text: "复制", act_share: "分享", act_open_url: "打开", act_navigate: "导航", act_call: "拨打", act_open_app: "打开",
     mem_profile: "关于你", mem_profile_sub: "助理用 remember 记下的事, 每行一条, 方括号里是记下的日期和会话号。删掉一行 = 让它忘掉; 改完点保存, 新开的对话生效。",
     mem_rules: "规矩", mem_rules_sub: "你给助理定的规矩, 只有你能写, 优先于一切。例如: 回复用中文; 不要碰 ~/Documents/财务。新开的对话生效。", save: "保存", saved: "已保存", mem_path: "文件: {0}",
-    act_sec: "安全", act_info: "沙盒: {0} · 浏览器: {1} · 工作区: {2}", act_nobrowser: "本机没有火狐", act_bash: "允许 bash(每次仍要你批准; 在沙盒里跑: 没有网络, 只能写工作区)",
+    act_sec: "安全", act_info: "沙盒: {0} · 浏览器: {1} · 工作区: {2}", act_nobrowser: "本机没有火狐", act_run: "允许在沙盒里跑程序(run: 没有网络, 只能写工作区, 不逐次审批)", act_toolbox: "工具箱: 已有 {0} · 缺 {1}", act_toolbox_none: "(没有)",
     act_dirs: "允许的目录", act_dirs_sub: "助理可以直接读这些目录(勾了可写还能直接写), 不再逐次问你。不能加包含助理自己数据目录的上级目录(比如整个家目录): 那等于让它能改自己的权限。", act_dir_ph: "目录路径, 例如 ~/Documents",
     act_write: "可写", act_add: "添加", act_del: "移除", act_rw: "读写", act_ro: "只读", act_appr: "永久授权", act_appr_sub: "你在审批卡上点过\"总是允许\"的目标; 上过网之后写工作区外仍会逐次问。", act_revoke: "撤销",
     act_audit: "活动流水", act_audit_sub: "每一次工具调用, 最新在前: 做了什么、谁放行的、成没成。鼠标停在一行上看结果。", act_none: "暂无", cls_read: "读", cls_write: "写", cls_web: "上网", cls_exec: "命令",
@@ -877,6 +916,8 @@ const I18N = {
     set_tun: "穿透", set_tun_sub: "打开后, 互联网上用公网地址就能访问这个工作台(照样要登录)。第一次打开会经 SSH 在云服务器上装好 frp 服务端, 约半分钟。",
     set_cert: "HTTPS 证书", set_cert_sub: "传域名证书的 zip(阿里云 / 腾讯云下载的证书包直接传, 选 Nginx 版也行)。装上后公网地址变成 https, 手机就能装成 App。域名要解析到上面那台云服务器。",
     set_cert_up: "上传证书压缩包", set_cert_del: "删除证书", set_cert_none: "还没有证书: 现在公网地址是 http, 能打开但装不了 App", set_cert_del_q: "删除证书? 公网地址会退回 http。",
+    set_amap: "地图(高德 Web 服务 Key)", set_amap_sub: "助理回答\"附近有什么\"用的。到 lbs.amap.com 注册, 建一个\"Web 服务\"类型的 Key 填进来; 只存在本机助理目录(0600), 发请求时由程序填进去, 模型看不到它。不填也能把坐标翻成\"××区××路附近\", 但列不出附近的店。",
+    set_amap_key: "Key", set_amap_del: "删除", set_amap_on: "已保存: 附近搜索与门牌级地址反查已开", set_amap_off: "没有 Key: 地址反查走高德网页版接口(免 Key, 到路名), 附近店铺搜索要 Key", set_amap_nobrowser: "这台机器没有火狐(请求经火狐走 https): 地址反查与附近搜索都用不了",
     set_cert_ok: "证书已装上", set_cert_info: "{0} · {1} 到期 · {2} 张证书链", set_cert_files: "来自压缩包里的 {0} 与 {1}", set_cert_expired: "已过期",
     tun_off: "未开启", tun_busy: "部署中", tun_up: "已连通", tun_reconn: "连接断了, frpc 正在重连", tun_err: "出错了", tun_open: "打开", tun_http_note: "现在是 http: 能访问, 但浏览器只在 https 下给装 App —— 下面传一个证书",
     tun_ports: "云服务器的安全组(云厂商控制台 → 安全组 → 入方向)只要放行 SSH 端口和公网端口 TCP {0}; frp 的控制通道走 SSH, 不用另开口", tun_waiting: "等上一步…",
@@ -946,7 +987,10 @@ const I18N = {
     pv_loading: "Loading…", pv_text: "Text", pv_q: "Q", pv_a: "A", pv_ctx: "Context: {0}", pv_empty: "Empty file", pv_err: "Can't read: {0}",
     up_bad: "{0}: only .jsonl / .txt / .md", up_ing: "Uploading {0}…", up_ok: "Saved {0}", up_text: " → raw text {0}", up_rows: " · {0} rows", up_fail: "{0} upload failed: {1}",
     r_title: "All runs (click a row to open it on the Train page)", r_run: "Run", r_cfg: "Epochs / layers / lr", r_status: "Status", r_eval: "Held-out step 0 → last", r_pick: "Picked", r_started: "Started",
-    copy: "Copy", copied: "Copied", me: "Me", thinking: "Thinking", empty_h: "How can I help?", empty_sub: "The assistant lives on this machine: conversations and memory are plain text under ~/.ds4/assistant, every tool runs in a sandbox, and anything beyond that asks you first.",
+    copy: "Copy", copied: "Copied", me: "Me", thinking: "Thinking", empty_h: "Just say what you need",
+    empty_sub: "It browses the web, reads and writes files, and writes and runs its own programs, so there's no fixed list of what it can do. Research, spreadsheets, editing photos and video, planning a trip… just ask.",
+    empty_sub_app: "It browses the web, reads and writes files, and writes and runs its own programs, so there's no fixed list of what it can do. Send a contract PDF to find the catches, cut a video down to 15 seconds, plan your weekend down to the route… just ask.",
+    empty_note: "Runs entirely on your own machine. You can see and edit everything it remembers, and it asks before going beyond what you've allowed.",
     ph_input: "Type a message; Enter to send, Shift+Enter for a new line", ph_noinput: "No model loaded, can't chat right now",
     ban_switch: "Switching (stopping / loading the model), hold on…", ban_train: "The model is training{0}; it reloads when training ends (use the switch to attach the new post-train file)",
     ban_loading: "Loading the model (chat opens once it loads and passes the smoke test), hold on…", ban_lobby: "No model loaded (pick one on the \"Models\" page on the left).",
@@ -985,10 +1029,14 @@ const I18N = {
     a_need: "Needs your approval", a_running: "Running…", a_thinking: "Thinking…", a_args: "Arguments", a_result: "Result · {0} bytes", a_reason: "Wants to: {0}", a_target: "Scope: {0}",
     a_once: "Allow once", a_session: "Allow for this chat", a_always: "Always allow", a_deny: "Deny", a_once_only: "This kind of action can only be approved one at a time",
     dec_auto: "Auto-allowed", dec_once: "You allowed it", dec_session: "Allowed for this chat", dec_always: "Always allowed", dec_denied: "You denied it", dec_blocked: "Blocked by rules", dec_cancelled: "Cancelled",
-    a_end_stopped: "Stopped", a_end_error: "Error", a_usage: "prompt {0} · generated {1} tokens", s_running: "Running", s_waiting_approval: "Waiting for you", s_queued: "Queued…", ph_busy: "The assistant is working; press Stop to interrupt",
+    a_end_stopped: "Stopped", a_end_error: "Error", a_usage: "prompt {0} · generated {1} tokens", s_running: "Running", s_waiting_approval: "Waiting for you", s_waiting_device: "Waiting for your device", s_queued: "Queued…", ph_busy: "The assistant is working; press Stop to interrupt",
+    dec_device: "Answered by your device", dev_doing: "This device is doing it…", dev_other: "Waiting for the device that sent the message; if it's gone, use this one:", dev_mine: "Answer from this device", dev_tap_read_clipboard: "Tap to let it read the clipboard:", dev_tap_pick_file: "Pick a file:", dev_tap_pick_photo: "Pick a photo:",
+    dev_btn_read_clipboard: "Read clipboard", dev_btn_pick_file: "Choose file", dev_btn_pick_photo: "Choose photo", dev_tap_locate: "Tap to share your position:", dev_btn_locate: "Locate", dev_no_api: "Not supported by this browser", dev_http: "Browsers only expose location, clipboard and sharing over https (or this machine's own address); this page was opened over http, so the assistant can't get your location, read the clipboard or share files",
+    dl_download: "Download", dl_share: "Share", dl_preview: "Preview", dl_fail: "Could not fetch the file: {0}", share_fail: "Share failed: {0}", share_type_blocked: "This browser won't share .{0} files; use Download on the file card and send it from your files", copied_answer: "Answer copied to the clipboard", attach_fail: "Upload failed: {0}", attach_title: "Attach",
+    act_copy_text: "Copy", act_share: "Share", act_open_url: "Open", act_navigate: "Directions", act_call: "Call", act_open_app: "Open",
     mem_profile: "About you", mem_profile_sub: "Things the assistant saved with remember, one per line; the brackets show the date and conversation. Delete a line to make it forget; save, and new conversations pick it up.",
     mem_rules: "Rules", mem_rules_sub: "Rules you give the assistant; only you write them, and they override everything. E.g.: reply in English; never touch ~/Documents/finance. New conversations pick them up.", save: "Save", saved: "Saved", mem_path: "File: {0}",
-    act_sec: "Security", act_info: "Sandbox: {0} · Browser: {1} · Workspace: {2}", act_nobrowser: "no Firefox on this machine", act_bash: "Allow bash (still asks you every time; runs sandboxed: no network, writes only in the workspace)",
+    act_sec: "Security", act_info: "Sandbox: {0} · Browser: {1} · Workspace: {2}", act_nobrowser: "no Firefox on this machine", act_run: "Allow running programs in the sandbox (run: no network, writes only in the workspace, no per-call approval)", act_toolbox: "Toolbox: have {0} · missing {1}", act_toolbox_none: "(none)",
     act_dirs: "Allowed folders", act_dirs_sub: "The assistant may read these folders (and write them if writable) without asking each time. A folder containing the assistant's own data (e.g. your whole home folder) can't be added: that would let it change its own permissions.", act_dir_ph: "Folder path, e.g. ~/Documents",
     act_write: "Writable", act_add: "Add", act_del: "Remove", act_rw: "read-write", act_ro: "read-only", act_appr: "Standing approvals", act_appr_sub: "Targets you approved with \"Always allow\"; after reading the web, writes outside the workspace still ask every time.", act_revoke: "Revoke",
     act_audit: "Activity log", act_audit_sub: "Every tool call, newest first: what it did, who allowed it, whether it worked. Hover a row to see the result.", act_none: "None yet", cls_read: "read", cls_write: "write", cls_web: "web", cls_exec: "command",
@@ -1009,6 +1057,8 @@ const I18N = {
     set_tun: "Tunnel", set_tun_sub: "When on, this studio is reachable from the internet at the public address (sign-in still required). The first time it installs the frp server on the cloud server over SSH, about half a minute.",
     set_cert: "HTTPS certificate", set_cert_sub: "Upload your domain certificate as a zip (the bundle downloaded from your CA / cloud console; the Nginx variant works). The public address then becomes https and phones can install the app. The domain must point to the cloud server above.",
     set_cert_up: "Upload certificate zip", set_cert_del: "Delete certificate", set_cert_none: "No certificate: the public address is http, it opens but cannot be installed as an app", set_cert_del_q: "Delete the certificate? The public address falls back to http.",
+    set_amap: "Maps (Amap web-service key)", set_amap_sub: "Used for \"what's nearby\". Register at lbs.amap.com, create a \"Web Service\" key and paste it here; it is stored only in the assistant folder on this machine (0600), inserted by the program at request time, never shown to the model. Without it coordinates still become \"district, street\", but nearby places cannot be listed.",
+    set_amap_key: "Key", set_amap_del: "Delete", set_amap_on: "Saved: nearby search and street-number address lookup are on", set_amap_off: "No key: address lookup uses Amap's web endpoint (free, to street level); nearby place search needs a key", set_amap_nobrowser: "No Firefox on this machine (requests go through it for https): neither address lookup nor nearby search works",
     set_cert_ok: "Certificate installed", set_cert_info: "{0} · expires {1} · chain of {2}", set_cert_files: "from {0} and {1} in the zip", set_cert_expired: "expired",
     tun_off: "Off", tun_busy: "Setting up", tun_up: "Connected", tun_reconn: "Connection lost, frpc is reconnecting", tun_err: "Error", tun_open: "Open", tun_http_note: "This is http: reachable, but browsers only install apps over https — upload a certificate below",
     tun_ports: "The cloud server's security group (provider console → security group → inbound) only needs the SSH port and public port TCP {0}; frp's control channel runs over SSH", tun_waiting: "waiting…",
@@ -1098,7 +1148,8 @@ $("scrim").onclick = () => drawer(false);
 /* 旋转、分屏、改窗口大小: 重判外壳(规则在 <head> 的 shellPick); 变了就按新外壳重排当前页 */
 window.addEventListener("resize", () => {
   const s = window.shellPick(); if (document.documentElement.dataset.shell === s) return;
-  document.documentElement.dataset.shell = s; drawer(false); if (shownTab) showTab(curTab() || "chat");
+  document.documentElement.dataset.shell = s; drawer(false); if (shownTab) showTab(curTab() || "chat"); devNote();
+  if (!view || !view.items.length) renderChat();   /* 空对话页的例子分手机/电脑两句(empty_sub_app / empty_sub), 换外壳要换过来 */
 });
 /* iOS 弹键盘只缩可视区(visualViewport), 不缩布局视口: 把可视区高度写给 body(--app-h), 输入框才会贴在键盘上沿而不是被盖住。
    Chrome 安卓有 interactive-widget=resizes-content(见 viewport meta), 两边读数一致, 写了也无害 */
@@ -1450,13 +1501,26 @@ function renderMd(src) {   /* 先整段转义再加标记: 模型输出里的 < 
   fp(); fl(); return out.join("");
 }
 chatEl.addEventListener("click", e => { const b = e.target.closest("[data-copy]"); if (!b) return; navigator.clipboard.writeText(b.parentElement.querySelector("code").textContent).then(() => { b.textContent = t("copied"); setTimeout(() => b.textContent = t("copy"), 1200); }); });
+/* 回答气泡带一个 _set(正文, 思考, 光标): 流式时只改文字不重建节点, 思考折叠的开关状态和手指按着的按钮都留在原处。
+   思考过程边想边展开给人看(10-12 用户: "本来就是流式输出就输出给人看"), 正文一开始出就自动收起成一行"思考过程"; 用户自己点过开关之后就听用户的。 */
 function msgEl(m, streaming) {
   const w = node("div", "msg " + m.role), who = node("div", "who");
   if (m.role === "assistant") who.appendChild(logoImg()); else who.textContent = t("me");
   const b = node("div", "bubble"); w.appendChild(who); w.appendChild(b);
   if (m.role === "user") { b.textContent = m.content; return w; }
-  if (m.reasoning) { const d = node("details", "think"); d.appendChild(node("summary", null, t("thinking"))); d.appendChild(node("div", null, m.reasoning)); b.appendChild(d); }
-  const md = node("div", "md" + (streaming ? " cursor" : "")); md.innerHTML = renderMd(m.content || ""); b.appendChild(md);
+  const d = node("details", "think"), sum = node("summary", null, t("thinking")), dt = node("div"); d.appendChild(sum); d.appendChild(dt); b.appendChild(d);
+  d.addEventListener("toggle", () => { if (d._auto) d._auto = false; else d._user = true; });   /* 程序开合时 _auto 置位, 不算用户操作 */
+  const setOpen = o => { if (d.open !== o) { d._auto = true; d.open = o; } };
+  const md = node("div", "md"); b.appendChild(md);
+  w._set = (content, reasoning, cur) => {
+    const thinking = cur && reasoning && !content;
+    if (w._r !== reasoning) { w._r = reasoning; dt.textContent = reasoning; d.style.display = reasoning ? "" : "none"; if (d.open) dt.scrollTop = dt.scrollHeight; }
+    if (w._c !== content) { w._c = content; md.innerHTML = renderMd(content || ""); }
+    sum.textContent = t(thinking ? "a_thinking" : "thinking");
+    if (!d._user) setOpen(!!thinking);
+    md.classList.toggle("cursor", !!cur);
+  };
+  w._set(m.content || "", m.reasoning || "", streaming);
   return w;
 }
 
@@ -1469,8 +1533,9 @@ function applyEv(v, e) {
   else if (e.ev === "text") lastAsst(v).content += e.d;
   else if (e.ev === "think") lastAsst(v).reasoning += e.d;
   else if (e.ev === "tool") v.items.push({ kind: "tool", id: e.id, name: e.name, args: e.args });
-  else if (e.ev === "approval") { const tl = findTool(v, e.id); if (tl) tl.approval = e; v.state = "waiting_approval"; }
-  else if (e.ev === "tool_end") { const tl = findTool(v, e.id); if (tl) Object.assign(tl, { done: true, ok: e.ok, decision: e.decision, ms: e.ms, result: e.result, bytes: e.bytes, approval: null }); if (v.state === "waiting_approval") v.state = "running"; }
+  else if (e.ev === "approval") { const tl = findTool(v, e.id); if (tl) { tl.approval = e; tl.dirty = true; } v.state = "waiting_approval"; }
+  else if (e.ev === "device") { const tl = findTool(v, e.id); if (tl) { tl.device = e; tl.dirty = true; } if (e.wait) v.state = "waiting_device"; }
+  else if (e.ev === "tool_end") { const tl = findTool(v, e.id); if (tl) Object.assign(tl, { done: true, ok: e.ok, decision: e.decision, ms: e.ms, result: e.result, bytes: e.bytes, approval: null, device: tl.device && !tl.device.wait ? tl.device : null, dirty: true }); if (v.state === "waiting_approval" || v.state === "waiting_device") v.state = "running"; }
   else if (e.ev === "usage") v.usage = e;
   else if (e.ev === "error") v.items.push({ kind: "error", msg: e.msg });
   else if (e.ev === "end") { v.state = "idle"; v.items.push({ kind: "end", reason: e.reason, usage: v.usage }); }
@@ -1481,12 +1546,13 @@ function toolSummary(it) { const a = argsOf(it) || {}; return String(a.path || a
 function prettyArgs(it) { const a = argsOf(it); return a ? JSON.stringify(a, null, 2) : (it.args || ""); }
 function fmtMs(ms) { return ms >= 1000 ? (ms / 1000).toFixed(1) + " s" : Math.round(ms) + " ms"; }
 function toolEl(it) {
-  const ap = it.approval, w = node("div", "tool" + (ap ? " ask" + (ap.warn ? " warn" : "") : "") + (it.done && !it.ok ? " fail" : ""));
+  const ap = it.approval, dv = it.device, w = node("div", "tool" + (ap ? " ask" + (ap.warn ? " warn" : "") : "") + (dv ? " dev" : "") + (it.done && !it.ok ? " fail" : ""));
   const head = node("div", "thead");
   head.appendChild(node("span", "tname", it.name)); head.appendChild(node("span", "targ", toolSummary(it)));
-  const stTxt = ap ? t(ap.answered ? "a_running" : "a_need") : !it.done ? t("a_running") : t("dec_" + it.decision) + (it.ms != null ? " · " + fmtMs(it.ms) : "");
+  const stTxt = ap ? t(ap.answered ? "a_running" : "a_need") : dv && dv.wait && !it.done ? t("s_waiting_device") : !it.done ? t("a_running") : t("dec_" + it.decision) + (it.ms != null ? " · " + fmtMs(it.ms) : "");
   head.appendChild(node("span", "tst " + (ap && !ap.answered ? "need" : it.done ? (it.ok ? "ok" : "bad") : ""), stTxt));
   w.appendChild(head);
+  if (dv && (!it.done || !dv.wait)) w.appendChild(deviceBox(it));
   if (ap && !ap.answered) {   /* 审批卡: 参数原文不缩写(缩写就是让人盲签); 只能"仅这次"的(bash / 污点态 / 敏感目录)不给本会话与总是 */
     const box = node("div", "appr");
     box.appendChild(node("div", "why", t("a_reason", ap.reason)));
@@ -1508,39 +1574,63 @@ function toolEl(it) {
   return w;
 }
 async function answer(it, dec) {
-  it.approval.answered = dec; renderChat();
+  it.approval.answered = dec; it.dirty = true; renderChat();
   const r = await aFetch("approve", { session: view.sid, id: it.id, decision: dec });
-  if (r.error) { toast(t("fail", r.error), true); it.approval.answered = null; renderChat(); }
+  if (r.error) { toast(t("fail", r.error), true); it.approval.answered = null; it.dirty = true; renderChat(); }
 }
+/* 增量渲染: 每个条目的节点建一次存在 it.el 上, 之后只重建标了 dirty 的(applyEv / answer / deviceDo 标), 正在流式的那条回答只改文字。
+   为什么不整段重建: 模型思考时一秒几十条事件, 每 90 ms 把整个对话 replaceChildren 一遍, 手指按下到抬起之间按钮已经换成新节点, 这一下点击就丢了
+   (10-12 真机: "点击不灵敏"); 思考折叠也会被重置。syncChildren 只动位置不对的节点, 没变的连 DOM 都不碰。 */
+function itemEl(it, i) {
+  if (it.kind === "user") return msgEl({ role: "user", content: it.text }, false);
+  if (it.kind === "error") return node("div", "bad aerr", it.msg);
+  const w = node("div", "item");
+  if (it.kind === "tool") { w.appendChild(toolEl(it)); const d = deliverEl(it); if (d) w.appendChild(d); return w; }
+  const u = it.usage, s = [it.reason === "done" ? "" : t("a_end_" + it.reason), u ? t("a_usage", u.prompt, u.completion) : ""].filter(Boolean).join(" · "); if (s) w.appendChild(node("div", "stats aend", s));
+  return w;
+}
+function syncChildren(parent, els) {
+  els.forEach((el, i) => { const cur = parent.children[i]; if (cur !== el) parent.insertBefore(el, cur || null); });
+  while (parent.children.length > els.length) parent.lastChild.remove();
+}
+const waitEl = node("div", "stats aend cursor", "");
 function renderChat() {
   const near = scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight < 160;
-  chatEl.replaceChildren();
-  if (!view || !view.items.length) { const e = node("div", "empty"); e.appendChild(logoImg()); e.appendChild(node("h2", null, t("empty_h"))); e.appendChild(node("div", null, t("empty_sub"))); chatEl.appendChild(e); renderChatGate(); return; }
+  if (!view || !view.items.length) { chatEl.replaceChildren(); const e = node("div", "empty"); e.appendChild(logoImg()); e.appendChild(node("h2", null, t("empty_h"))); e.appendChild(node("div", null, t(isApp() ? "empty_sub_app" : "empty_sub"))); e.appendChild(node("div", "note", t("empty_note"))); chatEl.appendChild(e); renderChatGate(); return; }
+  const els = [];
   view.items.forEach((it, i) => {
     const last = i === view.items.length - 1;
-    if (it.kind === "user") chatEl.appendChild(msgEl({ role: "user", content: it.text }, false));
-    else if (it.kind === "asst") { if (it.content || it.reasoning || (last && busy())) chatEl.appendChild(msgEl({ role: "assistant", content: it.content, reasoning: it.reasoning }, last && busy())); }
-    else if (it.kind === "tool") chatEl.appendChild(toolEl(it));
-    else if (it.kind === "error") chatEl.appendChild(node("div", "bad aerr", it.msg));
-    else if (it.kind === "end") { const u = it.usage, s = [it.reason === "done" ? "" : t("a_end_" + it.reason), u ? t("a_usage", u.prompt, u.completion) : ""].filter(Boolean).join(" · "); if (s) chatEl.appendChild(node("div", "stats aend", s)); }
+    if (it.kind === "asst") {
+      if (!it.el) it.el = msgEl({ role: "assistant" }, false);
+      it.el._set(it.content, it.reasoning, last && busy());
+      it.el.style.display = it.content || it.reasoning || (last && busy()) ? "" : "none";
+    } else if (!it.el || it.dirty) { it.el = itemEl(it, i); it.dirty = false; }
+    els.push(it.el);
   });
-  if (busy() && view.state !== "waiting_approval") { const lastIt = view.items[view.items.length - 1]; if (lastIt.kind !== "asst") chatEl.appendChild(node("div", "stats aend cursor", t(view.state === "queued" ? "s_queued" : "a_thinking"))); }
+  if (busy() && view.state !== "waiting_approval" && view.state !== "waiting_device" && view.items[view.items.length - 1].kind !== "asst") { waitEl.textContent = t(view.state === "queued" ? "s_queued" : "a_thinking"); els.push(waitEl); }
+  syncChildren(chatEl, els);
   if (near) scrollEl.scrollTop = scrollEl.scrollHeight;
   renderChatGate();
 }
 function schedule() { if (renderT) return; renderT = setTimeout(() => { renderT = 0; renderChat(); }, 90); }
-async function openStream(sid) {
+/* keep=true: 换一条连接接着读, 页面上的对话不清(手机锁屏再亮、切回前台、按了停止都走这条: 旧连接可能已经死了但不报错, read() 一直挂着,
+   页面就永远"进行中", 发送没反应、停止没反应(10-12 真机实撞)); 服务端每 15 s 一个 ping, 40 s 没字节就自己掐了重连。事件按 id 续读, 不会重复。 */
+async function openStream(sid, keep) {
   if (streamAbort) streamAbort.abort();
   const ac = new AbortController(); streamAbort = ac;
-  view = newView(sid); renderChat();
+  if (!keep || !view || view.sid !== sid) { view = newView(sid); renderChat(); }
   for (;;) {
+    const conn = new AbortController(); let stall = 0;
+    const arm = () => { clearTimeout(stall); stall = setTimeout(() => conn.abort(), 40000); };
+    const onAbort = () => conn.abort(); ac.signal.addEventListener("abort", onAbort);
     try {
-      const res = await fetch(`/api/assistant/stream?session=${sid}&from=${view.next}`, { headers: aHeaders(false), signal: ac.signal });
+      arm();
+      const res = await fetch(`/api/assistant/stream?session=${sid}&from=${view.next}`, { headers: aHeaders(false), signal: conn.signal, cache: "no-store" });
       if (!res.ok || !res.body) throw new Error("HTTP " + res.status);
       const rd = res.body.getReader(), dec = new TextDecoder(); let buf = "";
       for (;;) {
         const { done, value } = await rd.read(); if (done) break;
-        buf += dec.decode(value, { stream: true }); let sep;
+        arm(); buf += dec.decode(value, { stream: true }); let sep;
         while ((sep = buf.indexOf("\n\n")) >= 0) {
           const blk = buf.slice(0, sep); buf = buf.slice(sep + 2); let id = null, data = "";
           for (const ln of blk.split("\n")) { if (ln.startsWith("id: ")) id = Number(ln.slice(4)); else if (ln.startsWith("data: ")) data += ln.slice(6); }
@@ -1551,13 +1641,16 @@ async function openStream(sid) {
           if (e.ev === "end") loadSessions();
         }
       }
-    } catch (e) { if (ac.signal.aborted) return; }
+    } catch (e) { /* 断了(服务重起、网络抖、40 s 没字节)就从最后一行接着读 */ }
+    clearTimeout(stall); ac.signal.removeEventListener("abort", onAbort);
     if (ac.signal.aborted) return;
-    await new Promise(r => setTimeout(r, 1500));   /* 断了(服务重起、网络抖)就从最后一行接着读 */
+    await new Promise(r => setTimeout(r, 1500));
   }
 }
+function resumeStream() { if (curSid && view && view.sid === curSid && document.visibilityState === "visible") openStream(curSid, true); }
+document.addEventListener("visibilitychange", resumeStream); addEventListener("pageshow", resumeStream); addEventListener("online", resumeStream);
 function selectSession(sid) { if (curTab() !== "chat") location.hash = "chat"; curSid = sid; lsSet("ds4.asst.sid", sid); renderSessions(); drawer(false); if (sid) openStream(sid); else { if (streamAbort) streamAbort.abort(); view = null; renderChat(); } if (!isApp()) inputEl.focus(); }
-async function loadSessions() { try { const r = await aFetch("sessions"); if (Array.isArray(r)) { sessions = r; renderSessions(); } } catch (e) { /* 下一轮 */ } }
+async function loadSessions() { try { const r = await aFetch("sessions"); if (Array.isArray(r)) { sessions = r; renderSessions(); } if (!asstWs) { const s = await aFetch("status"); asstWs = s.workspace || ""; } } catch (e) { /* 下一轮 */ } }
 function renderSessions() {
   const box = $("sess-list"); box.replaceChildren();
   sessions.forEach(s => {
@@ -1595,15 +1688,227 @@ function renderChatGate() {
 function autosize() { inputEl.style.height = "auto"; inputEl.style.height = Math.min(220, inputEl.scrollHeight) + "px"; inputEl.style.overflowY = inputEl.scrollHeight > 220 ? "auto" : "hidden"; }
 inputEl.oninput = autosize;
 inputEl.onkeydown = e => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } };
-sendBtn.onclick = () => busy() ? aFetch("stop", { session: curSid }) : send();
-async function send() {
-  const msg = inputEl.value.trim(); if (!msg || inputEl.disabled || busy()) return;
-  inputEl.value = ""; autosize();
-  const r = await aFetch("send", { session: curSid || "", text: msg });
-  if (r.error) { toast(t("fail", r.error), true); inputEl.value = msg; autosize(); return; }
-  if (r.session !== curSid || !view) { curSid = r.session; lsSet("ds4.asst.sid", curSid); openStream(curSid); }
-  view.state = "queued"; renderChat(); loadSessions();
+sendBtn.onclick = () => busy() ? stopRun() : send();
+/* 键盘弹着时按输入条上的按钮(发送/停止/附件/侧车/后训练开关), 不许把焦点从输入框抢走(10-12 用户: "第一次点发送没有反应, 非要把键盘关掉才可以点")。
+   抢走会怎样: 按下那一刻输入框失焦 → 底栏的 body:has(textarea:focus) 不再成立、底栏冒回来, 键盘也开始收 → 输入条被往上顶,
+   手指抬起时按钮已不在指尖下, click 落到别处; 第二次点时键盘已收、布局不动, 才点得中。焦点的转移是 pointerdown/mousedown 的默认动作, 拦住它布局就不动,
+   click 照常发。副作用是发完键盘还弹着、可以接着打字, 和微信一样。只拦按钮和开关: 拦在 select 上会让电脑上的下拉打不开。 */
+for (const ev of ["pointerdown", "mousedown"]) $("v-chat").querySelector(".composer .tools").addEventListener(ev, e => {
+  if (document.activeElement === inputEl && e.target.closest("button, label.switch")) e.preventDefault();
+});
+async function stopRun() {
+  const r = await aFetch("stop", { session: curSid }); if (r.error) toast(t("fail", r.error), true);
+  openStream(curSid, true);   /* 停止后换条连接接着读: 页面要是因为旧连接死了才一直显示"进行中", 这一下就把漏掉的 end 读回来 */
 }
+let sending = false;
+async function send() {
+  const msg = inputEl.value.trim(); if (!msg || inputEl.disabled || sending) return;
+  if (busy()) { toast(t("ph_busy"), true); return; }
+  sending = true; sendBtn.disabled = true; inputEl.value = ""; autosize();
+  try {
+    const files = pendingFiles.slice();
+    const r = await aFetch("send", { session: curSid || "", text: msg, client: clientId, device: deviceInfo(), caps: deviceCaps(), apps: deviceApps(), files });
+    if (r.error) { toast(t("fail", r.error), true); inputEl.value = msg; autosize(); return; }
+    pendingFiles = []; renderAttach();
+    if (r.session !== curSid || !view) { curSid = r.session; lsSet("ds4.asst.sid", curSid); openStream(curSid); }
+    view.state = "queued"; renderChat(); loadSessions();
+  } finally { sending = false; renderChatGate(); }
+}
+inputEl.onfocus = () => { if (isApp()) devicePos(); };   /* 预热定位: 手机上第一次定位要 1~4 s(还有权限提示), 放在打字的时候做; 模型调 locate 时直接命中缓存 */
+
+/* ---------------- 进 / 出(总纲 docs/assistant_arch.md §3 §5; 10-12 用户: "进干出", "所有能力抽象成 function call", "出是活的, 正常问题不需要") ----------------
+   进: 每条消息带 device:{kind,tz,lang}(服务端拼成一行事实放在用户文本前) + caps(这台设备能做什么) + apps(能打开哪些 app) + files(附件按钮传进 inbox/ 的路径)。
+   服务端只把 caps 里有的能力作为工具给模型 —— 和 MCP / client tools 一个做法: 能力 = schema, 模型调, 设备执行, 结果回填。
+   位置不再随消息预附: 定位是 locate 工具(wait=true, 这台设备自动做), 服务端把结果记进会话, 之后的事实行带"上次定位", 模型不用反复调。
+   模型调设备工具 → 一条 device 事件: wait=true 的(定位/剪贴板/选文件)这台设备自动做、做不了(iOS 要手势)就出按钮, 结果 POST /device 回去;
+   wait=false 的(分享/打开/导航/拨打/复制/开 app)是交出去的动作, 卡上一个按钮, 用户点了才执行(浏览器要手势); 怎么拼地图/app 链接按平台在这里定(mapUrl / APPS), 模型只给"去哪""开什么"。
+   出: 只有模型调了 share(path) 才出文件卡(下载 / 预览; 分享按钮就是动作本身); 页面不扫工作区、不给每条回答加按钮 —— 交不交、交什么是模型按情形定的。
+   这些 API 浏览器只在 https 或本机地址下给: http 打开时 isSecureContext=false, 输入框上方提示一行。 */
+const clientId = lsGet("ds4.asst.client", null) || (() => { const id = Math.random().toString(36).slice(2, 12) + Date.now().toString(36); lsSet("ds4.asst.client", id); return id; })();
+const secure = !!window.isSecureContext;
+let geoCache = null, asstWs = "", pendingFiles = [];
+aFetch("status").then(s => { asstWs = s.workspace || ""; }).catch(() => {});
+function deviceCaps() {   /* 只报真有的: 服务端按这张表给模型工具, 模型看不到做不了的事 */
+  const c = ["file", "open_url", "navigate"];
+  if (secure && navigator.geolocation) c.push("geolocation");   /* 电脑浏览器是 IP 定位(差几公里): 照样报, 精度在结果里如实给, 模型自己掂量 */
+  if (secure && navigator.clipboard) { if (navigator.clipboard.readText) c.push("clipboard_read"); if (navigator.clipboard.writeText) c.push("clipboard_write"); }
+  if (secure && navigator.share) c.push("share");
+  if (isApp()) { c.push("call"); if (deviceApps().length) c.push("open_app"); }
+  return c;
+}
+function deviceInfo() { return { kind: isApp() ? "phone" : "desktop", tz: Intl.DateTimeFormat().resolvedOptions().timeZone, lang: navigator.language }; }
+async function devicePos() {
+  if (!secure || !navigator.geolocation) return null;
+  const p = await new Promise(res => navigator.geolocation.getCurrentPosition(res, () => res(null), { maximumAge: 60000, timeout: 6000 })).catch(() => null);
+  if (!p) return geoCache && Date.now() / 1000 - geoCache.t < 600 ? geoCache : null;   /* 10 分钟内的上一个定位还算数; 再旧就不冒充"现在在这" */
+  const loc = { lat: +p.coords.latitude.toFixed(5), lng: +p.coords.longitude.toFixed(5), acc: Math.round(p.coords.accuracy), t: Math.floor(Date.now() / 1000) };
+  geoCache = loc; return loc;   /* 地址不在页面查: 服务端反查高德(asst_geo.c), 和 locate 的结果一起记进会话 */
+}
+/* 交出去的动作 → 这台设备上怎么做(平台差异全在这一张表里, 模型不知道也不该知道)。
+   导航 / 打开 / 拨打 / 开 app 做成真正的 <a> 链接, 不用 window.open: iPhone 装成 App 后 window.open 开出来是一张白页(10-12 真机实撞), 安卓里 geo: 经 window.open 也不弹应用选择。
+   链接交给系统: iOS maps:// 直接开地图 App(sll = 以这个点为中心搜), 电脑开高德网页版。
+   安卓不用裸 geo:, 用 Chrome 的 intent: 包一层(10-12 小米真机: 裸 geo: 点了没反应 —— 没有 App 认领 geo: 或浏览器不外抛时, 裸链接就是静默失败):
+   有 App 认领 geo: 就交给它(多个弹选择框); 一个都没有就走 browser_fallback_url 开高德网页, callnative=1 让网页再试着拉起高德 App。最差也是开出网页, 不会再"没反应"。 */
+const isAndroid = () => /Android/.test(navigator.userAgent);
+function mapUrl(a) {
+  const q = encodeURIComponent(a.query || ""), has = a.lat != null && a.lng != null && a.lat !== "" && a.lng !== "";
+  const amap = `https://uri.amap.com/search?keyword=${q}` + (has ? `&center=${a.lng},${a.lat}` : "");
+  if (isIOS()) return `maps://?q=${q}` + (has ? `&sll=${a.lat},${a.lng}` : "");
+  if (isAndroid()) return `intent://${has ? a.lat + "," + a.lng : "0,0"}?q=${q}#Intent;scheme=geo;action=android.intent.action.VIEW;S.browser_fallback_url=${encodeURIComponent(amap + "&callnative=1")};end`;
+  return amap;
+}
+/* open_app 的平台表(总纲 §5.2; 首批 10-12 用户定: 抖音/微信/钉钉/支付宝): 模型只说开哪个、带什么; scheme 在这里拼。每行真机验过才算数, 没验的标在注释里。
+   微信不收任何内容(只能打开); 钉钉/支付宝能在 app 内开一个网页; 抖音能开到搜索。往微信/钉钉发文字或文件走 share(系统分享面板), 不走这里。 */
+const APPS = {
+  douyin:   { label: "抖音",   url: a => "snssdk1128://search?keyword=" + encodeURIComponent(a.query || "") },                                                   /* 待真机验 */
+  wechat:   { label: "微信",   url: () => "weixin://" },
+  dingtalk: { label: "钉钉",   url: a => /^https?:\/\//i.test(a.url || "") ? "dingtalk://dingtalkclient/page/link?url=" + encodeURIComponent(a.url) : "dingtalk://dingtalkclient/action/home" },
+  alipay:   { label: "支付宝", url: a => /^https?:\/\//i.test(a.url || "") ? "alipays://platformapi/startapp?appId=20000067&url=" + encodeURIComponent(a.url) : "alipays://" },   /* 20000067 = 支付宝内置浏览器; 待真机验 */
+};
+function deviceApps() { return isApp() ? Object.keys(APPS) : []; }   /* 电脑没有这些 scheme */
+/* 链接型动作的 href; open_url 只认 http(s)(模型给的串, javascript: 这种不能进 href) */
+function actionHref(it) {
+  const a = argsOf(it) || {};
+  if (it.name === "navigate") return mapUrl(a);
+  if (it.name === "call") return "tel:" + String(a.number || "").replace(/[^\d+]/g, "");
+  if (it.name === "open_url") return /^https?:\/\//i.test(a.url || "") ? a.url : null;
+  if (it.name === "open_app") return APPS[a.app] ? APPS[a.app].url(a) : null;
+  return null;
+}
+/* 附件按钮: 先传进 inbox/(POST /api/assistant/upload 原始体), 发消息时把路径带上, 服务端在事实行后加一行 [附件: …] */
+function renderAttach() {
+  const box = $("attach-list"); box.replaceChildren();
+  pendingFiles.forEach((p, i) => { const c = node("span", "chip"); c.appendChild(node("span", null, p.replace(/^inbox\//, ""))); const x = node("button", null, "×"); x.onclick = () => { pendingFiles.splice(i, 1); renderAttach(); }; c.appendChild(x); box.appendChild(c); });
+}
+$("btn-attach").onclick = () => $("attach-in").click();
+$("attach-in").onchange = async () => {
+  for (const f of $("attach-in").files) {
+    try {
+      const r = await fetch(`/api/assistant/upload?name=${encodeURIComponent(f.name)}`, { method: "POST", headers: aHeaders(false), body: f });
+      const j = await r.json().catch(() => ({ error: "HTTP " + r.status }));
+      if (j.error || !j.path) throw new Error(j.error || "no path");
+      pendingFiles.push(j.path);
+    } catch (e) { toast(t("attach_fail", e.message || e), true); }
+  }
+  $("attach-in").value = ""; renderAttach(); if (!isApp()) inputEl.focus();
+};
+$("btn-attach").title = t("attach_title");
+/* 分享文件的两道墙(10-12 实撞 "Permission denied"):
+   ① 手势: navigator.share 必须在点击的同步段里调。点了再 await 取文件, 手势就过期了(Safari 立刻拒, Chrome 超 5 秒拒), 所以卡一画出来就先把文件取好(sharePrep)。
+   ② Chrome 白名单(chromium share_service_impl.cc kPermitted): 只收 txt/csv/html/pdf/图片/音视频这些扩展名和 MIME, 别的一律 NotAllowedError "Permission denied",
+      canShare 还照样返回 true(它不查这张表)。md/json 这类纯文本改名 .txt + text/plain 交出去, 内容一字不改; docx/xlsx/zip 这类 Chrome 根本不让分享, 明说让用户点下载。
+      只有 Chromium 有这张表(navigator.userAgentData 只有 Chromium 有); iPhone/Safari 什么类型都收, 原名原样分享。 */
+const CHROME_SHARE_EXT = /\.(avif|bmp|css|csv|ehtml|flac|gif|htm|html|ico|jfif|jpeg|jpg|m4a|m4v|mp3|mp4|mpeg|mpg|oga|ogg|ogm|ogv|opus|pdf|pja|pjpeg|png|shtm|shtml|svg|svgz|text|tif|tiff|txt|wav|weba|webm|webp|xbm)$/i;
+const TEXT_EXT = /\.(md|markdown|json|jsonl|log|yaml|yml|xml|tsv|ini|toml|py|js|c|h|sh)$/i;
+function shareable(f) {
+  if (!navigator.userAgentData || CHROME_SHARE_EXT.test(f.name)) return f;
+  if (TEXT_EXT.test(f.name)) return new File([f], f.name.replace(/\.[^.]+$/, "") + ".txt", { type: "text/plain" });
+  throw new Error(t("share_type_blocked", f.name.split(".").pop()));
+}
+function sharePrep(it) {
+  if (it.name !== "share" || it.shareFile) return;
+  const p = deliverPath(it) || (argsOf(it) || {}).path; if (!p) return;
+  it.shareFile = fileBlob(p).then(f => (it.shareReady = f));
+  it.shareFile.catch(() => {});   /* 取失败的原因留到点击时再报, 这里不吵 */
+}
+async function runAction(it) {   /* 剪贴板 / 分享: 在用户点击的同步段里开始(都要手势) */
+  const a = argsOf(it) || {};
+  if (it.name === "copy_text") { await navigator.clipboard.writeText(a.text || ""); toast(t("copied_answer")); }
+  else if (it.name === "share") {
+    const d = { title: a.title || undefined, text: a.text || undefined };
+    sharePrep(it);
+    if (it.shareFile) {
+      const f = shareable(it.shareReady || await it.shareFile);   /* 一般早就取好了, 不 await; 没取好才等(此时 Safari 可能因手势过期拒, 再点一次即可) */
+      if (navigator.canShare && !navigator.canShare({ files: [f] })) throw new Error(t("share_type_blocked", f.name.split(".").pop()));
+      d.files = [f];
+    }
+    await navigator.share(d);
+  }
+  else throw new Error(t("dev_no_api"));
+}
+function actionLabel(it) { const a = argsOf(it) || {}; return it.name === "navigate" ? a.query || "" : it.name === "call" ? a.number || "" : it.name === "open_url" ? (a.url || "").replace(/^https?:\/\//, "").slice(0, 60) : it.name === "open_app" ? ((APPS[a.app] || {}).label || a.app || "") + (a.query ? " · " + a.query.slice(0, 30) : "") : it.name === "share" ? (a.path || a.title || (a.text || "").slice(0, 40)) : (a.text || "").slice(0, 40); }
+/* 设备卡: wait=true → 这台设备发的消息就自动做, 做不了(NotAllowedError = 要手势)→ 按钮, 别的设备 → "用这台设备回答"; wait=false → 一个动作按钮, 点了才做 */
+function deviceBox(it) {
+  const dv = it.device, box = node("div", "appr");
+  if (!dv.wait) {
+    const label = t("act_" + it.name) + (actionLabel(it) ? " · " + actionLabel(it) : ""), href = actionHref(it);
+    let b;
+    if (href) { b = node("a", "primary", label); b.href = href; if (/^https?:/i.test(href)) { b.target = "_blank"; b.rel = "noopener"; } }   /* 网页开新页; maps:/intent:/tel: 由系统接手, 本页不动 */
+    else { sharePrep(it); b = node("button", "primary", label); b.onclick = () => runAction(it).catch(e => { if (!e || e.name !== "AbortError") toast(t("fail", e && e.message ? e.message : e), true); }); }
+    box.appendChild(b); return box;
+  }
+  const mine = !dv.client || dv.client === clientId, a = argsOf(it) || {}, photo = it.name === "pick_file" && a.kind === "photo";
+  const kind = it.name === "pick_file" ? (photo ? "pick_photo" : "pick_file") : it.name;
+  if (it.name === "pick_file" && a.prompt) box.appendChild(node("div", "why", a.prompt));
+  if (it.devBusy) { box.appendChild(node("div", "muted", t("dev_doing"))); return box; }
+  if (mine && !it.devTried && (it.name === "read_clipboard" || it.name === "locate")) { it.devTried = true; setTimeout(() => deviceDo(it, false), 0); box.appendChild(node("div", "muted", t("dev_doing"))); return box; }
+  box.appendChild(node("div", "muted", t(mine ? "dev_tap_" + kind : "dev_other")));
+  const b = node("button", "primary", t(mine ? "dev_btn_" + kind : "dev_mine"));
+  b.onclick = () => deviceDo(it, true, it.name === "pick_file" ? pickFile(photo) : null);   /* 文件选择框必须在点击的同步段里打开 */
+  box.appendChild(b);
+  return box;
+}
+function pickFile(photo) {
+  return new Promise(res => { const i = document.createElement("input"); i.type = "file"; if (photo) i.accept = "image/*"; i.onchange = () => res(i.files[0] || null); i.oncancel = () => res(null); i.click(); });
+}
+async function deviceDo(it, tapped, filePick) {
+  const sid = view.sid; it.devBusy = true; it.dirty = true; renderChat();
+  const reply = (ok, data) => aFetch("device", { session: sid, id: it.id, ok, data });
+  try {
+    if (it.name === "read_clipboard") {
+      if (!navigator.clipboard || !navigator.clipboard.readText) { await reply(false, t("dev_no_api")); }
+      else { const txt = await navigator.clipboard.readText(); await reply(true, txt); }
+    } else if (it.name === "locate") {   /* 结果是 {lat,lng,acc}; 服务端反查地址、记进会话(asst_geo_locate_post)。拿不到就如实说原因 */
+      const loc = await devicePos();
+      if (loc) await reply(true, JSON.stringify({ lat: loc.lat, lng: loc.lng, acc: loc.acc }));
+      else await reply(false, secure && navigator.geolocation ? "position unavailable (permission denied or timed out)" : t("dev_no_api"));
+    } else {
+      const f = await filePick;
+      if (!f) { it.devBusy = false; it.dirty = true; renderChat(); return; }   /* 用户取消了选择框: 卡留着, 再点 */
+      const r = await fetch(`/api/assistant/device_file?session=${sid}&id=${encodeURIComponent(it.id)}&name=${encodeURIComponent(f.name)}`, { method: "POST", headers: aHeaders(false), body: f });
+      const j = await r.json().catch(() => ({ error: "HTTP " + r.status })); if (j.error) toast(t("fail", j.error), true);
+    }
+  } catch (err) {
+    if (!tapped && err && err.name === "NotAllowedError") { it.devBusy = false; it.dirty = true; renderChat(); return; }   /* 没手势读不了(iOS): 换成按钮让用户点 */
+    await reply(false, String(err && err.name ? err.name + ": " + err.message : err));
+  }
+  it.devBusy = false; it.dirty = true; renderChat();
+}
+/* 文件卡: 只在模型调 share(path=…) 时出(10-12 用户: 出是活的, 正常问题不需要); 页面不扫工作区。相对路径或以工作区为前缀; . 开头的目录是助理自己的缓存, 不算 */
+function deliverPath(it) {
+  if (it.name !== "share") return null;
+  let p = (argsOf(it) || {}).path || ""; if (asstWs && p.startsWith(asstWs + "/")) p = p.slice(asstWs.length + 1);
+  return p && !/^[~\/]/.test(p) && !/(^|\/)\./.test(p) ? p : null;
+}
+const FILE_TYPES = { md: "text/markdown", txt: "text/plain", csv: "text/csv", html: "text/html", json: "application/json", pdf: "application/pdf", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg" };
+async function fileBlob(path) {
+  const r = await fetch(`/api/assistant/file?session=${view.sid}&path=${encodeURIComponent(path)}`, { headers: aHeaders(false), cache: "no-store" });
+  if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || "HTTP " + r.status); }
+  const ext = (path.split(".").pop() || "").toLowerCase(), name = path.split("/").pop();
+  return new File([await r.blob()], name, { type: FILE_TYPES[ext] || "application/octet-stream" });
+}
+function deliverEl(it) {
+  const p = deliverPath(it); if (!p) return null;
+  const w = node("div", "deliver"); w.appendChild(node("span", "fname", p));
+  const btn = (label, fn) => { const b = node("button", "", label); b.onclick = () => fn().catch(e => toast(t("dl_fail", e.message || e), true)); w.appendChild(b); };
+  btn(t("dl_download"), async () => { const f = await fileBlob(p); const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 60000); });
+  if (/\.(md|txt|csv|json|html)$/i.test(p)) btn(t("dl_preview"), async () => { let pre = w.querySelector("pre"); if (pre) { pre.remove(); return; } const f = await fileBlob(p); pre = node("pre", "box", await f.text()); w.appendChild(pre); });
+  return w;   /* 分享按钮不在这里: share 这个动作本身在上面的设备卡上(deviceBox), 点了开系统分享面板 */
+}
+function devNote() { const n = $("dev-note"); n.textContent = t("dev_http"); n.classList.toggle("on", isApp() && !secure); }
+devNote();
+/* 分享目标(manifest share_target, 安卓 Chrome 装成 App 后生效; 10-12 用户: "点高德地图定位不就找到位置了吗"): 别的 App(高德"分享位置"、店铺页、浏览器)
+   分享到 YoungAi → 系统打开 /?title=&text=&url= → 文字落进输入框, 你补一句要它干什么再发。地址/店名就这样免 key 进来。iPhone 没有分享目标, 走剪贴板 + read_clipboard。
+   处理完把查询串从地址栏去掉: 刷新不重复灌。 */
+(function shareIn() {
+  const q = new URLSearchParams(location.search);
+  if (!q.has("text") && !q.has("url")) return;
+  const parts = [q.get("title"), q.get("text"), q.get("url")].map(x => (x || "").trim()).filter(Boolean);
+  const txt = parts.filter((x, i) => !parts.slice(0, i).some(y => y.includes(x))).join("\n");   /* 安卓常把 url 也塞进 text: 前面已含的不再重复 */
+  if (!txt) return;
+  history.replaceState(null, "", location.pathname + "#chat");
+  inputEl.value = txt + "\n"; autosize(); if (!isApp()) inputEl.focus();
+})();
 
 /* ---------------- 记忆 ----------------
    两个纯文本文件(~/.ds4/assistant/memory/profile.md / rules.md), 这里就是它们的编辑框; 改完对新开的对话生效(进行中的对话 system 已冻结, 为了 KV 前缀复用)。 */
@@ -1619,13 +1924,14 @@ $("mem-save1").onclick = async () => { const r = await aFetch("memory", { profil
 $("mem-save2").onclick = async () => { const r = await aFetch("memory", { rules: $("mem-rules").value }); r.error ? toast(t("fail", r.error), true) : toast(t("saved")); };
 
 /* ---------------- 活动 ----------------
-   沙盒状态 / bash 开关 / 允许的目录 / 永久授权 / 审计流水: 全是 GET /api/assistant/activity 一份, 改动走 POST /api/assistant/policy。 */
+   沙盒状态 / 工具箱 / run 开关 / 允许的目录 / 永久授权 / 审计流水: 全是 GET /api/assistant/activity 一份, 改动走 POST /api/assistant/policy。 */
 const actOpen = new Set();
 async function loadAct() {
   const [st, a] = await Promise.all([aFetch("status"), aFetch("activity")]);
   if (a.error || st.error) { toast(t("fail", a.error || st.error), true); return; }
   $("act-info").textContent = t("act_info", st.sandbox, st.browser || t("act_nobrowser"), st.workspace);
-  $("act-bash").checked = !!a.policy.bash;
+  const tb = st.toolbox || { have: [], missing: [] }; $("act-toolbox").textContent = t("act_toolbox", tb.have.join(" ") || t("act_toolbox_none"), tb.missing.join(" ") || t("act_toolbox_none"));
+  $("act-run").checked = a.policy.run !== false;
   const dt = $("act-dirs"); dt.replaceChildren();
   (a.policy.dirs || []).forEach(d => { const tr = node("tr"); tr.appendChild(node("td", null, d.path)); tr.appendChild(node("td", null, t(d.write ? "act_rw" : "act_ro")));
     const td = node("td"); const b = node("button", "ghost act", t("act_del")); b.onclick = () => policy({ op: "dir_del", path: d.path }); td.appendChild(b); tr.appendChild(td); dt.appendChild(tr); });
@@ -1646,7 +1952,7 @@ async function loadAct() {
   if (!a.audit.length) { const tr = node("tr"); tr.appendChild(node("td", "muted", t("act_none"))); au.appendChild(tr); }
 }
 async function policy(body) { const r = await aFetch("policy", body); if (r.error) toast(t("fail", r.error), true); loadAct(); }
-$("act-bash").onchange = () => policy({ op: "bash", value: $("act-bash").checked });
+$("act-run").onchange = () => policy({ op: "run", value: $("act-run").checked });
 $("act-add").onclick = () => { const p = $("act-path").value.trim(); if (!p) return; policy({ op: "dir_add", path: p, write: $("act-write").checked }); $("act-path").value = ""; };
 
 /* ---------------- 监控(数据 = GET /metrics: 主进程转发给模型子进程, 字段由 src/server/server_monitor*.c 产出) ----------------
@@ -2161,7 +2467,7 @@ window.addEventListener("keydown", e => { if (askDone && e.key === "Escape") { e
 $("lang").onclick = () => {
   lang = lang === "zh" ? "en" : "zh";
   try { localStorage.setItem(LS_LANG, lang); } catch (_) {}
-  applyI18n(); authRender(); showTab(curTab() || "chat"); renderEngine(); renderRuns(); renderChat(); renderSessions();
+  applyI18n(); authRender(); showTab(curTab() || "chat"); renderEngine(); renderRuns(); renderChat(); renderSessions(); devNote();
   if (detail) renderDetail();
   if (dataCache) loadData();
   if (mdata) { renderPlug(); if (mdata.hub) renderModels(); }
@@ -2298,9 +2604,22 @@ function openSettings() {
   drawer(false); $("settings").classList.add("on");
   for (const id of ["set-host", "set-port", "set-user", "set-pass", "set-pub"]) delete $(id).dataset.dirty;
   $("set-pass").value = ""; $("set-err").textContent = $("cert-err").textContent = "";
-  loadNet(); clearInterval(netT); netT = setInterval(loadNet, 1500);
+  loadNet(); loadAmap(); clearInterval(netT); netT = setInterval(loadNet, 1500);
 }
 function closeSettings() { $("settings").classList.remove("on"); clearInterval(netT); netT = 0; }
+/* 高德 key: 存在助理的 secrets/(POST /api/assistant/secret), 页面只知道有没有 */
+async function loadAmap() {
+  const st = await aFetch("status"); if (st.error) return;
+  $("amap-st").textContent = t(!st.geo ? "set_amap_nobrowser" : st.amap_key ? "set_amap_on" : "set_amap_off");
+  $("amap-del").style.display = st.amap_key ? "" : "none";
+}
+async function saveAmap(value) {
+  const r = await aFetch("secret", { name: "amap_key", value });
+  if (r.error) { $("amap-err").textContent = r.error; return; }
+  $("amap-err").textContent = ""; $("set-amap").value = ""; toast(t("set_saved")); loadAmap();
+}
+$("amap-save").onclick = () => { const v = $("set-amap").value.trim(); if (v) saveAmap(v); };
+$("amap-del").onclick = async () => { if (await ask(t("set_amap_del") + "?", true, t("set_amap_del"))) saveAmap(""); };
 $("btn-set").onclick = openSettings;
 $("set-close").onclick = closeSettings;
 $("settings").onclick = e => { if (e.target === $("settings")) closeSettings(); };   /* 点遮罩关 */
