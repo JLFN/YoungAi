@@ -41,7 +41,7 @@ CMD="${1:-start}"
 #   ③体积 113.6 GB 比 fp4 的 118.0 GB 还小 4.4 GB。
 # 换回 fp4 只要把第 2/3 个参数传成老路径, 脚本不认死这一对。
 MDL="${2:-$ROOT/gguf/v41/DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative.gguf}"   # ① 现役量化模型(v3: 共享码本 E4M3 + 浅 14 层 13 位)
-ZCH="${3:-$ROOT/gguf/v41/DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative-grrb-vqfin41_vqhalf_a_n8192-engine}"   # ② 现役反修(grrb = 路由偏置侧车 27 层 + 逐专家增益 39 层)
+ZCH="${3:-$ROOT/gguf/v41/DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative-grrb-code_fit_n15360-engine}"   # ② 默认侧车 = 编程(10-12 用户定; grrb = 路由偏置侧车 27 层 + 逐专家增益 39 层)
 # 第 4 个参数起原样透传给 ds4-server(如 --posttrain <③目录>)。老调用方传的 spec/plain(V4 的 drafter 模式)在 V4.1 上没有意义, 跳过。
 EXTRA=("${@:4}")
 if [ "${EXTRA[0]:-}" = spec ] || [ "${EXTRA[0]:-}" = plain ]; then EXTRA=("${EXTRA[@]:1}"); fi

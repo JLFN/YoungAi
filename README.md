@@ -161,7 +161,7 @@ make cuda-spark
 
 ```sh
 curl -fsSLO https://huggingface.co/wenzhouwu/YoungAi-DeepSeek-V4.1-Flash/resolve/main/install.sh
-bash install.sh                      # --domain code for another domain; --endpoint https://hf-mirror.com for a mirror; --help for all
+bash install.sh                      # --domain law for another domain (default: code); --endpoint https://hf-mirror.com for a mirror; --help for all
 ```
 
 **On a Mac**, `make` builds the Metal version. Every GPU operation has a Metal implementation and 126 kernel tests

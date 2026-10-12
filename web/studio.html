@@ -1921,7 +1921,9 @@ function renderLocal(d, mode) {
     const r = node("div", "row"), sel = node("select"); sel.dataset.m = m.path;
     m.sidecars.forEach(s => { const o = node("option", null, t("m_sidecar", sidecarLabel(m.path, s))); o.value = s; sel.appendChild(o); });
     const o = node("option", null, t("m_nosc")); o.value = "none"; sel.appendChild(o);
-    const want = keepSel[m.path] || (using ? d.loaded.zchain || "none" : d.pick && d.pick.gguf === m.path ? d.pick.zchain || "none" : lsGet("ds4.studio.sc." + m.path, ""));
+    /* 没选过就默认编程侧车(10-12 用户定); 这个模型没有编程侧车才落到下拉第一项 */
+    const code = m.sidecars.find(s => /code/.test(s.split("/").pop().slice(modelName(m.path).length + 1))) || "";
+    const want = keepSel[m.path] || (using ? d.loaded.zchain || "none" : d.pick && d.pick.gguf === m.path ? d.pick.zchain || "none" : lsGet("ds4.studio.sc." + m.path, code));
     if (want && [...sel.options].some(x => x.value === want)) sel.value = want;
     sel.onchange = () => lsSet("ds4.studio.sc." + m.path, sel.value);
     const same = using && (d.loaded.zchain || "none") === sel.value, b = node("button", same ? "ghost" : "primary", t(same ? "m_inuse" : "m_load"));

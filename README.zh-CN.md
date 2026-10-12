@@ -129,7 +129,7 @@ make cuda-spark
 
 ```sh
 curl -fsSLO https://huggingface.co/wenzhouwu/YoungAi-DeepSeek-V4.1-Flash/resolve/main/install.sh
-bash install.sh                      # --domain code 换领域；--endpoint https://hf-mirror.com 走镜像；--help 看全部选项
+bash install.sh                      # 默认编程侧车，--domain law 换领域；--endpoint https://hf-mirror.com 走镜像；--help 看全部选项
 ```
 
 **Mac**：`make` 编出 Metal 版。每个 GPU 操作都有 Metal 实现，126 项核测试在真 Apple GPU 上全过；整模型还没在

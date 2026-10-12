@@ -4,7 +4,7 @@
 #
 #   bash install.sh                  check the machine, download ~317 GB (resumable), start the server on
 #                                    127.0.0.1:8000 and run a one-line smoke test
-#   bash install.sh --domain code    the same, serving with the coding sidecar instead of the finance one
+#   bash install.sh --domain law     the same, serving with the law sidecar instead of the coding one
 #                                    (domains: finance, code, law, medicine, science)
 #   bash install.sh --no-start       everything except starting the server
 #   bash install.sh start | stop | status
@@ -14,7 +14,7 @@
 #                                    repo R · shards S47 S48 · gguf NAME TOTAL HAVE · engram TOTAL HAVE · sidecar DOMAIN DIR 0|1
 #
 # Options:
-#   --domain NAME      which domain sidecar the server loads (docs/TECHNICAL.md §3): finance (default), code, law, medicine,
+#   --domain NAME      which domain sidecar the server loads (docs/TECHNICAL.md §3): code (default), finance, law, medicine,
 #                      science, or none (bare base). Every sidecar is downloaded (~40 MB each), so switching is just: stop, start --domain X
 #   --dir DIR          install directory (default: $HOME/youngai); needs ~325 GB free, ~122 GB with --engram-dir
 #   --engram-dir DIR   you already have the two official n-gram shards (a folder holding
@@ -24,7 +24,8 @@
 #   --port N           listen port (default 8000)
 #   --endpoint URL     Hugging Face endpoint for the downloads, e.g. https://hf-mirror.com
 #   --pip-index URL    package index, used only if the `hf` CLI has to be installed first
-#   --posttrain        also load the experimental post-training file (docs/TECHNICAL.md §7; finance only)
+#   --posttrain        also load the experimental post-training file (docs/TECHNICAL.md §7; finance only, so it switches
+#                      the default domain to finance)
 #   --no-xet           download over the plain LFS channel instead of Xet (use it if downloads keep failing with
 #                      "peer closed connection": some proxies cut Xet transfers)
 #
@@ -69,11 +70,11 @@ RUN_FLOOR_MB=10000     # MemAvailable needed after loading; below it the machine
 KILL_MB=2500           # watchdog: two samples in a row below this and the server is stopped
 
 CMD="install"; DIR="$HOME/youngai"; HOST="127.0.0.1"; PORT=8000; ENDPOINT=""; PIP_INDEX=""; WITH_PT=0; START=1; NO_XET=0
-ENGRAM_SRC=""; DOMAIN="finance"
+ENGRAM_SRC=""; DOMAIN="code"; DOMAIN_SET=0   # coding sidecar by default
 while [ $# -gt 0 ]; do
     case "$1" in
         install|start|stop|status|download|probe) CMD="$1"; shift;;
-        --domain) DOMAIN="$2"; shift 2;;
+        --domain) DOMAIN="$2"; DOMAIN_SET=1; shift 2;;
         --dir) DIR="$2"; shift 2;;
         --engram-dir) ENGRAM_SRC="$2"; shift 2;;
         --host) HOST="$2"; shift 2;;
@@ -94,6 +95,8 @@ INFOF="$DIR/server.info"
 
 say() { echo "[youngai $(date +%H:%M:%S)] $*"; }
 die() { echo "[youngai] ERROR: $*" >&2; exit 1; }
+# --posttrain only pairs with the sidecar it was solved on: given alone, it picks that sidecar instead of the default
+[ "$WITH_PT" = 1 ] && [ "$DOMAIN_SET" = 0 ] && DOMAIN="$POSTTRAIN_DOMAIN"
 SIDECAR=$(sidecar_of "$DOMAIN") || die "unknown --domain '$DOMAIN' (choose $DOMAINS)"
 [ "$WITH_PT" = 0 ] || [ "$DOMAIN" = "$POSTTRAIN_DOMAIN" ] \
     || die "--posttrain was solved on the $POSTTRAIN_DOMAIN sidecar and cannot be stacked on --domain $DOMAIN"
