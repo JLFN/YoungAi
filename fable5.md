@@ -11178,3 +11178,10 @@ A = 只在提示里找(Strata 默认索引范围), B = 提示 + 已生成都找;
 - 改: 安卓改 Chrome 的 `intent://…#Intent;scheme=geo;S.browser_fallback_url=<高德网页&callnative=1>;end`。有地图 App 认领就交给它(多个弹选择框), 没有就开高德网页再试拉起高德 App。iPhone(maps://)/电脑(高德网页)不动。
 - `make asst-e2e` 全过, 加了安卓 UA 断言。顺带修测试: 端口写死 18000 时撞上本机 `ssh -L 18000:…:8000 spark` 隧道(ds4-train 绑 0.0.0.0 照样成功), 测试连到 spark 真工作台报"用户名或密码不对"; 改成自找空端口, 登录失败时带出页面报错。
 - studio.html 已 scp 到 spark ~/ds4-main/web(覆盖前 diff 只差这次改动), 页面网络优先, 刷新即生效。小米真机未验, 未提交。
+
+## 10-12 深夜 · README 架构大图 + v0.2.0 发布(用户: "根据最新的产品形态重新更新readme，使用一张大图说明我们的产品架构和技术架构" → "提交commit，推送git，升级release")
+- README: 首图换成 docs/img/arch.png / arch-en.png(上层产品: 四个入口 → 工作台五页 + 助理进干出; 下层技术: ds4-train 主进程四模块 → fork ds4-server / ds4 --ptrain, 引擎, 三层模型文件)。源 docs/img/arch.html(中英一份), docs/img/render_arch.sh 用本机 Chrome 无头出 2× 图; 高度要等 fonts.ready 再量, 解析时就量英文版矮 75px。README 中 173→93 行、英 208→125 行; 改掉过时的"跑命令要审批""10 个工具"; API 补"本机调也要密钥"(tr_auth_gate: /v1/* 只认 API 密钥/登录票/本机口令)。
+- release_pack.sh 漏了 PWA 四件(manifest/sw.js/图标): 不只是装不成 App, 穿透的公网检测取的就是 /manifest.webmanifest, 缺了设置里永远显示断线。已补。
+- **v0.2.0**(tag 38ab200): https://github.com/fodelf/YoungAi/releases/tag/v0.2.0 , 附件 youngai-{linux-aarch64,darwin-arm64}-20261012(266 / 246 MB + sha256)。两包都只做了干净目录冒烟(页面/manifest/sw.js/图标 200, 未登录接口 401), 没用包重走加载→聊天→训练全链, 说明里写明。v0.1.0 保留。
+- **★冒烟撞断生产公网★**: spark 上从干净目录起包里的 ds4-train :18800, 它读同一份 ~/.ds4/studio/cloud(穿透开着) → tr_frpc_start 先 tr_frpc_stop 按 frpc.pid 杀了生产 :8000 的 frpc, 换成自己的(localAddr 18800); 关掉测试实例 → 它的 frpc 也没了 → 公网 23:06 起断约 20 分钟。恢复: 用本机口令 POST 127.0.0.1:8000/api/net/tunnel {"on":"true"}, frpc 重起指回 8000, https 公网 200; 生产主进程与模型没重启。
+  这是产品 bug 不是操作意外: 同一用户两份 ds4-train 会互抢穿透。待修(没改): 起 frpc 前看 pid 文件里的 frpc 归不归别的活着的 ds4-train / 页面端口不同就不接管。以后在 spark 上冒烟包, 先确认穿透配置不会被测试实例读到。release 说明"已知问题"里写了补救办法。
