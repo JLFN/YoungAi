@@ -289,7 +289,12 @@
   #auth .rule { font-size: 12px; color: var(--faint); line-height: 1.5; }
   #auth .err { color: #fca5a5; font-size: 13px; min-height: 18px; }
   #auth button.primary { padding: 10px; font-size: 15px; }
-  /* ---------- 手机上的下拉: 系统原生选择框改不了大小(安卓是屏幕中间一个大对话框), app 外壳里换成贴着按钮弹出的小菜单 ---------- */
+  /* ---------- 下拉: 系统原生列表改不了样式(电脑上是白底系统菜单, 安卓是屏幕中间一个大对话框), 一律换成贴着框弹出的 #pick 小菜单(脚本见 pickMenu)。
+     <select> 本身照旧在页面上存值、发 change, 只是画成和输入框一样, 右边一个箭头 ---------- */
+  select { appearance: none; -webkit-appearance: none; cursor: pointer; text-overflow: ellipsis; white-space: nowrap; overflow: hidden;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5l3.5 3.5 3.5-3.5' fill='none' stroke='%238b98b3' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 9px center; background-size: 12px; }
+  select { padding-right: 28px !important; }   /* 各页按自己的需要写了 padding(含行内 style), 右边这截必须留给箭头, 不然长名字压在箭头上 */
   .pickbtn { display: none; font-size: 13px; padding: 5px 11px; border-radius: 999px; max-width: 46vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   [data-shell=app] .pickbtn { display: inline-block; } [data-shell=app] select.picked { display: none !important; }
   #pick { position: fixed; inset: 0; z-index: 95; display: none; } #pick.on { display: block; }
@@ -297,6 +302,21 @@
   #pick .pi { display: flex; align-items: center; gap: 10px; padding: 11px 12px; border-radius: 9px; font-size: 15px; color: var(--text); cursor: pointer; }
   #pick .pi:active, #pick .pi:hover { background: var(--hover); }
   #pick .pi.on { color: var(--accent-2); } #pick .pi .ck { width: 16px; flex: none; text-align: center; }
+  #pick .pi.act { background: var(--hover); }   /* 键盘上下键走到的那一项 */
+  [data-shell=desk] #pick .pbox { border-radius: 10px; max-height: 60vh; } [data-shell=desk] #pick .pi { font-size: 13.5px; padding: 7px 10px; border-radius: 7px; gap: 8px; }
+  /* ---------- 确认框(替掉浏览器自带的 confirm(): 白底系统框, 和页面两个样子; 脚本见 ask) ---------- */
+  #ask { position: fixed; inset: 0; z-index: 110; background: rgba(5,8,15,.72); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; padding: 16px; }
+  #ask.on { display: flex; }   /* z-index 压过设置弹窗(90)与登录框(100): 删证书的确认是从设置弹窗里弹的 */
+  #ask .abox { width: 100%; max-width: 400px; background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 20px 20px 16px; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+  #ask .amsg { white-space: pre-line; line-height: 1.6; font-size: 14.5px; overflow-wrap: anywhere; }
+  #ask .abtn { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; } #ask .abtn button { min-width: 84px; }
+  #ask button.danger { background: var(--err); border-color: transparent; color: #fff; font-weight: 600; }
+  [data-shell=app] #ask .abtn button { flex: 1; padding: 10px; }
+  /* ---------- 滚动条: 深色细条。标准属性给 Chrome / Firefox, ::-webkit- 给 Safari(Chrome 121+ 见到标准属性就不看 ::-webkit-, 两套不打架) ---------- */
+  * { scrollbar-width: thin; scrollbar-color: #2b3b5e transparent; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; } ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #2b3b5e; border-radius: 99px; border: 2px solid transparent; background-clip: padding-box; } ::-webkit-scrollbar-thumb:hover { background-color: #3a4f7a; }
+  input[type=checkbox], input[type=radio] { accent-color: var(--accent); }
   /* ---------- 设置(侧栏最底下的按钮 → 弹窗: 云服务器 / 穿透 / 证书; 服务端 src/train/train_net.c) ---------- */
   .setbtn { display: flex; align-items: center; gap: 11px; padding: 9px 11px; margin-top: 6px; border-radius: 9px; color: var(--dim); font-size: 14px; cursor: pointer; }
   .setbtn:hover { background: var(--hover); color: var(--text); }
@@ -676,6 +696,8 @@
   <div class="err" id="auth-err"></div>
   <button class="primary" id="auth-go" type="submit"></button>
 </form></div>
+<!-- 确认框(脚本见 ask) -->
+<div id="ask"><div class="abox" role="alertdialog" aria-modal="true"><div class="amsg" id="ask-msg"></div><div class="abtn"><button class="ghost" id="ask-no" data-i18n="ask_no">取消</button><button class="primary" id="ask-yes"></button></div></div></div>
 <!-- 设置弹窗(侧栏最底下 / "更多"页里的"设置"打开; 脚本见 "设置弹窗" 段) -->
 <div id="settings"><div class="sbox" role="dialog" aria-modal="true">
   <div class="shead"><b data-i18n="set_t">设置</b><span class="muted" data-i18n="set_sub"></span><button class="ghost" id="set-close" data-i18n-title="close">×</button></div>
@@ -841,7 +863,7 @@ const I18N = {
     more_g_asst: "助理", more_g_train: "训练", more_g_dev: "开发", more_g_app: "应用", more_lang: "语言", more_lang_v: "中文",
     more_install: "安装到主屏幕", more_install_sub: "像 App 一样全屏打开, 有自己的图标", more_install_ios: "在 Safari 里点底部的「分享」→「添加到主屏幕」",
     more_install_http: "现在是 http 打开的, 浏览器只给 https 或本机地址装 PWA(见 docs/pwa.md)", more_installed: "已安装, 正以 App 方式运行",
-    set_btn: "设置", set_t: "设置", set_sub: "云服务器、公网穿透与 HTTPS 证书", close: "关闭",
+    set_btn: "设置", set_t: "设置", set_sub: "云服务器、公网穿透与 HTTPS 证书", close: "关闭", ask_no: "取消", ask_yes: "确定", ask_del: "删除", ask_stop: "停止",
     set_srv: "云服务器", set_srv_sub: "填一台有公网 IP 的云服务器的 SSH 账号。开穿透时用它把 frp 服务端装上去; 密码只存在本机 {0}(权限 0600), 页面拿不回原文。",
     set_pub: "公网端口", set_pub_hint: "手机访问用的端口, 留空 = 有证书用 443 / 没证书用页面端口。服务器 443 被占, 或大陆服务器的域名没备案(云厂商会拦 80/443), 就换一个, 比如 8443。改了要去安全组放行新端口。",
     ne_bad_pub: "公网端口要在 1~65535, 或者留空", ne_pub_busy: "公网端口 {0} 在服务器上被别的程序占着 —— 设置里换个公网端口(或停掉那个程序)",
@@ -972,7 +994,7 @@ const I18N = {
     more_g_asst: "Assistant", more_g_train: "Training", more_g_dev: "Developer", more_g_app: "App", more_lang: "Language", more_lang_v: "English",
     more_install: "Add to Home Screen", more_install_sub: "Opens full-screen like an app, with its own icon", more_install_ios: "In Safari, tap Share at the bottom → Add to Home Screen",
     more_install_http: "Opened over http; browsers only install PWAs from https or this machine's own address (see docs/pwa.md)", more_installed: "Installed, running as an app",
-    set_btn: "Settings", set_t: "Settings", set_sub: "Cloud server, public tunnel and HTTPS certificate", close: "Close",
+    set_btn: "Settings", set_t: "Settings", set_sub: "Cloud server, public tunnel and HTTPS certificate", close: "Close", ask_no: "Cancel", ask_yes: "OK", ask_del: "Delete", ask_stop: "Stop",
     set_srv: "Cloud server", set_srv_sub: "SSH account of a cloud server with a public IP. Turning on the tunnel uses it to install the frp server there; the password is stored only on this machine in {0} (mode 0600) and is never sent back to the page.",
     set_pub: "Public port", set_pub_hint: "Port used from the internet; empty = 443 with a certificate / the page port without. If 443 is taken on the server, or a mainland-China server's domain has no ICP filing (providers block 80/443), pick another such as 8443 and allow it in the security group.",
     ne_bad_pub: "Public port must be 1–65535, or empty", ne_pub_busy: "Public port {0} is used by another program on the server — pick another public port (or stop that program)",
@@ -1185,7 +1207,7 @@ $("btn-train").onclick = () => { if (!$("data").value) { toast(t("pick_data_firs
   const ex = [$("extra").value.trim(), $("evalf").value ? "eval=" + $("evalf").value : ""].filter(Boolean).join(",");
   act("/api/train/start", { data: $("data").value, epochs: $("epochs").value, layers: $("layers").value, lr: $("lr").value, extra: ex }, t("train_started"), 1)
     .then(ok => { if (ok) setTrainPane("prog"); }); };   /* app 外壳: 发车后切到进度段看它跑 */
-$("btn-stop").onclick = () => { if (confirm(t("stop_confirm"))) act("/api/train/stop", {}, t("stopped_toast"), 2); };
+$("btn-stop").onclick = async () => { if (await ask(t("stop_confirm"), true, t("ask_stop"))) act("/api/train/stop", {}, t("stopped_toast"), 2); };
 
 /* ---------------- 训练 ---------------- */
 function statusLabel(s) { const c = { running: "blue", done: "green", nopick: "amber", failed: "red", stopped: "" }; return s in c ? [t("st_" + s), c[s]] : [s, ""]; }
@@ -1541,7 +1563,7 @@ function renderSessions() {
     a.appendChild(node("span", "stitle", s.title || t("a_untitled")));
     if (s.state !== "idle") a.title = t("s_" + s.state);
     const del = node("button", "ghost sdel", "×"); del.title = t("a_del");
-    del.onclick = async ev => { ev.stopPropagation(); if (!confirm(t("a_del_confirm"))) return; const r = await aFetch("delete", { session: s.id }); if (r.error) toast(t("fail", r.error), true); if (s.id === curSid) selectSession(null); loadSessions(); };
+    del.onclick = async ev => { ev.stopPropagation(); if (!(await ask(t("a_del_confirm"), true, t("ask_del")))) return; const r = await aFetch("delete", { session: s.id }); if (r.error) toast(t("fail", r.error), true); if (s.id === curSid) selectSession(null); loadSessions(); };
     a.appendChild(del);
     a.onclick = () => selectSession(s.id);
     box.appendChild(a);
@@ -1792,7 +1814,7 @@ async function loadApi() {
     tr.appendChild(node("td", null, k.name)); tr.appendChild(node("td", "mono", k.display));
     tr.appendChild(node("td", null, kTime(k.created))); tr.appendChild(node("td", null, kTime(k.last_used))); tr.appendChild(node("td", null, String(k.requests)));
     const td = node("td"); const b = node("button", "danger act", t("k_del"));
-    b.onclick = async () => { if (!confirm(t("k_del_confirm", k.name))) return; await kFetch("delete", { id: k.id }); loadApi(); };
+    b.onclick = async () => { if (!(await ask(t("k_del_confirm", k.name), true, t("ask_del")))) return; await kFetch("delete", { id: k.id }); loadApi(); };
     td.appendChild(b); tr.appendChild(td); tb.appendChild(tr);
   });
   if (!j.keys.length) { const tr = node("tr"); tr.appendChild(node("td", "muted", t("k_none"))); tb.appendChild(tr); }
@@ -1953,13 +1975,13 @@ $("m-dl").onclick = async () => {
   setTimeout(loadModels, 1500);
 };
 $("m-cancel").onclick = async () => {
-  if (!confirm(t("dl_cancel_confirm"))) return;
+  if (!(await ask(t("dl_cancel_confirm"), true))) return;
   try { const r = await getJSON("/api/models/cancel", { method: "POST" }); toast(r.ok ? t("dl_cancelled") : t("fail", r.error), !r.ok); } catch (e) { toast(t("not_sent", e), true); }
   setTimeout(loadModels, 2500);
 };
 async function loadModel(gguf, sidecar) {
   const mode = status ? status.mode : "";
-  if (mode === "serving" && !confirm(t("ld_confirm", modelName(gguf)))) return;
+  if (mode === "serving" && !(await ask(t("ld_confirm", modelName(gguf))))) return;
   try {
     const r = await getJSON("/api/models/load", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ gguf, sidecar }) });
     if (!r.ok) { toast(t("ld_fail", r.error), true); return; }
@@ -2043,24 +2065,76 @@ $("plug").onchange = async () => {
   await sendPlug(z, $("pt-on").checked ? bestPt(z) : "");
 };
 /* 小菜单: 列出 select 的选项, 点一项 = 改 select 的值并发 change(原有的切换逻辑一行不改)。贴着按钮往上弹(按钮在屏幕底部的输入框里), 上面放不下就往下 */
+/* btn = 菜单贴着谁弹(手机外壳的侧车按钮, 或 select 自己), sel = 值存在哪个 <select>。选中 = 改 sel.value + 发 change, 各页的 onchange 照旧接 */
+let pickSel = null, pickAct = -1;
 function pickMenu(btn, sel) {
   const box = $("pick").querySelector(".pbox"); box.replaceChildren();
   [...sel.options].forEach(o => {
+    if (o.hidden || o.disabled) return;
     const it = node("div", "pi" + (o.value === sel.value ? " on" : "")); it.setAttribute("role", "option");
     it.appendChild(node("span", "ck", o.value === sel.value ? "✓" : "")); it.appendChild(node("span", null, o.textContent));
-    it.onclick = () => { closePick(); if (sel.value !== o.value) { sel.value = o.value; sel.dispatchEvent(new Event("change")); } };
+    it.onclick = () => { closePick(); if (sel.value !== o.value) { sel.value = o.value; sel.dispatchEvent(new Event("change", { bubbles: true })); } };
     box.appendChild(it);
   });
-  $("pick").classList.add("on");
-  const r = btn.getBoundingClientRect(), h = box.offsetHeight;
+  if (!box.children.length) return;
+  pickSel = sel; $("pick").classList.add("on");
+  const r = btn.getBoundingClientRect();
+  box.style.minWidth = Math.max(168, r.width) + "px";   /* 至少和框一样宽, 像是从框里展开的 */
+  const h = box.offsetHeight;
   box.style.left = Math.max(8, Math.min(r.left, innerWidth - box.offsetWidth - 8)) + "px";
-  box.style.top = (r.top - h - 6 > 8 ? r.top - h - 6 : r.bottom + 6) + "px";
+  /* 下面放得下就往下(电脑上的习惯), 放不下往上: 聊天框在屏幕底, 侧车菜单自然朝上 */
+  box.style.top = (r.bottom + 6 + h <= innerHeight - 8 ? r.bottom + 6 : Math.max(8, r.top - h - 6)) + "px";
+  const on = box.querySelector(".pi.on"); pickAct = on ? [...box.children].indexOf(on) : -1;
+  if (on) on.scrollIntoView({ block: "nearest" });
 }
-function closePick() { $("pick").classList.remove("on"); }
+function closePick() {
+  if (!$("pick").classList.contains("on")) return;
+  $("pick").classList.remove("on");
+  if (pickSel && pickSel.tagName === "SELECT" && pickSel.offsetParent) pickSel.focus({ preventScroll: true });   /* 键盘用户关了菜单回到原来的框上 */
+  pickSel = null;
+}
+/* 所有 <select> 都不弹系统列表, 改弹上面的菜单: 电脑上拦 mousedown(系统列表在按下那一刻弹), 手机上拦 touchstart(不拦的话 iOS 聚焦就弹滚轮、安卓弹大对话框)。
+   拦了 touchstart 后浏览器不再补发鼠标事件和 click, 所以菜单不会被同一下点击当成"点外面"立刻关掉 */
+function selOpen(e) {
+  const s = e.target.closest && e.target.closest("select");
+  if (!s || s.disabled || s.multiple) return;
+  e.preventDefault(); s.focus({ preventScroll: true }); pickMenu(s, s);
+}
+document.addEventListener("mousedown", e => { if (e.button === 0) selOpen(e); });
+document.addEventListener("touchstart", selOpen, { passive: false });
+/* 键盘: 框上按空格 / 回车 / Alt+↓ 开菜单(上下键不开菜单直接换值, 和系统一样); 菜单开着时上下键走、回车选、Esc 关(Esc 在下面那条全局监听里) */
+document.addEventListener("keydown", e => {
+  const box = $("pick").querySelector(".pbox");
+  if ($("pick").classList.contains("on")) {
+    const items = [...box.children];
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault(); pickAct = (pickAct + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+      items.forEach((it, i) => it.classList.toggle("act", i === pickAct)); items[pickAct].scrollIntoView({ block: "nearest" });
+    } else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (items[pickAct]) items[pickAct].click(); }
+    else if (e.key === "Tab") closePick();
+    return;
+  }
+  if (e.target.tagName === "SELECT" && (e.key === " " || e.key === "Enter" || (e.altKey && e.key === "ArrowDown"))) { e.preventDefault(); pickMenu(e.target, e.target); }
+});
 $("pick").onclick = e => { if (e.target === $("pick")) closePick(); };   /* 点菜单外面 = 关 */
 window.addEventListener("resize", closePick);
 $("plug-btn").onclick = () => pickMenu($("plug-btn"), $("plug"));
 $("pt-on").onchange = async () => { const z = mdata.loaded.zchain; await sendPlug(z, $("pt-on").checked ? bestPt(z) : ""); };
+
+/* 确认框: 替掉浏览器自带的 confirm()。返回 Promise<bool>; danger = 确定键标红(删除 / 停训练这类收不回的), yes = 确定键上的字。
+   Esc / 点框外 = 取消; 确定键开框就聚焦, 回车直接确定。Esc 在捕获阶段截住, 免得从设置弹窗里弹的确认把设置弹窗也一起关了 */
+let askDone = null;
+function ask(msg, danger, yes) {
+  if (askDone) askDone(false);
+  $("ask-msg").textContent = msg;
+  const y = $("ask-yes"); y.className = danger ? "danger" : "primary"; y.textContent = yes || t("ask_yes");
+  $("ask").classList.add("on"); y.focus();
+  return new Promise(res => { askDone = v => { askDone = null; $("ask").classList.remove("on"); res(v); }; });
+}
+$("ask-yes").onclick = () => askDone && askDone(true);
+$("ask-no").onclick = () => askDone && askDone(false);
+$("ask").onclick = e => { if (e.target === $("ask") && askDone) askDone(false); };
+window.addEventListener("keydown", e => { if (askDone && e.key === "Escape") { e.stopImmediatePropagation(); askDone(false); } }, true);
 
 /* 切语言: 静态文字走 applyI18n, 动态区域按当前数据重画一遍(不等下一轮 poll) */
 $("lang").onclick = () => {
@@ -2237,7 +2311,7 @@ $("cert-file").onchange = async () => {
   net = j; renderNet(); toast(t("set_cert_ok"));
 };
 $("cert-del").onclick = async () => {
-  if (!confirm(t("set_cert_del_q"))) return;
+  if (!(await ask(t("set_cert_del_q"), true, t("ask_del")))) return;
   const j = await netFetch("cert_delete", {});
   if (j.error) { netErr(j.error, $("cert-err")); return; }
   net = j; renderNet();
