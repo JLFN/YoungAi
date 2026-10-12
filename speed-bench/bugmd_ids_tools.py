@@ -261,7 +261,7 @@ def cmd_faith(topk_path, ids_path, n_prompt, entry="0"):
     row = struct.Struct("<Iiff" + "%di" % K + "%df" % K)
     g0 = n_prompt - 1
     buckets = {}; close = {128822: [0, 0.0, 0.0, -1], 1: [0, 0.0, 0.0, -1]}   # 进 top-K 次数, Σp, 最大 p, 最大 p 的生成位
-    after, pre = [], []
+    after, pre, kout = [], [], []
     while True:
         buf = f.read(row.size)
         if len(buf) < row.size: break
@@ -271,8 +271,11 @@ def cmd_faith(topk_path, ids_path, n_prompt, entry="0"):
         j = max(range(K), key=lambda q: pr[q]); p1 = pr[j]; y = ids[i + 1]
         py = next((pr[q] for q in range(K) if tid[q] == y), None)
         gpos = i - g0
-        b = buckets.setdefault(gpos // 4096, [0.0, 0, 0, 0, 0.0])   # Σp1, hit1, n, K外, Σp1(1−p1)
-        b[0] += p1; b[2] += 1; b[1] += tid[j] == y; b[3] += py is None; b[4] += p1 * (1.0 - p1)
+        b = buckets.setdefault(gpos // 4096, [0.0, 0, 0, 0, 0.0, 0.0])   # Σp1, hit1, n, K外, Σp1(1−p1), 期望 K外=Σ(1−Σp_topK)
+        b[0] += p1; b[2] += 1; b[1] += tid[j] == y; b[3] += py is None; b[4] += p1 * (1.0 - p1); b[5] += max(0.0, 1.0 - sum(pr))
+        # ★K 外逐位存档★(2026-10-12 鹈鹕乱码): 真吐落 top-K 外的位置, 记 p(top-1) 与 top-K 里最小的 p(= p(真吐) 的上界),
+        # 乱码 token("#fant"/"排队"/"q?")是不是全在这里, 以及它们的上界有多小 —— 忠实采样下 K 外总数 ≈ 期望 K外, 远超就是采样器没按分布抽
+        if py is None: kout.append((gpos, y, p1, min(pr), tid[j]))
         for t, c in close.items():
             for q in range(K):
                 if tid[q] == t:
@@ -281,12 +284,16 @@ def cmd_faith(topk_path, ids_path, n_prompt, entry="0"):
         nk = sum(1 for q in range(K) if pr[q] >= 1e-4)
         (after if gpos >= entry else pre).append((py if py is not None else 0.0, p1, nk))
     print("ETGD K=%d; 生成 %d 位(提示 %d), 入环位 %d" % (K, len(ids) - n_prompt, n_prompt, entry))
-    print("① 每 4096 生成位: Σp(top-1) | 真吐==top-1 | σ=√Σp(1−p) | 真吐落 top-K 外")
+    print("① 每 4096 生成位: Σp(top-1) | 真吐==top-1 | σ=√Σp(1−p) | 真吐落 top-K 外(观测 / 期望=Σ(1−Σp_topK))")
     for b in sorted(buckets):
-        s, h, n, out, var = buckets[b]
+        s, h, n, out, var, eout = buckets[b]
         sigma = math.sqrt(max(var, 1e-9))
-        print("  %6d~%6d  Σp1=%8.1f  hit1=%6d  σ=%5.1f  偏 %+5.1fσ  K外=%4d%s" % (b * 4096, b * 4096 + 4095, s, h, sigma, (h - s) / max(sigma, 1.0), out,
+        print("  %6d~%6d  Σp1=%8.1f  hit1=%6d  σ=%5.1f  偏 %+5.1fσ  K外=%4d/期望 %6.1f%s" % (b * 4096, b * 4096 + 4095, s, h, sigma, (h - s) / max(sigma, 1.0), out, eout,
               "  ★超 3σ★" if abs(h - s) > 3 * max(sigma, 1.0) else ""))
+    if kout:
+        print("①b K 外逐位(生成位 | 真吐 id | p(top-1) | top-K 最小 p = p(真吐)上界 | top-1 id), 共 %d 位, 按上界从小到大前 40:" % len(kout))
+        for gpos, y, p1, pmin, t1 in sorted(kout, key=lambda x: x[3])[:40]:
+            print("  %6d | %6d | %.3f | <%.1e | %d" % (gpos, y, p1, pmin, t1))
     for t, name in ((128822, "</think>"), (1, "EOS")):
         c = close[t]
         print("② %-9s 进 top-K %4d 位, Σp=%.4f, 最大 p=%.5f(生成第 %d 位); 观测抽到 %d 次; 忠实采样下抽到 0 次的概率 exp(−Σp)=%.3f" % (
