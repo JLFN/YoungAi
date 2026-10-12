@@ -1,0 +1,204 @@
+<!doctype html>
+<!-- README 首图的源文件。改图 = 改这里, 再跑 docs/img/render_arch.sh 出 arch.png / arch-en.png。
+     中英文写在同一份里(.zh / .en 两个 span), 免得两份图的内容对不上。 -->
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>YoungAi 架构</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --ink: #1d2330; --sub: #5b6475; --line: #d9dde5;
+    --p: #2f6fde; --p-soft: #e8f0fd; --p-line: #b9cff5;
+    --t: #c2410c; --t-soft: #fdf0e7; --t-line: #f2c6a6;
+    --g: #0f8a5f; --g-soft: #e6f5ee;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html.en .zh, html:not(.en) .en { display: none; }
+  body {
+    width: 1600px; background: var(--bg); color: var(--ink);
+    font: 17px/1.45 -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+    padding: 40px 44px 36px;
+  }
+  header { display: flex; align-items: baseline; gap: 20px; margin-bottom: 22px; }
+  header h1 { font-size: 34px; letter-spacing: -0.5px; }
+  header p { color: var(--sub); font-size: 18px; }
+
+  .band { border-radius: 18px; padding: 22px 24px 24px; margin-bottom: 18px; background: #fff;
+          border: 1.5px solid var(--line); }
+  .band > h2 { font-size: 15px; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 14px; }
+  .prod > h2 { color: var(--p); } .tech > h2 { color: var(--t); }
+
+  .box { border-radius: 12px; padding: 12px 14px; border: 1.5px solid var(--line); background: #fff; }
+  .box h3 { font-size: 18px; margin-bottom: 4px; }
+  .box .s { color: var(--sub); font-size: 15px; }
+  .prod .box { border-color: var(--p-line); }
+  .prod .box.hl { background: var(--p-soft); }
+  .tech .box { border-color: var(--t-line); }
+  .tech .box.hl { background: var(--t-soft); }
+  code { font: 14.5px ui-monospace, Menlo, monospace; background: rgba(0,0,0,.05); padding: 0 4px; border-radius: 4px; }
+
+  /* 产品层: 入口 | 工作台 */
+  .prod-grid { display: grid; grid-template-columns: 300px 40px 1fr; align-items: stretch; }
+  .entries { display: grid; gap: 10px; }
+  .arrow { display: flex; align-items: center; justify-content: center; color: var(--sub); font-size: 26px; }
+  .studio { border: 2px solid var(--p); border-radius: 14px; padding: 14px 16px; }
+  .studio-top { display: flex; align-items: baseline; gap: 14px; margin-bottom: 12px; }
+  .studio-top h3 { font-size: 20px; }
+  .tabs { display: flex; gap: 8px; }
+  .tabs span { background: var(--p); color: #fff; border-radius: 999px; padding: 2px 12px; font-size: 15px; font-weight: 600; }
+  .flow { display: grid; grid-template-columns: 1fr 28px 1.25fr 28px 1fr; align-items: stretch; margin-bottom: 12px; }
+  .flow .arrow { font-size: 22px; }
+  .flow .box h3 { color: var(--p); }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .studio { display: flex; flex-direction: column; }
+  .studio .flow { flex: 1; }
+
+  /* 技术层 */
+  .tech-grid { display: grid; grid-template-columns: 1fr 470px; gap: 18px; }
+  .main-proc { border: 2px solid var(--t); border-radius: 14px; padding: 14px 16px; }
+  .main-proc > h3 { font-size: 20px; margin-bottom: 10px; }
+  .main-proc > h3 small { font-weight: 400; color: var(--sub); font-size: 15px; margin-left: 8px; }
+  .mods { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
+  .fork { color: var(--t); font-size: 15px; font-weight: 600; margin: 0 0 8px 2px; }
+  .children { display: grid; grid-template-columns: 1.35fr 1fr; gap: 12px; }
+  .engine { margin-top: 14px; text-align: center; padding: 10px; border-radius: 12px;
+            background: var(--ink); color: #fff; font-size: 16px; }
+  .engine b { font-size: 17px; }
+
+  .stack { display: grid; gap: 8px; }
+  .stack h3.title { font-size: 20px; margin-bottom: 2px; }
+  .layer { display: grid; grid-template-columns: 34px 1fr auto; gap: 10px; align-items: center;
+           border-radius: 10px; padding: 10px 12px; border: 1.5px solid var(--t-line); }
+  .layer .n { font-size: 22px; font-weight: 700; color: var(--t); text-align: center; }
+  .layer .sz { font-weight: 700; font-size: 17px; white-space: nowrap; }
+  .layer h4 { font-size: 17px; }
+  .layer .s { color: var(--sub); font-size: 14.5px; }
+  .l3 { background: #fff; border-style: dashed; }
+  .l2 { background: var(--t-soft); }
+  .l1 { background: #f9dcc7; padding: 18px 12px; }
+  .ssd { border: 1.5px dashed var(--line); border-radius: 10px; padding: 8px 12px; color: var(--sub); font-size: 14.5px; }
+  .hw { border-radius: 10px; padding: 10px 12px; background: var(--g-soft); color: var(--g); font-weight: 600; text-align: center; }
+
+  .nums { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+  .num { background: #fff; border: 1.5px solid var(--line); border-radius: 12px; padding: 10px 14px; }
+  .num b { display: block; font-size: 26px; letter-spacing: -0.5px; }
+  .num span { color: var(--sub); font-size: 14.5px; }
+</style>
+<script>if (location.search.indexOf("en") >= 0) document.documentElement.className = "en";</script>
+</head>
+<body>
+
+<header>
+  <h1><span class="zh">YoungAi 产品架构 · 技术架构</span><span class="en">YoungAi — product and system architecture</span></h1>
+  <p><span class="zh">DeepSeek V4.1 Flash，一台 DGX Spark，数据不出机器</span><span class="en">DeepSeek V4.1 Flash on one DGX Spark. Nothing leaves the box.</span></p>
+</header>
+
+<!-- ───────── 产品层 ───────── -->
+<section class="band prod">
+  <h2><span class="zh">产品 · 你用到的</span><span class="en">Product · what you use</span></h2>
+  <div class="prod-grid">
+    <div class="entries">
+      <div class="box"><h3><span class="zh">电脑浏览器</span><span class="en">Desktop browser</span></h3>
+        <div class="s"><span class="zh">打开 <code>http://主机:8000/</code></span><span class="en">open <code>http://&lt;host&gt;:8000/</code></span></div></div>
+      <div class="box"><h3><span class="zh">手机 App（PWA）</span><span class="en">Phone app (PWA)</span></h3>
+        <div class="s"><span class="zh">添加到主屏幕；定位、剪贴板、分享进出都走手机</span><span class="en">add to home screen; location, clipboard and sharing come from the phone</span></div></div>
+      <div class="box"><h3><span class="zh">从互联网访问</span><span class="en">From the internet</span></h3>
+        <div class="s"><span class="zh">设置里填云服务器 → frp 穿透 + HTTPS 证书，登录后才能用</span><span class="en">settings: a cloud server → frp tunnel + HTTPS, login required</span></div></div>
+      <div class="box"><h3><span class="zh">API 客户端</span><span class="en">API clients</span></h3>
+        <div class="s">OpenAI · Anthropic · Responses<span class="zh">，API 密钥</span><span class="en">, API keys</span></div></div>
+    </div>
+    <div class="arrow">▶</div>
+    <div class="studio">
+      <div class="studio-top">
+        <h3><span class="zh">工作台：一个网页</span><span class="en">The Studio: one web page</span></h3>
+        <div class="tabs">
+          <span><span class="zh">助理</span><span class="en">Assistant</span></span>
+          <span><span class="zh">模型</span><span class="en">Models</span></span>
+          <span><span class="zh">语料</span><span class="en">Data</span></span>
+          <span><span class="zh">训练</span><span class="en">Train</span></span>
+          <span><span class="zh">监控</span><span class="en">Monitor</span></span>
+        </div>
+      </div>
+      <div class="flow">
+        <div class="box hl"><h3><span class="zh">进</span><span class="en">In</span></h3>
+          <div class="s"><span class="zh">一句话 · 附件 · 别的 app 分享进来的内容，外加一行设备事实（时间、上次定位）</span><span class="en">a sentence, an attachment, something shared from another app — plus one line of device facts (time, last location)</span></div></div>
+        <div class="arrow">→</div>
+        <div class="box hl"><h3><span class="zh">干：模型 ⇄ 20 个工具</span><span class="en">Work: the model ⇄ 20 tools</span></h3>
+          <div class="s"><span class="zh">搜网页、读网页、找附近、读写文件、在沙盒里 <code>run</code> 命令、记住你说过的事；越出工作区先弹卡片问你</span><span class="en">web search, page reading, nearby places, files, <code>run</code> in a sandbox, memory of what you told it; anything outside the workspace asks you first</span></div></div>
+        <div class="arrow">→</div>
+        <div class="box hl"><h3><span class="zh">出</span><span class="en">Out</span></h3>
+          <div class="s"><span class="zh">交付卡（下载 / 分享到钉钉、微信）· 导航 · 拨号 · 打开抖音、美团、饿了么、支付宝……</span><span class="en">a file card (download / share to any app) · navigation · a call · opening Douyin, Meituan, Alipay, …</span></div></div>
+      </div>
+      <div class="row2">
+        <div class="box"><h3><span class="zh">领域下拉：金融 · 编程 · 法律 · 医疗 · 科研</span><span class="en">Domain drop-down: finance · code · law · medicine · science</span></h3>
+          <div class="s"><span class="zh">换的是 ② 侧车，不到 1 秒，不重装模型</span><span class="en">swaps sidecar ②, under a second, no model reload</span></div></div>
+        <div class="box"><h3><span class="zh">后训练：拖进 <code>.jsonl</code> → 开始训练</span><span class="en">Post-training: drop a <code>.jsonl</code> → Start</span></h3>
+          <div class="s"><span class="zh">自动挑最好的一轮存成 ③；聊天页打开"后训练"开关才挂上</span><span class="en">keeps the best epoch as ③; the chat's Post-train switch mounts it</span></div></div>
+        <div class="box"><h3><span class="zh">模型：下载 → 加载</span><span class="en">Models: download → load</span></h3>
+          <div class="s"><span class="zh">约 317 GB 断点续传；加载约 2 分钟，先答对一句自测才算装好</span><span class="en">~317 GB, resumable; loading takes ~2 minutes and must pass a test question</span></div></div>
+        <div class="box"><h3><span class="zh">监控</span><span class="en">Monitor</span></h3>
+          <div class="s"><span class="zh">实时速度、上下文、内存；<code>/metrics</code> 给 JSON 或 Prometheus</span><span class="en">live speed, context and memory; <code>/metrics</code> as JSON or Prometheus</span></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ───────── 技术层 ───────── -->
+<section class="band tech">
+  <h2><span class="zh">技术 · 机器里跑的</span><span class="en">System · what runs on the machine</span></h2>
+  <div class="tech-grid">
+    <div>
+      <div class="main-proc">
+        <h3><code>ds4-train</code> <span class="zh">主进程</span><span class="en">main process</span>
+          <small><span class="zh">:8000，永远不退；页面和助理一直在</span><span class="en">:8000, never exits; the page and the assistant stay up</span></small></h3>
+        <div class="mods">
+          <div class="box"><h3><span class="zh">登录 · 转发</span><span class="en">Login · proxy</span></h3>
+            <div class="s"><span class="zh">口令 / API 密钥，<code>/v1/*</code> 转给模型子进程</span><span class="en">password / API keys; <code>/v1/*</code> forwarded to the model</span></div></div>
+          <div class="box hl"><h3><span class="zh">助理循环</span><span class="en">Assistant loop</span></h3>
+            <div class="s"><span class="zh">守门 → 每次工具调用 fork 子进程，先上内核沙盒（Linux Landlock + seccomp / macOS Seatbelt），锁不上就拒</span><span class="en">guard → each tool call forks a child that locks itself first (Landlock + seccomp / Seatbelt), or is refused</span></div></div>
+          <div class="box"><h3><span class="zh">联网</span><span class="en">Web</span></h3>
+            <div class="s"><span class="zh">火狐 WebDriver BiDi 开网页、取正文</span><span class="en">Firefox over WebDriver BiDi opens pages and extracts text</span></div></div>
+          <div class="box"><h3><span class="zh">训练作业 · 穿透</span><span class="en">Training job · tunnel</span></h3>
+            <div class="s"><span class="zh">停模型 → 训 → 选轮 → 装回；frpc + SSH 通道</span><span class="en">stop model → train → pick epoch → reload; frpc over SSH</span></div></div>
+        </div>
+        <div class="fork"><span class="zh">↓ fork 出两个子进程（训练时先停模型子进程，训完再拉起）</span><span class="en">↓ forks two children (training stops the model process first and restarts it after)</span></div>
+        <div class="children">
+          <div class="box hl"><h3><code>ds4-server</code> <span class="zh">模型子进程</span><span class="en">model process</span> <span class="s">127.0.0.1:8001</span></h3>
+            <div class="s"><span class="zh">1M 上下文 · DSML 工具调用 · KV 前缀复用（多轮只读新增那段）· 投机解码 · GPU 采样核</span><span class="en">1M context · DSML tool calls · KV prefix reuse (each round reads only what is new) · speculative decoding · GPU sampler</span></div></div>
+          <div class="box hl"><h3><code>ds4 --ptrain</code> <span class="zh">训练子进程</span><span class="en">trainer</span></h3>
+            <div class="s"><span class="zh">穿过引擎自己的前向做反向传播，训秩 64 低秩层</span><span class="en">backprop through the engine's own forward pass into rank-64 layers</span></div></div>
+        </div>
+      </div>
+      <div class="engine"><b><span class="zh">推理引擎：</span><span class="en">Engine:</span></b> <span class="zh">纯 C99 + CUDA（DGX Spark）/ Metal（Mac）· 权重 mmap 加载不拷贝 · 数值计算零 Python · 一个 Makefile</span><span class="en">plain C99 + CUDA (DGX Spark) / Metal (Mac) · weights mmap-loaded, never copied · no Python in the math · one Makefile</span></div>
+    </div>
+
+    <div class="stack">
+      <h3 class="title"><span class="zh">模型文件：三层叠加，下层不改</span><span class="en">Model files: three layers, lower ones untouched</span></h3>
+      <div class="layer l3"><div class="n">③</div>
+        <div><h4><span class="zh">后训练</span><span class="en">Post-train</span></h4><div class="s"><span class="zh">你的数据训出来的低秩层，开关挂卸</span><span class="en">trained on your data, switched on or off</span></div></div>
+        <div class="sz">~100 MB</div></div>
+      <div class="layer l2"><div class="n">②</div>
+        <div><h4><span class="zh">领域侧车 × 5</span><span class="en">Domain sidecar × 5</span></h4><div class="s"><span class="zh">增益 + 路由偏置，对着原模型解出来</span><span class="en">gains + router bias, solved against the original</span></div></div>
+        <div class="sz">~40 MB</div></div>
+      <div class="layer l1"><div class="n">①</div>
+        <div><h4><span class="zh">基座：单独就是完整模型</span><span class="en">Base: a complete model on its own</span></h4><div class="s"><span class="zh">官方 510 GB → 每 8 个权重一起向量量化，约 1.6 bit/权重，不用训练数据</span><span class="en">510 GB released → 8-weight vector quantization, ~1.6 bits/weight, no training data</span></div></div>
+        <div class="sz">113.6 GB</div></div>
+      <div class="ssd"><span class="zh">SSD：n-gram 记忆表 203 GB，按需读，每 token 约 6 KB</span><span class="en">SSD: the model's 203 GB n-gram tables, read on demand, ~6 KB per token</span></div>
+      <div class="hw">DGX Spark · <span class="zh">128 GB 统一内存</span><span class="en">128 GB unified memory</span></div>
+    </div>
+  </div>
+</section>
+
+<div class="nums">
+  <div class="num"><b>1,055 t/s</b><span><span class="zh">读 12.5k token 提示</span><span class="en">reading a 12.5k-token prompt</span></span></div>
+  <div class="num"><b>45.5 t/s</b><span><span class="zh">写，真实 14k token Agent 请求</span><span class="en">writing, real 14k-token agent request</span></span></div>
+  <div class="num"><b>0.89 GB</b><span><span class="zh">1M token 满载的 KV 缓存</span><span class="en">KV cache at 1M tokens</span></span></div>
+  <div class="num"><b>+2.8–3.7 pt</b><span><span class="zh">挂侧车后与原模型的一致率</span><span class="en">agreement with the original, per domain</span></span></div>
+  <div class="num"><b>0 B</b><span><span class="zh">上云的数据</span><span class="en">sent to the cloud</span></span></div>
+</div>
+
+<!-- render_arch.sh 先 --dump-dom 读这个高度, 再按它截图; 不量的话固定窗口高会截掉底或留一大片空。
+     要等 fonts.ready: 解析时就量, 等宽字体还没排好, 英文版实测量矮 75px, 底下一排数字被截掉 -->
+<script>document.fonts.ready.then(() => { document.body.dataset.h = Math.ceil(document.body.getBoundingClientRect().height); });</script>
+</body>
+</html>
