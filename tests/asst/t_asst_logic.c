@@ -182,7 +182,10 @@ static void test_lang(void) {
     CHECKL(t0 && strstr(t0, "Run a shell command inside the sandbox") && strstr(t0, asst_toolbox_desc()[0] ? "no network" : "x"), "run description comes from the toolbox probe");
     CHECKL(t1 && strstr(t1, "\"read_clipboard\"") && strstr(t1, "\"navigate\"") && strstr(t1, "\"locate\"") && !strstr(t1, "\"name\":\"share\"") && !strstr(t1, "pick_file") && !strstr(t1, "open_app"), "caps pick device tools, whole-word match");
     CHECKL(t2 && !strcmp(t2, t0) && t5 && !strcmp(t5, t0), "empty caps == no caps == NULL ctx");
-    CHECKL(t3 && strstr(t3, "\"open_app\"") && strstr(t3, "\"enum\":[\"douyin\",\"wechat\"]"), "open_app lists the device's apps as enum: %.0s", t3);    CHECKL(t4 && !strstr(t4, "open_app"), "open_app cap without apps → no tool");
+    CHECKL(t3 && strstr(t3, "\"open_app\"") && strstr(t3, "\"enum\":[\"douyin\",\"wechat\"]"), "open_app lists the device's apps as enum: %.0s", t3);
+    const asst_tctx c6 = { "open_app", "douyin,wechat,dingtalk,alipay,meituan,eleme" }; char *t6 = asst_tools_json(&c6);   /* 外卖两行: 枚举带上, 描述告诉模型 query 填店名 */
+    CHECKL(t6 && strstr(t6, "\"enum\":[\"douyin\",\"wechat\",\"dingtalk\",\"alipay\",\"meituan\",\"eleme\"]") && strstr(t6, "meituan and eleme (food delivery) open their search"), "open_app enum carries meituan/eleme, description says query = shop name");
+    free(t6);    CHECKL(t4 && !strstr(t4, "open_app"), "open_app cap without apps → no tool");
     CHECKL(asst_device_tool("locate") == 1 && asst_device_tool("read_clipboard") == 1 && asst_device_tool("share") == 2 && asst_device_tool("open_app") == 2 && asst_device_tool("write_file") == 0 && asst_device_tool("run") == 0, "device tool kinds");
     CHECKL(t0 && (!!strstr(t0, "\"nearby\"") == asst_geo_ready()) && (!!strstr(t0, "\"web_search\"") == asst_geo_ready()), "nearby/web tools listed iff a browser exists (key or not: nearby degrades itself): %s", asst_geo_ready() ? "listed" : "absent");
     ds4_buf tb = {0}; asst_toolbox_json(&tb); CHECKL(tb.ptr && strstr(tb.ptr, "{\"have\":[") && strstr(tb.ptr, "\"missing\":["), "toolbox json: %s", tb.ptr); ds4_buf_free(&tb);

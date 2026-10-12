@@ -1764,6 +1764,13 @@ const APPS = {
   wechat:   { label: "微信",   url: () => "weixin://" },
   dingtalk: { label: "钉钉",   url: a => /^https?:\/\//i.test(a.url || "") ? "dingtalk://dingtalkclient/page/link?url=" + encodeURIComponent(a.url) : "dingtalk://dingtalkclient/action/home" },
   alipay:   { label: "支付宝", url: a => /^https?:\/\//i.test(a.url || "") ? "alipays://platformapi/startapp?appId=20000067&url=" + encodeURIComponent(a.url) : "alipays://" },   /* 20000067 = 支付宝内置浏览器; 待真机验 */
+  /* 外卖(10-12 用户定, docs/assistant_deeplink.md): 助理只挑店, 按钮点开落在 app 的搜索结果页(搜店名), 加购、付款用户自己点。
+     为什么到搜索页就停: 公开协议到不了购物车, 店页要平台的店 id 而高德 POI 给不了; 搜索页是没有 id 也能到的最深一层。
+     安卓照 mapUrl 包 intent:(装了 app 交给 app, 没装开 H5 网页; 裸 scheme 在小米上静默失败); iPhone 没装 app 点了没反应是 iOS 的限制。scheme 待真机验 */
+  meituan:  { label: "美团",   url: a => isAndroid() ? `intent://www.meituan.com/search?q=${encodeURIComponent(a.query || "")}#Intent;scheme=imeituan;package=com.sankuai.meituan;S.browser_fallback_url=${encodeURIComponent("https://h5.waimai.meituan.com/waimai/mindex/home")};end`
+                                                     : "imeituan://www.meituan.com/search?q=" + encodeURIComponent(a.query || "") },
+  eleme:    { label: "饿了么", url: a => isAndroid() ? `intent://search?keyword=${encodeURIComponent(a.query || "")}#Intent;scheme=eleme;package=me.ele;S.browser_fallback_url=${encodeURIComponent("https://h5.ele.me/")};end`
+                                                     : "eleme://search?keyword=" + encodeURIComponent(a.query || "") },
 };
 function deviceApps() { return isApp() ? Object.keys(APPS) : []; }   /* 电脑没有这些 scheme */
 /* 链接型动作的 href; open_url 只认 http(s)(模型给的串, javascript: 这种不能进 href) */

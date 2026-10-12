@@ -44,7 +44,7 @@ static bool build_run(const asst_tctx *c, ds4_buf *b) {
 /* open_app 的 app 参数是枚举, 值 = 页面报的、这台设备平台表里有的 app 名(抖音/微信/钉钉/支付宝…); 怎么拼 scheme 是页面的事 */
 static bool build_open_app(const asst_tctx *c, ds4_buf *b) {
     if (!c->apps || !c->apps[0]) return false;
-    ds4_buf_puts(b, "{\"type\":\"function\",\"function\":{\"name\":\"open_app\",\"description\":\"Open an app on the user's device, optionally at a search or a page: douyin opens its search for `query`; dingtalk and alipay can open `url` inside the app; wechat only opens (it accepts no content; to send text or a file into WeChat/DingTalk use share, which opens the system share sheet).\","
+    ds4_buf_puts(b, "{\"type\":\"function\",\"function\":{\"name\":\"open_app\",\"description\":\"Open an app on the user's device, optionally at a search or a page: douyin opens its search for `query`; meituan and eleme (food delivery) open their search for `query`, so pass a shop name and the user orders and pays there; dingtalk and alipay can open `url` inside the app; wechat only opens (it accepts no content; to send text or a file into WeChat/DingTalk use share, which opens the system share sheet).\","
                       "\"parameters\":{\"type\":\"object\",\"properties\":{\"app\":{\"type\":\"string\",\"enum\":[");
     int k = 0;
     for (const char *p = c->apps; *p; ) { const char *e = strchr(p, ','); const size_t n = e ? (size_t)(e - p) : strlen(p); if (n) { ds4_buf_puts(b, k++ ? ",\"" : "\""); ds4_buf_append(b, p, n); ds4_buf_putc(b, '"'); } p += n + (e ? 1 : 0); }

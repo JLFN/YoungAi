@@ -70,7 +70,7 @@ await page.waitForFunction(() => view && view.items.some(i => i.kind === "end"),
 const items = await page.evaluate(() => view.items.map(i => ({ kind: i.kind, name: i.name, done: i.done, ok: i.ok, decision: i.decision, args: i.args, reason: i.reason, content: i.content })));
 ok(items.some(i => i.kind === "end" && i.reason === "done"), "运行跑完(done)");
 ok(sentCaps && sentCaps.device.kind === "phone" && !sentCaps.device.loc && Array.isArray(sentCaps.files) && sentCaps.files.length === 0, "send 带设备信息, 不带位置(定位是工具): " + JSON.stringify(sentCaps && sentCaps.device));
-ok(sentCaps && ["geolocation", "clipboard_read", "clipboard_write", "share", "navigate", "call", "file", "open_url", "open_app"].every(c => sentCaps.caps.includes(c)) && sentCaps.apps.join() === "douyin,wechat,dingtalk,alipay", "手机 + 安全上下文报全能力 + app 表: " + JSON.stringify(sentCaps && sentCaps.caps));
+ok(sentCaps && ["geolocation", "clipboard_read", "clipboard_write", "share", "navigate", "call", "file", "open_url", "open_app"].every(c => sentCaps.caps.includes(c)) && sentCaps.apps.join() === "douyin,wechat,dingtalk,alipay,meituan,eleme", "手机 + 安全上下文报全能力 + app 表: " + JSON.stringify(sentCaps && sentCaps.caps));
 const sid = await page.evaluate(() => view.sid);
 const readMsgs = () => readFileSync(path.join(ASST, "sessions", sid, "messages.jsonl"), "utf8").split("\n").filter(Boolean).map(l => JSON.parse(l));
 let msgs = readMsgs();
@@ -104,7 +104,12 @@ ok(navHref === "maps://?q=%E9%BE%99%E4%BA%95%E8%8D%89%E5%A0%82&sll=30.2741,120.1
 const andHref = await page.evaluate(() => { Object.defineProperty(navigator, "userAgent", { configurable: true, get: () => "Mozilla/5.0 (Linux; Android 14; 23127PN0CC) Mobile" }); try { return mapUrl({ query: "龙井草堂" }); } finally { delete navigator.userAgent; } });
 ok(andHref === "intent://0,0?q=%E9%BE%99%E4%BA%95%E8%8D%89%E5%A0%82#Intent;scheme=geo;action=android.intent.action.VIEW;S.browser_fallback_url=" + encodeURIComponent("https://uri.amap.com/search?keyword=%E9%BE%99%E4%BA%95%E8%8D%89%E5%A0%82&callnative=1") + ";end", "安卓导航走 intent:geo + 高德网页兜底: " + andHref);
 ok(await page.locator(".tool.dev a", { hasText: "拨打 · +8657187979999" }).getAttribute("href") === "tel:+8657187979999", "拨打是 tel: 链接");
-ok(await page.locator(".tool.dev a", { hasText: "打开 · 抖音" }).getAttribute("href") === "snssdk1128://search?keyword=%E9%BE%99%E4%BA%95%E8%8D%89%E5%A0%82", "open_app 走页面平台表, 抖音搜索 scheme");await page.locator(".tool.dev button", { hasText: "复制" }).click(); await sleep(200);
+ok(await page.locator(".tool.dev a", { hasText: "打开 · 抖音" }).getAttribute("href") === "snssdk1128://search?keyword=%E9%BE%99%E4%BA%95%E8%8D%89%E5%A0%82", "open_app 走页面平台表, 抖音搜索 scheme");
+/* 外卖两行(docs/assistant_deeplink.md): iPhone 裸 scheme 搜店名; 安卓包 intent: + H5 兜底(同 mapUrl 的做法) */
+const mtHref = await page.evaluate(() => APPS.meituan.url({ query: "龙井草堂" }) + "\n" + APPS.eleme.url({ query: "龙井草堂" }));
+ok(mtHref === "imeituan://www.meituan.com/search?q=%E9%BE%99%E4%BA%95%E8%8D%89%E5%A0%82\neleme://search?keyword=%E9%BE%99%E4%BA%95%E8%8D%89%E5%A0%82", "美团/饿了么 iPhone 走搜索 scheme: " + mtHref);
+const mtAnd = await page.evaluate(() => { Object.defineProperty(navigator, "userAgent", { configurable: true, get: () => "Mozilla/5.0 (Linux; Android 14; 23127PN0CC) Mobile" }); try { return APPS.meituan.url({ query: "龙井草堂" }); } finally { delete navigator.userAgent; } });
+ok(mtAnd === "intent://www.meituan.com/search?q=%E9%BE%99%E4%BA%95%E8%8D%89%E5%A0%82#Intent;scheme=imeituan;package=com.sankuai.meituan;S.browser_fallback_url=" + encodeURIComponent("https://h5.waimai.meituan.com/waimai/mindex/home") + ";end", "安卓美团走 intent: + H5 兜底: " + mtAnd);await page.locator(".tool.dev button", { hasText: "复制" }).click(); await sleep(200);
 ok((await page.evaluate(() => navigator.clipboard.readText())) === "龙井草堂 步行 8 分钟", "复制按钮写进剪贴板");
 await page.locator(".tool.dev button", { hasText: "分享" }).click(); await sleep(400);
 const shares = await page.evaluate(() => window.__shares);
