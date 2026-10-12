@@ -71,3 +71,34 @@ route_alpha_set
 /*.jpg
 /*.png
 dist/
+
+# 账号、密码、令牌、证书一律不入库(10-12 用户)。正常它们在 ~/.ds4/ 下(家目录, 不在仓库里); 这几条防的是有人把目录指进仓库或把文件随手拷进来。
+#   工作台登录 auth、云服务器账号密码 cloud、API 密钥 apikeys、SSH 主机指纹 known_hosts、证书 tls/、frp 配置与令牌 frp/: src/train/train_{auth,keys,net}.c
+#   助理本机口令 assistant/token: src/assistant/
+.ds4/
+**/studio/auth
+**/studio/cloud
+**/studio/apikeys
+**/studio/known_hosts
+**/studio/ds4-askpass
+**/studio/tls/
+**/studio/frp/
+**/assistant/token
+frpc.toml
+frps.toml
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.sess
+
+# 装着对话原文 / 提示词的运行时产物(10-12 隐私检查补): 正常都写在 ~/.ds4/ 或 /tmp, 这几条防的是参数指进了仓库目录。
+#   磁盘 KV 缓存 <sha1>.kv(渲染后的整段对话, src/kv/; --kv-disk-dir)、服务端 --trace(完整提示词与缓存决策)、工作台页面日志 ui_logs/
+*.kv
+kvcache/
+ds4-trace*
+ui_logs/
+# 环境变量文件常放令牌(本仓库不读 env, 但别的工具会在这里放)
+.env
+.env.*
