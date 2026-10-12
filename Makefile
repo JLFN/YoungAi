@@ -243,17 +243,23 @@ src/common/ds4_sha256.o: src/common/ds4_sha256.c src/common/ds4_sha256.h
 # 纯主机 C, 不链引擎; Mac/Linux 同一条规则(nvcc 不参与)
 src/train/%.o: src/train/%.c src/train/train_internal.h src/common/ds4_json.h
 	$(CC) $(CFLAGS) -c -o $@ $<
-ds4-train: src/train/train_main.o src/train/train_http.o src/train/train_proxy.o $(TRAIN_API_OBJS) $(ASST_OBJS) $(WEB_OBJS) src/common/ds4_json.o
-	$(CC) $(CFLAGS) -o $@ src/train/train_main.o src/train/train_http.o src/train/train_proxy.o $(TRAIN_API_OBJS) $(ASST_OBJS) $(WEB_OBJS) src/common/ds4_json.o $(LDLIBS)
+# 登录(train_auth.o, 只有主进程有): ds4-server 不链它 —— 模型子进程只绑 127.0.0.1, 外面进来的请求都先过主进程的闸
+TRAIN_AUTH_OBJS := src/train/train_auth.o src/train/train_keys.o src/common/ds4_sha256.o
+src/train/train_auth.o src/train/train_keys.o: src/common/ds4_sha256.h
+# 设置弹窗(云服务器 / frp 穿透 / HTTPS 证书, 只有主进程): 外部命令 ssh curl tar unzip openssl 都是 fork+exec, 不链任何库
+TRAIN_NET_OBJS := src/train/train_net.o src/train/train_exec.o src/train/train_frp.o src/train/train_frps.o src/train/train_sshtun.o src/train/train_tunnel.o src/train/train_cert.o
+src/train/train_frp.o: src/common/ds4_sha256.h
+ds4-train: src/train/train_main.o src/train/train_http.o src/train/train_proxy.o $(TRAIN_API_OBJS) $(TRAIN_AUTH_OBJS) $(TRAIN_NET_OBJS) $(ASST_OBJS) $(WEB_OBJS) src/common/ds4_json.o
+	$(CC) $(CFLAGS) -o $@ src/train/train_main.o src/train/train_http.o src/train/train_proxy.o $(TRAIN_API_OBJS) $(TRAIN_AUTH_OBJS) $(TRAIN_NET_OBJS) $(ASST_OBJS) $(WEB_OBJS) src/common/ds4_json.o $(LDLIBS)
 
 # 个人助理(src/assistant/, 方案 docs/assistant.md): 住 ds4-train 主进程; 每次工具调用 fork 子进程先上内核沙盒
 # (Linux = Landlock+seccomp, macOS = Seatbelt; 两个平台文件在对方平台上编成空对象)。纯主机 C, 不链引擎。
 src/train/train_main.o: src/assistant/asst_internal.h
 src/assistant/%.o: src/assistant/%.c src/assistant/asst_internal.h src/common/ds4_json.h
 	$(CC) $(CFLAGS) -c -o $@ $<
-# 沙盒逃逸单测 + 纯逻辑单测(不要模型, 秒级; make test 里跑)
-ds4_asst_test: tests/asst/t_asst_sbx.c tests/asst/t_asst_logic.c $(ASST_OBJS) $(WEB_OBJS) src/common/ds4_json.o
-	$(CC) $(CFLAGS) -o $@ tests/asst/t_asst_sbx.c tests/asst/t_asst_logic.c $(ASST_OBJS) $(WEB_OBJS) src/common/ds4_json.o $(LDLIBS)
+# 沙盒逃逸单测 + 纯逻辑单测 + 工作台登录单测(不要模型, 秒级; make test 里跑)
+ds4_asst_test: tests/asst/t_asst_sbx.c tests/asst/t_asst_logic.c tests/asst/t_studio_auth.c tests/asst/t_studio_net.c $(ASST_OBJS) $(WEB_OBJS) $(TRAIN_API_OBJS) $(TRAIN_AUTH_OBJS) $(TRAIN_NET_OBJS) src/common/ds4_json.o
+	$(CC) $(CFLAGS) -o $@ tests/asst/t_asst_sbx.c tests/asst/t_asst_logic.c tests/asst/t_studio_auth.c tests/asst/t_studio_net.c $(ASST_OBJS) $(WEB_OBJS) $(TRAIN_API_OBJS) $(TRAIN_AUTH_OBJS) $(TRAIN_NET_OBJS) src/common/ds4_json.o $(LDLIBS)
 
 
 # Standalone capability modules (self-contained, no engine coupling): z 隐变量

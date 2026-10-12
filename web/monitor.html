@@ -320,7 +320,10 @@ function setPill(state, label) { $("pill").dataset.state = state; text("pill-tex
 let lastMetrics = null, failures = 0, showAll = false;
 async function poll() {
   try {
-    const r = await fetch(showAll ? "/metrics?requests=all" : "/metrics", { cache: "no-store" });
+    /* 工作台主进程要登录(src/train/train_auth.c): 票在工作台页存的 localStorage 里, 同源直接读来带上; 没票/过期就回工作台首页登录 */
+    let sess = ""; try { sess = localStorage.getItem("ds4.studio.session") || ""; } catch (_) {}
+    const r = await fetch(showAll ? "/metrics?requests=all" : "/metrics", { cache: "no-store", headers: sess ? { "X-DS4-Session": sess } : {} });
+    if (r.status === 401 && r.headers.get("X-DS4-Auth")) { location.href = "/"; return; }
     if (!r.ok) throw new Error("HTTP " + r.status);
     lastMetrics = await r.json(); failures = 0;
     render(lastMetrics);

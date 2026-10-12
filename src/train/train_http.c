@@ -26,18 +26,23 @@ static bool send_all(int fd, const char *p, size_t n) {
 static const char *status_text(int code) {
     switch (code) {
     case 200: return "OK";
+    case 302: return "Found";
     case 400: return "Bad Request";
+    case 401: return "Unauthorized";
+    case 403: return "Forbidden";
     case 404: return "Not Found";
     case 405: return "Method Not Allowed";
     case 409: return "Conflict";
+    case 429: return "Too Many Requests";
     default: return "Internal Server Error";
     }
 }
 
-static void respond(int fd, int code, const char *ctype, const ds4_buf *body) {
+/* extra = 额外响应头(登录闸的 X-DS4-Auth), 每行自带 \r\n, 可空 */
+static void respond(int fd, int code, const char *ctype, const ds4_buf *body, const ds4_buf *extra) {
     ds4_buf h = {0};
-    ds4_buf_printf(&h, "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %zu\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
-                   code, status_text(code), ctype, body->len);
+    ds4_buf_printf(&h, "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %zu\r\nCache-Control: no-store\r\nConnection: close\r\n%s\r\n",
+                   code, status_text(code), ctype, body->len, extra->len ? extra->ptr : "");
     if (send_all(fd, h.ptr, h.len) && body->len) send_all(fd, body->ptr, body->len);
     ds4_buf_free(&h);
 }
@@ -73,7 +78,7 @@ static bool read_request(int fd, tr_req *rq, char **raw, size_t *raw_len) {
     }
     if (in.len < hend + clen) { ds4_buf_free(&in); return false; }
     memset(rq, 0, sizeof *rq);
-    /* 助理接口鉴权要的三个头(asst_api.c): 只取, 不在这里判 */
+    /* 鉴权要的头(助理 asst_api.c, 登录 train_auth.c): 只取, 不在这里判 */
     for (const char *p = strstr(in.ptr, "\r\n"); p && p + 2 < in.ptr + hend; ) {
         p += 2;
         const char *nl = strstr(p, "\r\n");
@@ -82,6 +87,7 @@ static bool read_request(int fd, tr_req *rq, char **raw, size_t *raw_len) {
         const char *v;
         #define TR_HDR(name, dst) if (len > (int)strlen(name) && !strncasecmp(p, name, strlen(name))) { v = p + strlen(name); while (*v == ' ') v++; snprintf(dst, sizeof dst, "%.*s", (int)(nl - v), v); }
         TR_HDR("Host:", rq->host) else TR_HDR("Authorization:", rq->auth) else TR_HDR("X-DS4-Assistant:", rq->xhdr)
+        else TR_HDR("X-DS4-Studio:", rq->xstudio) else TR_HDR("X-DS4-Session:", rq->sess) else TR_HDR("x-api-key:", rq->xkey)
         #undef TR_HDR
         p = nl;
     }
@@ -118,17 +124,21 @@ int tr_http_serve(const char *host, int port, tr_handler h, tr_takeover tk) {
         if (fd < 0) { if (errno == EINTR) continue; perror("accept"); continue; }
         setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
         tr_req rq; char *raw = NULL; size_t raw_len = 0;
-        ds4_buf out = {0};
+        ds4_buf out = {0}, extra = {0};
         if (read_request(fd, &rq, &raw, &raw_len)) {
             rq.peer_local = peer.sin_family == AF_INET && (ntohl(peer.sin_addr.s_addr) >> 24) == 127;
+            /* 登录闸在一切之前: 事件流接管与转发模型子进程都在它后面, 没登录的请求哪条路都走不进去 */
+            const int gate = tr_auth_gate(&rq, &out, &extra);
+            if (gate) { respond(fd, gate, "application/json; charset=utf-8", &out, &extra); goto done; }
             if (tk && tk(fd, &rq)) { free(raw); continue; }   /* 长连接(助理事件流)归钩子: 不回不关 */
             /* 归模型子进程的路, 子进程装着就转过去(线程接管 fd 与 raw); 没装着就落到自己的路由(/api/models/… 会答"没有装着的模型", /v1 404) */
             if (tr_proxy_path(rq.path) && tr_model_live()) { tr_proxy_start(fd, raw, raw_len, TR_MODEL_PORT(port)); continue; }
             const char *ctype = "application/json; charset=utf-8";
             const int code = h(&rq, &out, &ctype);
-            respond(fd, code, ctype, &out);
+            respond(fd, code, ctype, &out, &extra);
         }
-        ds4_buf_free(&out);
+    done:
+        ds4_buf_free(&out); ds4_buf_free(&extra);
         free(raw);
         close(fd);
     }

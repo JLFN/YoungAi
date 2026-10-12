@@ -4,7 +4,9 @@
  *   ② 对端是本机但 Host 头不是 localhost/127.0.0.1/[::1] → 拒(DNS 重绑定: 恶意网页让 evil.com 解析到 127.0.0.1, 浏览器带的 Host 是 evil.com);
  *   ③ 所有 POST 必须带 X-DS4-Assistant: 1 —— 你自己浏览器里开着的恶意网页能往 127.0.0.1:8000 发"简单 POST"(text/plain 不预检),
  *      带了自定义头的跨源请求浏览器必先预检, 我们不答 CORS, 它就发不出来。GET 只读、跨源读不到响应(同源策略), 不用这道头。
- * 出错会怎样: 401/403 带一句原因; 页面见 401 就弹口令框。 */
+ * 10-12 起工作台有登录(src/train/train_auth.c), 闸在主进程最前面, 走到这里的请求都已登录或带本机口令; 登录票(signed_in)在这里等同口令,
+ *   所以从别的设备登录后不用再输一遍口令。①② 留着当第二道防线(ds4-server 不带登录, 将来谁把助理挂过去也不至于裸奔)。
+ * 出错会怎样: 401/403 带一句原因。 */
 #include "asst_internal.h"
 #include <strings.h>
 #include <sys/stat.h>
@@ -27,7 +29,7 @@ static bool local_host(const char *host) {
 }
 
 bool asst_authorized(const asst_req *rq, int *code, const char **why) {
-    const bool tok = asst_token[0] && !strncmp(rq->auth, "Bearer ", 7) && eq_const(rq->auth + 7, asst_token);
+    const bool tok = rq->signed_in || (asst_token[0] && !strncmp(rq->auth, "Bearer ", 7) && eq_const(rq->auth + 7, asst_token));
     if (!tok && !rq->peer_local) { *code = 401; *why = "token required: this request is not from this machine (the token is in ~/.ds4/assistant/token)"; return false; }
     if (!tok && !local_host(rq->host)) { *code = 403; *why = "Host header is not localhost (DNS rebinding?); open the page at http://127.0.0.1:<port>/ or use the token"; return false; }
     if (!strcmp(rq->method, "POST") && strcmp(rq->xhdr, "1")) { *code = 403; *why = "missing X-DS4-Assistant header"; return false; }

@@ -1,5 +1,6 @@
 <!doctype html>
 <!-- web/studio.html — DwarfStar 工作台(首页): 左侧导航 + 右侧工作区, 七个 tab: 助理 / 记忆 / 活动 / 模型 / 训练 / 语料 / 记录。
+     API(10-12 用户: "加一个 api 子 tab, 用 apikey 管理大模型的请求"): 建/删外部程序调 /v1 用的密钥、看用量, 接口 /api/keys/*(src/train/train_keys.c)。
      助理/记忆/活动(10-11 用户: "对标 muse, 把聊天页面变成个人 Agent 助理"; 方案 docs/assistant.md): 接口 /api/assistant/*(src/assistant/), 会话与记忆存在服务端 ~/.ds4/assistant/。
      模型 tab(10-10 用户 "少一个模型 tab, 可以下载模型, 跟 unsloth 的客户端页面一样"): 正在使用 / 本机模型卡片(选侧车一键加载) / HF 下载(进度、续传、取消), 接口 /api/models/*(src/train/train_models.c)。
      (10-10 用户: "和主流工具一样左右布局 … 主题跟 logo 一致是蓝色 …
@@ -8,15 +9,41 @@
      主进程永远在(10-10 用户), 页面从不断连: 发车 = 主进程停模型子进程 → 训练 → 子进程自动装回来; 换模型同理。页面只看 status.mode 变化。
      聊天只在模型装着时能发: 训练中显示进度条幅, 没装时给"加载模型"。数据进页面一律走 textContent; 唯一的 innerHTML 是聊天回答的 markdown(先整段转义再加标记)。
      语言: 中文 / English, 写法同 monitor.html(静态文字标 data-i18n, 动态文字走 t(key)); 跟浏览器语言, 右上角可切, URL ?lang=en|zh 可强制。
-     选择记在 localStorage 的 ds4.lang, 与监控页共用: 在一页切了, 开另一页也是同一种。后端返回的报错/日志/探针原文照原样显示, 不翻。 -->
+     选择记在 localStorage 的 ds4.lang, 与监控页共用: 在一页切了, 开另一页也是同一种。后端返回的报错/日志/探针原文照原样显示, 不翻。
+     两套外壳(10-12 用户: "变成 pwa … 不要简单改动 pc 端的布局, 重新以 app 的方式设计, 根据浏览器打开的环境使用不同的布局"):
+     <html data-shell="desk|app">, 判定规则在 <head> 的 shellPick。desk = 上面说的左右布局, 原样不动; app = 顶栏 + 底部四格(助理/模型/训练/更多)
+     + 左侧栏变抽屉(对话列表) + 表格变卡片 + 训练页分"进度/设置"两段。两套共用同一份 DOM 和数据代码, 只有 CSS 与几个 app 专属元素不同。
+     PWA: manifest.webmanifest + sw.js + icon-*.png(都在 web/, 路由见 src/train/train_api.c 的 STATIC_FILES); 安装条件与 https 的事见 docs/pwa.md。 -->
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <link rel="icon" href="/logo.jpg">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#0a0f1a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="YoungAi">
 <title>YoungAi · DwarfStar</title>
+<script>
+/* 外壳二选一(10-12 用户: "重新以 app 的方式设计, 根据浏览器打开的环境使用不同的布局"): 同一份 DOM, <html data-shell="desk|app"> 决定长相。
+   app = 触屏(手指点, pointer: coarse)或装成 PWA 独立窗口打开, 且窗口窄于 900 px —— 手机竖横屏、iPad 竖屏;
+   其余(电脑浏览器, 窗口拉多窄都算; iPad 横屏)= desk, 即原来的左右布局, 一行不动。URL ?shell=app|desk 可强制(电脑上调手机版用)。
+   放在 <head> 里同步跑: 等页面画完再判, 手机上会先闪一下电脑布局。旋转/改窗口大小时页面脚本会再判一次。 */
+(function () {
+  const q = new URLSearchParams(location.search).get("shell");
+  const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  window.shellPick = () => q === "app" || q === "desk" ? q :
+    (matchMedia("(pointer: coarse)").matches || standalone) && innerWidth < 900 ? "app" : "desk";
+  document.documentElement.dataset.shell = window.shellPick();
+  document.documentElement.dataset.standalone = standalone ? "1" : "0";
+})();
+</script>
 <style>
   :root {
+    color-scheme: dark;   /* 原生控件(手机上点下拉弹出的选择框、滚动条、日期框)按深色画; 不写的话手机上弹出来是白的(10-12 用户实撞) */
     --bg: #0a0f1a; --side: #0c1322; --panel: #111a2c; --panel-2: #172238; --hover: #1b2842; --border: #223152;
     --text: #e6edf7; --dim: #8b98b3; --faint: #5d6a85;
     /* 主色取自 logo(web/logo.jpg): 左上 #2f7bf5 蓝 → 右下 #5b5bef 蓝紫 */
@@ -232,7 +259,170 @@
   #v-models a.lnk { color: var(--accent-2); text-decoration: none; }
   label.ck { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--dim); padding-bottom: 8px; }
   @media (max-width: 1100px) { .train-grid, .data-grid, .charts { grid-template-columns: 1fr; } .cfg { position: static; } .tiles { grid-template-columns: repeat(3, 1fr); } }
-  @media (max-width: 760px) { aside { width: 64px; padding: 12px 8px; } .brand span, nav a span, .engine, nav a .ext, .sess { display: none; } nav a { justify-content: center; } }
+  /* ---------- API 密钥 ---------- */
+  #v-api .card { margin-bottom: 16px; }
+  .newkey { display: none; margin-top: 12px; padding: 12px 14px; border-radius: 10px; border: 1px solid rgba(245,158,11,.55); background: rgba(245,158,11,.08); }
+  .newkey.on { display: block; }
+  .newkey .row { display: flex; gap: 10px; align-items: center; margin-top: 8px; }
+  .newkey code { flex: 1; min-width: 0; font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--panel-2); border: 1px solid var(--border); border-radius: 7px; padding: 7px 10px; word-break: break-all; user-select: all; }
+  #api-keys td.mono { font: 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .snip { position: relative; margin-top: 10px; } .snip .copy { position: absolute; right: 8px; top: 8px; font-size: 11.5px; padding: 2px 8px; }
+
+  /* ---------- 登录(首次设置 / 登录; 盖住整页, 登完原地继续) ---------- */
+  #auth { position: fixed; inset: 0; z-index: 100; background: rgba(5,8,15,.86); backdrop-filter: blur(6px); display: none; align-items: center; justify-content: center; padding: 16px; }
+  #auth.on { display: flex; }
+  #auth form { width: 100%; max-width: 380px; background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 26px 24px 22px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+  #auth .head { text-align: center; } #auth .head img { width: 56px; height: 56px; border-radius: 50%; box-shadow: 0 8px 26px rgba(59,124,246,.45); }
+  #auth h2 { margin: 8px 0 4px; font-size: 18px; }
+  #auth input { width: 100%; }
+  #auth .rule { font-size: 12px; color: var(--faint); line-height: 1.5; }
+  #auth .err { color: #fca5a5; font-size: 13px; min-height: 18px; }
+  #auth button.primary { padding: 10px; font-size: 15px; }
+  /* ---------- 手机上的下拉: 系统原生选择框改不了大小(安卓是屏幕中间一个大对话框), app 外壳里换成贴着按钮弹出的小菜单 ---------- */
+  .pickbtn { display: none; font-size: 13px; padding: 5px 11px; border-radius: 999px; max-width: 46vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  [data-shell=app] .pickbtn { display: inline-block; } [data-shell=app] select.picked { display: none !important; }
+  #pick { position: fixed; inset: 0; z-index: 95; display: none; } #pick.on { display: block; }
+  #pick .pbox { position: fixed; min-width: 168px; max-width: 80vw; max-height: 50vh; overflow: auto; background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 12px 36px rgba(0,0,0,.55); padding: 4px; }
+  #pick .pi { display: flex; align-items: center; gap: 10px; padding: 11px 12px; border-radius: 9px; font-size: 15px; color: var(--text); cursor: pointer; }
+  #pick .pi:active, #pick .pi:hover { background: var(--hover); }
+  #pick .pi.on { color: var(--accent-2); } #pick .pi .ck { width: 16px; flex: none; text-align: center; }
+  /* ---------- 设置(侧栏最底下的按钮 → 弹窗: 云服务器 / 穿透 / 证书; 服务端 src/train/train_net.c) ---------- */
+  .setbtn { display: flex; align-items: center; gap: 11px; padding: 9px 11px; margin-top: 6px; border-radius: 9px; color: var(--dim); font-size: 14px; cursor: pointer; }
+  .setbtn:hover { background: var(--hover); color: var(--text); }
+  #settings { position: fixed; inset: 0; z-index: 90; background: rgba(5,8,15,.72); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; padding: 16px; }
+  #settings.on { display: flex; }
+  .sbox { width: 100%; max-width: 560px; max-height: 100%; overflow: auto; background: var(--panel); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+  .shead { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 10px; padding: 14px 18px; background: var(--panel); border-bottom: 1px solid var(--border); }
+  .shead b { font-size: 16px; } .shead .muted { flex: 1; min-width: 0; }
+  .shead button { border: 0; font-size: 20px; line-height: 1; padding: 4px 9px; color: var(--dim); }
+  .ssec { padding: 16px 18px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px; } .ssec:first-of-type { border-top: 0; }
+  .ssec .card-title { margin: 0; }
+  .sgrid { display: grid; grid-template-columns: 1fr 110px; gap: 10px; } .sgrid.two { grid-template-columns: 1fr 1fr; } .sgrid input { width: 100%; }
+  .srow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .tunst { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13.5px; }
+  .tunst a { color: var(--accent-2); word-break: break-all; }
+  .steps { display: flex; flex-wrap: wrap; gap: 6px; } .steps:empty { display: none; }
+  .steps span { font-size: 12px; padding: 2px 9px; border-radius: 99px; border: 1px solid var(--border); color: var(--faint); }
+  .steps span.done { color: #86efac; border-color: rgba(34,197,94,.45); } .steps span.cur { color: var(--accent-2); border-color: var(--accent-line); animation: pulse 1.2s infinite; }
+  .steps span.bad { color: #fca5a5; border-color: rgba(239,68,68,.55); }
+  .serr { color: #fca5a5; font-size: 13px; } .serr:empty, .swarn:empty { display: none; } .swarn { color: #fcd34d; font-size: 13px; }
+  .serr code, .swarn code { display: block; margin-top: 4px; color: var(--dim); font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; }
+  [data-shell=app] .sgrid { grid-template-columns: 1fr 96px; } [data-shell=app] .sgrid.two { grid-template-columns: 1fr; }
+  [data-shell=app] #settings { padding: 0; align-items: stretch; } [data-shell=app] .sbox { max-width: none; border-radius: 0; border: 0; padding-bottom: env(safe-area-inset-bottom); }
+  [data-shell=app] .shead { padding-top: calc(14px + env(safe-area-inset-top)); }
+  /* 电脑浏览器窗口拉窄: 侧栏收成图标条(只在 desk 外壳; app 外壳另有一套, 见下) */
+  @media (max-width: 760px) { [data-shell=desk] aside { width: 64px; padding: 12px 8px; } [data-shell=desk] .brand span, [data-shell=desk] nav a span, [data-shell=desk] .engine, [data-shell=desk] nav a .ext, [data-shell=desk] .sess, [data-shell=desk] .setbtn span { display: none; } [data-shell=desk] nav a, [data-shell=desk] .setbtn { justify-content: center; } }
+
+  /* ---------- 更多(app 外壳底栏第四格; 电脑上也能用 #more 打开, 居中一列) ---------- */
+  #v-more .wrap { max-width: 640px; margin: 0 auto; }
+  .mhead { display: flex; align-items: center; gap: 14px; padding: 4px 4px 18px; }
+  .mhead img { width: 54px; height: 54px; border-radius: 50%; box-shadow: 0 6px 22px rgba(59,124,246,.4); }
+  .mhead b { font-size: 18px; display: block; }
+  .mhead .st { display: flex; align-items: center; gap: 7px; color: var(--dim); font-size: 13px; margin-top: 2px; }
+  .mgt { font-size: 12px; color: var(--faint); padding: 0 6px 6px; }
+  .mgroup { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; margin-bottom: 18px; }
+  .mrow { display: flex; align-items: center; gap: 12px; padding: 12px 14px; color: var(--text); cursor: pointer; border-top: 1px solid var(--border); -webkit-tap-highlight-color: transparent; }
+  .mrow:first-child { border-top: 0; }
+  .mrow:hover, .mrow:active { background: var(--hover); }
+  .mrow .mi { width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent-2); flex: none; }
+  .mrow .ml { flex: 1; min-width: 0; }
+  .mrow .ml small { display: block; color: var(--dim); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mrow .mv { color: var(--dim); font-size: 13px; flex: none; }
+  .mrow .chev { color: var(--faint); font-size: 20px; line-height: 1; flex: none; }
+  .mrow.red { color: #fca5a5; } .mrow.red .mi { background: rgba(239,68,68,.12); color: #fca5a5; }
+
+  /* ---------- app 外壳(手机 / 触屏窄屏 / 装成 PWA): 顶栏 + 底部 tab + 抽屉, 表格变卡片。电脑布局不受影响 ---------- */
+  .app-only, .tabbar, #scrim, td.res { display: none; }
+  .tb-btn { display: none; }
+  [data-shell=app] .desk-only { display: none !important; }
+  [data-shell=app] .app-only { display: revert; }
+  [data-shell=app] { -webkit-tap-highlight-color: transparent; }
+  /* 高度跟着可视区走(--app-h 由脚本按 visualViewport 写): iOS 弹键盘时布局视口不缩, 不这么做输入框会被键盘盖住 */
+  [data-shell=app] body { flex-direction: column; height: var(--app-h, 100dvh); font-size: 15px; overscroll-behavior: none; }
+  [data-shell=app] .main { min-height: 0; }   /* 竖排 flex 的子项默认不肯比内容矮: 不写这句, 长对话把输入框和底栏挤到屏幕外 */
+  [data-shell=app] input, [data-shell=app] select, [data-shell=app] textarea { font-size: 16px; }   /* iOS: 小于 16px 的输入框一聚焦整页就放大 */
+  [data-shell=app] button { touch-action: manipulation; }
+  [data-shell=app] .view { padding: 14px 14px 28px; overscroll-behavior: contain; }
+  [data-shell=app] .card { padding: 14px; border-radius: 14px; }
+  /* 顶栏: 左键(对话页 = 抽屉, 二级页 = 返回) · 标题 + 引擎状态 · 右键(对话页 = 新对话); 状态栏透明(standalone)时让出刘海 */
+  [data-shell=app] .topbar { height: auto; padding: env(safe-area-inset-top) 4px 0; gap: 0; background: var(--side); }
+  [data-shell=app] .topbar > :not(.tb-btn):not(.tb-title) { display: none; }
+  [data-shell=app] .tb-btn { display: grid; place-items: center; width: 46px; height: 52px; border: 0; background: none; color: var(--text); padding: 0; flex: none; }
+  [data-shell=app] .tb-btn svg.i { width: 23px; height: 23px; }
+  #tb-left[data-mode=menu] .ic-back, #tb-left[data-mode=back] .ic-menu { display: none; }
+  [data-shell=app] .tb-title { flex: 1; min-width: 0; text-align: center; }
+  [data-shell=app] .tb-title h1 { font-size: 16.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  [data-shell=app] .tb-sub { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--dim); cursor: pointer; max-width: 100%; }
+  [data-shell=app] .tb-sub .dot { width: 7px; height: 7px; }
+  /* 底栏: 四格, 让出 Home 条; 键盘弹起(有输入框聚焦)时收起, 把高度让给输入 */
+  [data-shell=app] .tabbar { display: flex; flex: none; background: var(--side); border-top: 1px solid var(--border); padding: 2px 4px env(safe-area-inset-bottom); }
+  [data-shell=app] body:has(textarea:focus, input:not([type=checkbox]):focus) .tabbar { display: none; }
+  .tabbar a { flex: 1; position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 7px 0 6px; font-size: 11px; color: var(--faint); text-decoration: none; cursor: pointer; }
+  .tabbar a svg.i { width: 23px; height: 23px; }
+  .tabbar a.on { color: var(--accent-2); }
+  .tabbar .tdot { position: absolute; top: 6px; left: calc(50% + 9px); width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 2px var(--side); animation: pulse 1.6s infinite; }
+  .tabbar .tpct { position: absolute; top: 3px; left: calc(50% + 8px); font-size: 9.5px; padding: 0 4px; border-radius: 6px; background: var(--accent); color: #fff; }
+  .tabbar .tpct:empty { display: none; }
+  /* 抽屉: 原来的左侧栏整体滑出, 里面只留品牌、对话列表、引擎卡片(导航由底栏接管) */
+  [data-shell=app] aside { position: fixed; z-index: 60; top: 0; bottom: 0; left: 0; width: min(84vw, 320px); transform: translateX(-102%); transition: transform .22s ease;
+    padding: calc(14px + env(safe-area-inset-top)) 12px calc(12px + env(safe-area-inset-bottom)); box-shadow: 0 0 40px rgba(0,0,0,.55); }
+  [data-shell=app].drawer aside { transform: none; }
+  [data-shell=app] aside nav { display: none; }
+  [data-shell=app] #scrim { display: block; position: fixed; inset: 0; z-index: 55; background: rgba(0,0,0,.5); opacity: 0; pointer-events: none; transition: opacity .2s; }
+  [data-shell=app].drawer #scrim { opacity: 1; pointer-events: auto; }
+  [data-shell=app] .sess { border-top: 0; margin-top: 0; }
+  [data-shell=app] .sitem { padding: 11px 6px 11px 12px; font-size: 14.5px; }
+  [data-shell=app] .sitem .sdel { visibility: visible; font-size: 18px; }   /* 没有鼠标悬停, 删除键常显 */
+  /* 对话 */
+  [data-shell=app] .chat-inner { padding: 16px 14px 10px; gap: 16px; }
+  [data-shell=app] .msg { gap: 9px; }
+  [data-shell=app] .msg .who, [data-shell=app] .msg.assistant .who img { width: 28px; height: 28px; }
+  [data-shell=app] .msg.user .who { display: none; }   /* 自己的消息靠右的蓝气泡就够认了, 省出一个头像宽 */
+  [data-shell=app] .bubble { max-width: 100%; }
+  [data-shell=app] .msg.user .bubble { max-width: 86%; border-radius: 16px 4px 16px 16px; }
+  [data-shell=app] .banner { width: calc(100% - 24px); margin-top: 10px; flex-wrap: wrap; }
+  [data-shell=app] .composer { padding: 6px 10px 8px; }
+  [data-shell=app] .composer .box { border-radius: 20px; padding: 8px 8px 6px 14px; }
+  [data-shell=app] .composer .tools select { max-width: 42vw; }
+  [data-shell=app] #btn-send { border-radius: 16px; padding: 6px 16px; }
+  [data-shell=app] .codeblock pre { font-size: 12.5px; }
+  [data-shell=app] .tool .thead { padding: 10px 12px; }
+  [data-shell=app] .abtns button { flex: 1 1 40%; padding: 9px 10px; }   /* 审批按钮: 手指点得准, 两两一行 */
+  /* 训练: 顶上分段切"进度 / 设置", 一屏只看一样 */
+  [data-shell=app] .train-grid { display: block; }
+  [data-shell=app] .train-grid[data-tp=prog] .cfg, [data-shell=app] .train-grid[data-tp=cfg] .right { display: none; }
+  [data-shell=app] .tseg { display: flex; margin-bottom: 14px; }
+  [data-shell=app] .tseg button { flex: 1; padding: 7px 0; font-size: 14px; }
+  [data-shell=app] .tiles { grid-template-columns: 1fr 1fr; gap: 10px; }
+  [data-shell=app] .tile .v { font-size: 19px; }
+  [data-shell=app] canvas { height: 190px; }
+  [data-shell=app] .runhead select { margin-left: 0; max-width: none; width: 100%; }
+  [data-shell=app] .cfg .go { padding: 12px; }
+  /* 模型 / 语料 / 活动 / API */
+  [data-shell=app] .mgrid { grid-template-columns: 1fr; }
+  [data-shell=app] .drop { padding: 22px 14px; }
+  [data-shell=app] .dlopts label.f { min-width: 0 !important; flex: 1 1 100%; }
+  [data-shell=app] .mem-grid { gap: 14px; }
+  [data-shell=app] textarea.memtxt { min-height: 42vh; }
+  [data-shell=app] #toast { left: 14px; right: 14px; bottom: calc(70px + env(safe-area-inset-bottom)); max-width: none; text-align: center; }
+  /* 表格 → 卡片: 一行一张卡, 每格左边是表头(data-label, 脚本按 thead 自动填), 首格当卡片标题; 没有表头的表(.flow)各格顺排 */
+  [data-shell=app] table.cards, [data-shell=app] table.cards tbody { display: block; }
+  [data-shell=app] table.cards thead { display: none; }
+  [data-shell=app] table.cards tr { display: block; background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; }
+  [data-shell=app] table.cards tr.sel { border-color: var(--accent-line); }
+  [data-shell=app] table.cards td { display: flex; justify-content: space-between; align-items: baseline; gap: 14px; width: auto; padding: 3px 0; border: 0; white-space: normal; text-align: right; word-break: break-word; background: none !important; }
+  [data-shell=app] table.cards td::before { content: attr(data-label); color: var(--dim); font-size: 12.5px; text-align: left; flex: none; max-width: 48%; }
+  [data-shell=app] table.cards td:first-child { font-weight: 600; justify-content: flex-start; text-align: left; padding-bottom: 6px; }
+  [data-shell=app] table.cards td:first-child::before, [data-shell=app] table.cards td:not([data-label])::before { display: none; }
+  [data-shell=app] table.cards td:last-child:not([data-label]) { justify-content: flex-end; padding-top: 8px; }
+  [data-shell=app] table.flow tr { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+  [data-shell=app] table.flow td { display: block; padding: 0; text-align: left; }
+  [data-shell=app] table.flow td:first-child { flex-basis: 100%; padding: 0; }
+  [data-shell=app] table.flow td.wrap { flex-basis: 100%; order: 9; color: var(--dim); }
+  [data-shell=app] table.flow tr:not(.open) td.res { display: none; }   /* 上一条 td { display: block } 更具体, 会把收着的结果也露出来 */
+  [data-shell=app] table.flow tr.open td.res { display: block; flex-basis: 100%; order: 10; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; max-height: 240px; overflow: auto; background: var(--panel) !important; border-radius: 8px; padding: 8px; }
+  [data-shell=app] td .act { padding: 6px 12px; font-size: 13.5px; }
+  [data-shell=app] .md table { font-size: 13px; }
 </style>
 </head>
 <body>
@@ -246,6 +436,7 @@
     <a data-tab="train"><svg class="i" viewBox="0 0 24 24"><path d="M3 17l5-5 4 4 8-9"/><path d="M14 7h6v6"/></svg><span data-i18n="tab_train">训练</span></a>
     <a data-tab="data"><svg class="i" viewBox="0 0 24 24"><ellipse cx="12" cy="5.5" rx="8" ry="3"/><path d="M4 5.5v13c0 1.7 3.6 3 8 3s8-1.3 8-3v-13"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg><span data-i18n="tab_data">语料</span></a>
     <a data-tab="runs"><svg class="i" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/></svg><span data-i18n="tab_runs">记录</span></a>
+    <a data-tab="api"><svg class="i" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M15 8l2 2"/></svg><span data-i18n="tab_api">API</span></a>
     <div class="sep"></div>
     <a href="/monitor" target="_blank"><svg class="i" viewBox="0 0 24 24"><path d="M3 12h4l3 7 4-14 3 7h4"/></svg><span data-i18n="nav_monitor">监控</span><span class="ext">↗</span></a>
   </nav>
@@ -255,10 +446,15 @@
     <div class="sub" id="eng-sub">–</div>
     <button class="primary" id="btn-load" style="display:none" data-i18n="load_model">加载模型</button>
   </div>
+  <a class="setbtn" id="btn-set"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span data-i18n="set_btn">设置</span></a>
 </aside>
 
 <div class="main">
-  <div class="topbar"><h1 id="page-title">聊天</h1><span class="hint" id="page-hint"></span><div class="spacer"></div><span class="muted" id="updated"></span><button class="ghost" id="lang" title="Language / 语言" style="font-size:12.5px;padding:4px 10px">EN</button></div>
+  <div class="topbar">
+    <button class="tb-btn" id="tb-left" data-mode="menu"><svg class="i ic-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></svg><svg class="i ic-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+    <div class="tb-title"><h1 id="page-title">聊天</h1><div class="tb-sub app-only" id="tb-sub"><span class="dot" id="tb-dot"></span><span id="tb-eng"></span></div></div>
+    <button class="tb-btn" id="tb-new"><svg class="i" viewBox="0 0 24 24"><path d="M12 20h8"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button>
+    <span class="hint" id="page-hint"></span><div class="spacer"></div><span class="muted" id="updated"></span><button class="ghost" id="lang" title="Language / 语言" style="font-size:12.5px;padding:4px 10px">EN</button><button class="ghost" id="logout" style="font-size:12.5px;padding:4px 10px;display:none" data-i18n="au_logout">退出</button></div>
 
   <!-- ============ 聊天 ============ -->
   <section class="view" id="v-chat">
@@ -268,7 +464,7 @@
       <div class="box">
         <textarea id="input" rows="1"></textarea>
         <div class="tools">
-          <select id="plug" style="display:none"></select><label id="pt-sw" class="switch" style="display:none"><input type="checkbox" id="pt-on"><span class="knob"></span><span data-i18n="pt">后训练</span></label><span class="muted" id="plug-st" style="font-size:12px"></span>
+          <select id="plug" class="picked" style="display:none"></select><button class="ghost pickbtn" id="plug-btn" style="display:none"></button><label id="pt-sw" class="switch" style="display:none"><input type="checkbox" id="pt-on"><span class="knob"></span><span data-i18n="pt">后训练</span></label><span class="muted" id="plug-st" style="font-size:12px"></span>
           <div class="spacer"></div>
           <button class="primary" id="btn-send"></button>
         </div>
@@ -294,11 +490,11 @@
       <div class="muted" id="act-info" style="margin-bottom:10px"></div>
       <label class="switch" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="act-bash"><span class="knob"></span><span data-i18n="act_bash"></span></label></div>
     <div class="card"><div class="card-title" data-i18n="act_dirs">允许的目录</div><div class="muted" data-i18n="act_dirs_sub" style="margin-bottom:10px"></div>
-      <table><tbody id="act-dirs"></tbody></table>
+      <table class="cards flow"><tbody id="act-dirs"></tbody></table>
       <div style="display:flex;gap:10px;align-items:center;margin-top:10px"><input id="act-path" data-i18n-ph="act_dir_ph" style="flex:1"><label class="ck" style="padding:0"><input type="checkbox" id="act-write"><span data-i18n="act_write">可写</span></label><button class="primary" id="act-add" data-i18n="act_add">添加</button></div></div>
-    <div class="card"><div class="card-title" data-i18n="act_appr">永久授权</div><div class="muted" data-i18n="act_appr_sub" style="margin-bottom:10px"></div><table><tbody id="act-appr"></tbody></table></div>
+    <div class="card"><div class="card-title" data-i18n="act_appr">永久授权</div><div class="muted" data-i18n="act_appr_sub" style="margin-bottom:10px"></div><table class="cards flow"><tbody id="act-appr"></tbody></table></div>
     <div class="card"><div class="card-title" data-i18n="act_audit">活动流水</div><div class="muted" data-i18n="act_audit_sub" style="margin-bottom:10px"></div>
-      <div style="overflow:auto"><table><tbody id="act-audit"></tbody></table></div></div>
+      <div style="overflow:auto"><table class="cards flow"><tbody id="act-audit"></tbody></table></div></div>
   </section>
 
   <!-- ============ 模型 ============ -->
@@ -323,7 +519,8 @@
 
   <!-- ============ 训练 ============ -->
   <section class="view" id="v-train">
-    <div class="train-grid">
+    <div class="seg tseg app-only"><button data-tp="prog" data-i18n="ts_prog">进度</button><button data-tp="cfg" data-i18n="ts_cfg">设置</button></div>
+    <div class="train-grid" id="train-grid">
       <div class="cfg">
         <div class="card sec">
           <div class="card-title" style="margin:0" data-i18n="t_dataset">数据集</div>
@@ -363,7 +560,7 @@
         </div>
         <div class="card">
           <div class="card-title" data-i18n="ep_title">轮次 · 学会了没(留出) / 还会不会正常说话(收口) / 通用退了多少(wt2 两臂配对 ± SE)</div>
-          <div style="overflow:auto"><table><thead><tr><th data-i18n="ep_n">轮</th><th data-i18n="k_eval">留出损失</th><th data-i18n="k_gen">泛化留出</th><th data-i18n="ep_train64">训练前64题</th><th data-i18n="k_hold">保持料 KL</th><th data-i18n="ep_gain">较上轮降 ± SE</th><th data-i18n="ep_stop">收口</th><th>Σmin</th><th>Mean KLD</th><th data-i18n="ep_kldmed">中位 KLD</th><th>Same top</th><th data-i18n="ep_gate">通用漂移</th></tr></thead><tbody id="ep-rows"></tbody></table></div>
+          <div style="overflow:auto"><table class="cards"><thead><tr><th data-i18n="ep_n">轮</th><th data-i18n="k_eval">留出损失</th><th data-i18n="k_gen">泛化留出</th><th data-i18n="ep_train64">训练前64题</th><th data-i18n="k_hold">保持料 KL</th><th data-i18n="ep_gain">较上轮降 ± SE</th><th data-i18n="ep_stop">收口</th><th>Σmin</th><th>Mean KLD</th><th data-i18n="ep_kldmed">中位 KLD</th><th>Same top</th><th data-i18n="ep_gate">通用漂移</th></tr></thead><tbody id="ep-rows"></tbody></table></div>
         </div>
         <div class="card">
           <div class="card-title"><span class="seg"><button class="on" data-pane="probe" data-i18n="pane_probe">探针原文</button><button data-pane="log" data-i18n="pane_log">日志</button></span><select id="probe-sel" style="margin-left:auto;font-size:12.5px;padding:4px 8px"></select></div>
@@ -377,7 +574,8 @@
   <section class="view" id="v-data">
     <div class="drop" id="drop">
       <svg class="i" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
-      <div class="big" data-i18n="d_drop">拖文件到这里, 或点击选择</div>
+      <div class="big desk-only" data-i18n="d_drop">拖文件到这里, 或点击选择</div>
+      <div class="big app-only" data-i18n="d_pick">点这里选择文件上传</div>
       <div class="muted" data-i18n="d_drop_sub">.jsonl 直接训: 一行一题 {"messages":[user, assistant], "context"?} 或一行一段原文 {"text": "…"} · .txt / .md = 文档, 进料目录后自动成为原文料(&lt;目录&gt;.text.jsonl) · 64 MB 以内</div>
       <input type="file" id="file" multiple style="display:none">
     </div>
@@ -385,7 +583,7 @@
       <span class="muted" data-i18n="d_docdir">文档放进料目录:</span><input id="docdir" value="my_docs" style="width:180px"><span class="muted" id="up-msg"></span>
     </div>
     <div class="data-grid">
-      <div class="card"><div class="card-title" data-i18n="d_jsonl">训练料(.jsonl)</div><div style="overflow-x:auto"><table class="jsonl"><thead><tr><th data-i18n="d_file">文件</th><th data-i18n="d_rows">行数</th><th data-i18n="d_size">大小</th><th data-i18n="d_teacher">教师表</th><th></th></tr></thead><tbody id="jsonl-rows"></tbody></table></div></div>
+      <div class="card"><div class="card-title" data-i18n="d_jsonl">训练料(.jsonl)</div><div style="overflow-x:auto"><table class="jsonl cards"><thead><tr><th data-i18n="d_file">文件</th><th data-i18n="d_rows">行数</th><th data-i18n="d_size">大小</th><th data-i18n="d_teacher">教师表</th><th></th></tr></thead><tbody id="jsonl-rows"></tbody></table></div></div>
       <div class="card"><div class="card-title"><span data-i18n="d_preview">预览</span> <span id="pv-name" style="text-transform:none;color:var(--text)"></span></div><div class="pv" id="pv"><div class="muted" data-i18n="d_pv_hint">点上面表格里的"预览"看前几行</div></div></div>
     </div>
   </section>
@@ -393,17 +591,124 @@
   <!-- ============ 记录 ============ -->
   <section class="view" id="v-runs">
     <div class="card"><div class="card-title" data-i18n="r_title">全部训练(点一行进训练页查看)</div>
-      <div style="overflow:auto"><table><thead><tr><th data-i18n="r_run">训练</th><th data-i18n="t_dataset">数据集</th><th data-i18n="r_cfg">轮 / 层 / lr</th><th data-i18n="r_status">状态</th><th data-i18n="r_eval">留出 第0步 → 末</th><th data-i18n="r_pick">选中</th><th data-i18n="r_started">开始于</th></tr></thead><tbody id="runs"></tbody></table></div>
+      <div style="overflow:auto"><table class="cards"><thead><tr><th data-i18n="r_run">训练</th><th data-i18n="t_dataset">数据集</th><th data-i18n="r_cfg">轮 / 层 / lr</th><th data-i18n="r_status">状态</th><th data-i18n="r_eval">留出 第0步 → 末</th><th data-i18n="r_pick">选中</th><th data-i18n="r_started">开始于</th></tr></thead><tbody id="runs"></tbody></table></div>
     </div>
   </section>
+
+  <!-- ============ API 密钥 ============ -->
+  <section class="view" id="v-api">
+    <div class="card"><div class="card-title" data-i18n="k_title">API 密钥</div>
+      <div class="muted" data-i18n="k_sub" style="margin-bottom:12px"></div>
+      <div style="display:flex;gap:10px;align-items:center"><input id="k-name" data-i18n-ph="k_name_ph" maxlength="64" style="flex:1;max-width:360px"><button class="primary" id="k-create" data-i18n="k_create">新建密钥</button></div>
+      <div class="newkey" id="k-new"><b data-i18n="k_new_t"></b><div class="muted" data-i18n="k_new_sub"></div>
+        <div class="row"><code id="k-new-key"></code><button class="ghost" id="k-copy" data-i18n="copy">复制</button><button class="ghost" id="k-hide" data-i18n="k_done">我已保存</button></div></div>
+      <div style="overflow:auto;margin-top:14px"><table class="cards"><thead><tr><th data-i18n="k_name">名称</th><th data-i18n="k_key">密钥</th><th data-i18n="k_created">创建于</th><th data-i18n="k_last">最近使用</th><th data-i18n="k_reqs">请求数</th><th></th></tr></thead><tbody id="api-keys"></tbody></table></div>
+      <div class="muted" id="k-file" style="margin-top:10px"></div>
+    </div>
+    <div class="card"><div class="card-title" data-i18n="k_use">怎么调用</div>
+      <div class="muted" data-i18n="k_use_sub"></div>
+      <div class="snip"><pre class="box" id="k-snip-openai"></pre><button class="ghost copy" data-snip="k-snip-openai" data-i18n="copy">复制</button></div>
+      <div class="snip"><pre class="box" id="k-snip-anth"></pre><button class="ghost copy" data-snip="k-snip-anth" data-i18n="copy">复制</button></div>
+    </div>
+  </section>
+
+  <!-- ============ 更多(app 外壳底栏第四格: 记忆/活动/语料/记录/API/监控 + 语言/安装/退出; 列表由 renderMore 按 MORE 生成) ============ -->
+  <section class="view" id="v-more"><div class="wrap">
+    <div class="mhead"><img src="/logo.jpg" alt=""><div><b>YoungAi</b><div class="st"><span class="dot" id="more-dot"></span><span id="more-eng"></span></div></div></div>
+    <div id="more-list"></div>
+  </div></section>
 </div>
+<!-- app 外壳的底栏(desk 外壳隐藏): 不用 <nav>, 免得被侧栏导航的选择器(nav a[data-tab])一并点亮/绑定 -->
+<div class="tabbar">
+  <a data-tab="chat"><svg class="i" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg><span data-i18n="tab_chat">助理</span></a>
+  <a data-tab="models"><svg class="i" viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg><span data-i18n="tab_models">模型</span><span class="tpct" id="tab-dl"></span></a>
+  <a data-tab="train"><svg class="i" viewBox="0 0 24 24"><path d="M3 17l5-5 4 4 8-9"/><path d="M14 7h6v6"/></svg><span data-i18n="tab_train">训练</span><span class="tdot" id="tab-train-dot" hidden></span></a>
+  <a data-tab="more"><svg class="i" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg><span data-i18n="tab_more">更多</span></a>
+</div>
+<div id="scrim"></div>
+<div id="pick"><div class="pbox" role="listbox"></div></div>
 <div id="toast"></div>
+<div id="auth"><form id="auth-form" autocomplete="on">
+  <div class="head"><img src="/logo.jpg" alt=""><h2 id="auth-title"></h2><div class="muted" id="auth-sub"></div></div>
+  <label class="f"><span data-i18n="au_user">用户名</span><input id="auth-user" name="username" autocomplete="username" maxlength="32"></label>
+  <label class="f"><span data-i18n="au_pass">密码</span><input id="auth-pass" name="password" type="password" maxlength="64"></label>
+  <label class="f" id="auth-pass2-row"><span data-i18n="au_pass2">再输一次密码</span><input id="auth-pass2" type="password" autocomplete="new-password" maxlength="64"></label>
+  <div class="rule" id="auth-rule" data-i18n="au_rule"></div>
+  <div class="err" id="auth-err"></div>
+  <button class="primary" id="auth-go" type="submit"></button>
+</form></div>
+<!-- 设置弹窗(侧栏最底下 / "更多"页里的"设置"打开; 脚本见 "设置弹窗" 段) -->
+<div id="settings"><div class="sbox" role="dialog" aria-modal="true">
+  <div class="shead"><b data-i18n="set_t">设置</b><span class="muted" data-i18n="set_sub"></span><button class="ghost" id="set-close" data-i18n-title="close">×</button></div>
+  <div class="ssec">
+    <div class="card-title" data-i18n="set_srv">云服务器</div>
+    <div class="muted" id="set-srv-sub"></div>
+    <div class="sgrid">
+      <label class="f"><span data-i18n="set_host">公网 IP 或域名</span><input id="set-host" placeholder="203.0.113.10" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="253"></label>
+      <label class="f"><span data-i18n="set_port">SSH 端口</span><input id="set-port" inputmode="numeric" placeholder="22" maxlength="5"></label>
+    </div>
+    <div class="sgrid two">
+      <label class="f"><span data-i18n="set_user">用户名</span><input id="set-user" placeholder="root" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="32"></label>
+      <label class="f"><span data-i18n="set_pass">密码</span><input id="set-pass" type="password" autocomplete="new-password" maxlength="159"></label>
+    </div>
+    <div class="sgrid">
+      <div class="muted" data-i18n="set_pub_hint" style="align-self:end;font-size:12px"></div>
+      <label class="f"><span data-i18n="set_pub">公网端口</span><input id="set-pub" inputmode="numeric" maxlength="5"></label>
+    </div>
+    <div class="serr" id="set-err"></div>
+    <div class="srow"><div class="spacer"></div><button class="primary" id="set-save" data-i18n="set_save">保存</button></div>
+  </div>
+  <div class="ssec">
+    <div class="srow"><div class="card-title" data-i18n="set_tun">穿透</div><div class="spacer"></div><label class="switch"><input type="checkbox" id="set-tun"><span class="knob"></span></label></div>
+    <div class="muted" data-i18n="set_tun_sub"></div>
+    <div class="tunst" id="tun-st"></div>
+    <div class="steps" id="tun-steps"></div>
+    <div class="serr" id="tun-err"></div>
+    <div class="swarn" id="tun-warn"></div>
+    <div class="muted" id="tun-note"></div>
+    <div class="muted" id="tun-ports"></div>
+  </div>
+  <div class="ssec">
+    <div class="card-title" data-i18n="set_cert">HTTPS 证书</div>
+    <div class="muted" data-i18n="set_cert_sub"></div>
+    <div class="tunst" id="cert-cur"></div>
+    <div class="serr" id="cert-err"></div>
+    <div class="srow"><button id="cert-up" data-i18n="set_cert_up">上传证书压缩包</button><button class="danger" id="cert-del" data-i18n="set_cert_del">删除证书</button><input type="file" id="cert-file" accept=".zip,application/zip" hidden></div>
+  </div>
+</div></div>
 
 <script>
+/* ---------------- 登录(10-12 用户: 首次必须设用户名密码, 登录后存浏览器免登; 服务端 src/train/train_auth.c) ----------------
+   票存 localStorage 的 ds4.studio.session(原样字符串, 监控页 monitor.html 也读它), 下面包一层 fetch, 所有请求自动带 X-DS4-Session 头。
+   任何接口答 401 且带 X-DS4-Auth 头(setup = 还没设过, login = 没票/过期/被重置) → 弹设置或登录框, 登完原地继续, 不刷新页面。
+   ds4-server 直接开端口时没有登录: /api/auth/status 答 404 → 当作不用登录。 */
+const LS_SESS = "ds4.studio.session";
+let authMode = null;   /* null = 不用登录框; setup / login / broken = 登录框开着, 是哪一种 */
+function sessGet() { try { return localStorage.getItem(LS_SESS) || ""; } catch (_) { return ""; } }
+function sessSet(v) { try { if (v) localStorage.setItem(LS_SESS, v); else localStorage.removeItem(LS_SESS); } catch (_) { /* 隐私窗口: 存不了就每次打开重新登录 */ } }
+const rawFetch = window.fetch.bind(window);
+window.fetch = async (url, opt) => {
+  /* 登录框开着时轮询照跑也只会一条条 401(控制台刷满红字): 本地直接答 401, 不上网; 登录框自己走 rawFetch 不受影响 */
+  if (authMode) return new Response('{"error":"login required"}', { status: 401, headers: { "Content-Type": "application/json" } });
+  opt = Object.assign({}, opt || {});
+  const s = sessGet();
+  if (s) { const h = new Headers(opt.headers || {}); h.set("X-DS4-Session", s); opt.headers = h; }
+  const r = await rawFetch(url, opt);
+  const need = r.status === 401 && r.headers.get("X-DS4-Auth");
+  if (need) authShow(need);
+  return r;
+};
+
 /* ---------------- 语言(同 monitor.html 的写法) ---------------- */
 const I18N = {
   zh: {
     title: "YoungAi · DwarfStar", lang_btn: "EN", brand_sub: "DwarfStar 引擎",
+    tab_api: "API", hint_api: "外部程序调大模型(/v1)用的密钥: 新建、删除、看用量",
+    k_title: "API 密钥", k_sub: "外部程序(OpenAI / Anthropic 兼容的客户端、脚本)调这台机器上的大模型必须带一把密钥。密钥只在新建时完整显示一次, 服务端只存哈希; 删掉立刻失效, 不用重启。",
+    k_name_ph: "名称, 比如: 笔记本上的 Cursor", k_create: "新建密钥", k_new_t: "新密钥已生成, 现在就复制保存", k_new_sub: "关掉之后再也看不到完整密钥(服务端只存哈希); 丢了就删掉重建一把。", k_done: "我已保存",
+    k_name: "名称", k_key: "密钥", k_created: "创建于", k_last: "最近使用", k_reqs: "请求数", k_never: "从未", k_del: "删除", k_del_confirm: "删除密钥「{0}」? 用它的程序会立刻 401。", k_none: "还没有密钥",
+    k_file: "存在 {0}(删掉这个文件 = 清空全部密钥)", k_use: "怎么调用", k_use_sub: "把下面的 sk-ds4-… 换成你的密钥。OpenAI 兼容客户端填 Base URL + API Key 即可; Anthropic SDK 用 x-api-key 头。模型没加载时 /v1 会答 404。",
+    k_err_name_empty: "先给密钥起个名字", k_err_too_many: "密钥太多了(最多 64 把), 删掉不用的再建", k_err_keys_broken: "密钥文件被改坏了, 删掉它重建", k_err_save_failed: "服务端写不了密钥文件, 看 ds4-train 日志",
     tab_chat: "助理", tab_models: "模型", tab_train: "训练", tab_data: "语料", tab_runs: "记录", nav_monitor: "监控",
     hint_models: "本机模型与侧车, 一键加载; 从 Hugging Face 下载发布包", hint_train: "上下文蒸馏 + 答案 NLL, 写进独立的 ③ 文件", hint_data: "上传问答料、原文料或文档",
     load_model: "加载模型", pt: "后训练", clear: "清空", send: "发送", stop: "停止", updated: "更新 {0}",
@@ -459,7 +764,15 @@ const I18N = {
     pl_after: "这条回答结束后切换", pl_fail: "切换失败: {0}", pl_on: "挂着: {0}", pl_newer: "(有更新的: {0}, 关再开换上)", pl_can: "可挂: {0}", pl_tip: "挂/卸自己训出来的后训练件",
     pl_switching: "切换中…", pl_err: "侧车没切成: {0}",
     tab_mem: "记忆", tab_act: "活动", hint_chat: "住在这台机器上的个人助理: 记忆是你能改的纯文本, 每次动手都在沙盒里, 越界先问你", hint_mem: "助理记得的事与你给它的规矩(新开的对话生效)", hint_act: "沙盒、允许的目录、永久授权、每一次工具调用",
-    a_token: "这台设备不是本机, 助理接口要口令(在运行工作台那台机器的 ~/.ds4/assistant/token 里):", a_new: "+ 新对话", a_chats: "对话", a_nosess: "还没有对话", a_untitled: "新对话", a_del: "删除", a_del_confirm: "删除这个对话? (挪进 ~/.ds4/assistant/trash/, 盘上还能找回)",
+    au_setup_t: "首次使用: 设置用户名和密码", au_setup_sub: "以后打开工作台都要用它登录。只以单向哈希存在运行工作台的那台机器上({0}); 忘了就删掉这个文件, 刷新页面重新设置。",
+    au_login_t: "登录", au_login_sub: "登录后这个浏览器 30 天内免登, 常用会自动续期。", au_broken_t: "登录文件读不懂",
+    au_user: "用户名", au_pass: "密码", au_pass2: "再输一次密码", au_rule: "用户名 3–32 位, 只用字母、数字和 _ . -; 密码 8–64 位, 字母、数字、符号里至少占两类, 不能和用户名一样。",
+    au_go_setup: "设置并进入", au_go_login: "登录", au_logout: "退出", au_wait: "校验中…",
+    au_user_len: "用户名要 3–32 位", au_user_chars: "用户名只能用字母、数字和 _ . -", au_pass_len: "密码要 8–64 位(按字节, 一个汉字算 3 位)", au_pass_chars: "密码里不能有控制字符",
+    au_pass_weak: "密码太弱: 字母、数字、符号里至少要有两类", au_pass_same: "密码不能和用户名一样", au_mismatch: "两次输入的密码不一样", au_bad_login: "用户名或密码不对",
+    au_locked: "连错太多次, 30 秒后再试", au_already_set: "已经有人设置过了, 刷新页面去登录", au_not_set: "还没设置过, 刷新页面", au_save_failed: "服务端写不了登录文件, 看 ds4-train 日志",
+    au_auth_broken: "登录文件被改坏了。到运行工作台的那台机器上删掉 ~/.ds4/studio/auth, 再刷新页面重新设置。", au_net: "连不上服务: {0}",
+    a_new: "+ 新对话", a_chats: "对话", a_nosess: "还没有对话", a_untitled: "新对话", a_del: "删除", a_del_confirm: "删除这个对话? (挪进 ~/.ds4/assistant/trash/, 盘上还能找回)",
     a_need: "等你批准", a_running: "执行中…", a_thinking: "思考中…", a_args: "参数", a_result: "结果 · {0} 字节", a_reason: "要做: {0}", a_target: "范围: {0}",
     a_once: "仅这次", a_session: "本会话都允许", a_always: "总是允许", a_deny: "拒绝", a_once_only: "这类操作只能逐次批准",
     dec_auto: "自动放行", dec_once: "你批准了", dec_session: "本会话已允许", dec_always: "永久允许", dec_denied: "你拒绝了", dec_blocked: "规则拦下", dec_cancelled: "已取消",
@@ -471,9 +784,48 @@ const I18N = {
     act_write: "可写", act_add: "添加", act_del: "移除", act_rw: "读写", act_ro: "只读", act_appr: "永久授权", act_appr_sub: "你在审批卡上点过\"总是允许\"的目标; 上过网之后写工作区外仍会逐次问。", act_revoke: "撤销",
     act_audit: "活动流水", act_audit_sub: "每一次工具调用, 最新在前: 做了什么、谁放行的、成没成。鼠标停在一行上看结果。", act_none: "暂无", cls_read: "读", cls_write: "写", cls_web: "上网", cls_exec: "命令",
     pt_done: "训练完成: {0} 已关联侧车 {1}, 切到它并打开后训练开关即可挂上",
+    tab_more: "更多", ts_prog: "进度", ts_cfg: "设置", d_pick: "点这里选择文件上传", mh_runs: "每一趟训练的配置、状态与结果", mh_monitor: "服务端实时指标(新窗口)",
+    more_g_asst: "助理", more_g_train: "训练", more_g_dev: "开发", more_g_app: "应用", more_lang: "语言", more_lang_v: "中文",
+    more_install: "安装到主屏幕", more_install_sub: "像 App 一样全屏打开, 有自己的图标", more_install_ios: "在 Safari 里点底部的「分享」→「添加到主屏幕」",
+    more_install_http: "现在是 http 打开的, 浏览器只给 https 或本机地址装 PWA(见 docs/pwa.md)", more_installed: "已安装, 正以 App 方式运行",
+    set_btn: "设置", set_t: "设置", set_sub: "云服务器、公网穿透与 HTTPS 证书", close: "关闭",
+    set_srv: "云服务器", set_srv_sub: "填一台有公网 IP 的云服务器的 SSH 账号。开穿透时用它把 frp 服务端装上去; 密码只存在本机 {0}(权限 0600), 页面拿不回原文。",
+    set_pub: "公网端口", set_pub_hint: "手机访问用的端口, 留空 = 有证书用 443 / 没证书用页面端口。服务器 443 被占, 或大陆服务器的域名没备案(云厂商会拦 80/443), 就换一个, 比如 8443。改了要去安全组放行新端口。",
+    ne_bad_pub: "公网端口要在 1~65535, 或者留空", ne_pub_busy: "公网端口 {0} 在服务器上被别的程序占着 —— 设置里换个公网端口(或停掉那个程序)",
+    ne_frp_port_none: "服务器上 7000~7099 全被占了, 找不到给 frp 用的端口", ne_survey: "在服务器上查端口占用失败",
+    nt_reuse_frps: "服务器上已经有一个 frps(端口 {0}), 直接复用它: 服务器上没装任何东西", nt_frp_port_moved: "服务器上 7000 被占着, 我们的 frp 改用控制口 {0}(走 SSH 通道, 不用动安全组)",
+    ne_sshfwd: "SSH 通道建不起来", ne_ssh_nofwd: "服务器关了 SSH 端口转发: 在 /etc/ssh/sshd_config 里设 AllowTcpForwarding yes 后重启 sshd", ne_fwd_open: "SSH 通道通了, 但服务器上 frps 没在听控制口(frps 没起来?)",
+    nt_reuse_skipped: "服务器上有 frps 但没法复用, 另装了一套", ne_pub_is_frp: "{0} 是 frp 自己的通信端口, 换一个",
+    set_host: "公网 IP 或域名", set_port: "SSH 端口", set_user: "用户名", set_pass: "密码", set_pass_kept: "已保存, 不改就留空", set_save: "保存", set_saved: "已保存",
+    set_tun: "穿透", set_tun_sub: "打开后, 互联网上用公网地址就能访问这个工作台(照样要登录)。第一次打开会经 SSH 在云服务器上装好 frp 服务端, 约半分钟。",
+    set_cert: "HTTPS 证书", set_cert_sub: "传域名证书的 zip(阿里云 / 腾讯云下载的证书包直接传, 选 Nginx 版也行)。装上后公网地址变成 https, 手机就能装成 App。域名要解析到上面那台云服务器。",
+    set_cert_up: "上传证书压缩包", set_cert_del: "删除证书", set_cert_none: "还没有证书: 现在公网地址是 http, 能打开但装不了 App", set_cert_del_q: "删除证书? 公网地址会退回 http。",
+    set_cert_ok: "证书已装上", set_cert_info: "{0} · {1} 到期 · {2} 张证书链", set_cert_files: "来自压缩包里的 {0} 与 {1}", set_cert_expired: "已过期",
+    tun_off: "未开启", tun_busy: "部署中", tun_up: "已连通", tun_reconn: "连接断了, frpc 正在重连", tun_err: "出错了", tun_open: "打开", tun_http_note: "现在是 http: 能访问, 但浏览器只在 https 下给装 App —— 下面传一个证书",
+    tun_ports: "云服务器的安全组(云厂商控制台 → 安全组 → 入方向)只要放行 SSH 端口和公网端口 TCP {0}; frp 的控制通道走 SSH, 不用另开口", tun_waiting: "等上一步…",
+    st_ssh: "连服务器", st_download: "下载 frp", st_upload: "上传", st_frps: "启动 frps", st_sshfwd: "建 SSH 通道", st_frpc: "启动 frpc", st_public: "检查公网端口",
+    ne_no_server: "先填好云服务器的地址、用户名、密码并保存", ne_ssh_auth: "SSH 登录被拒: 用户名或密码不对; 或者服务器关了密码登录(sshd_config 里 PasswordAuthentication 要是 yes)",
+    ne_ssh_conn: "连不上服务器的 SSH: 地址、端口不对, 或者安全组没放行 SSH 端口", ne_ssh_hostkey: "服务器的 SSH 指纹变了(重装过系统?)。确认是你自己的服务器后, 删掉 {0} 再开",
+    ne_ssh_other: "SSH 出错", ne_arch: "服务器的 CPU 架构不支持(只支持 x86_64 / aarch64)", ne_no_systemd: "服务器上没有 systemd, 没法托管 frp 服务端",
+    ne_download: "下载 frp 失败(GitHub 连不上?)。也可以把官方包里的 frpc / frps 手动放进 {0}", ne_checksum: "下载的 frp 和官方校验和对不上, 已删掉; 再开一次重下",
+    ne_extract: "解压 frp 失败", ne_upload: "往服务器传文件失败", ne_sudo: "这个账号不是 root, sudo 也没成功(没有 sudo 权限?)", ne_frps_start: "frp 服务端在云服务器上没起来",
+    ne_port_public: "连不上服务器的公网端口 {0} —— 去安全组放行 TCP {0}",
+    ne_frpc_start: "本机 frpc 起不来", ne_frpc_exit: "本机 frpc 退出了", ne_frpc_login: "frpc 被服务端拒了(令牌不对): 关掉穿透再打开一次, 会重新部署", ne_frpc_conn: "frpc 经 SSH 通道连不上服务器上 frps 的 {0} 端口",
+    ne_proxy: "公网端口被占用或不许用", ne_thread: "起不了后台线程", ne_dns_none: "域名 {0} 还没解析: 去域名解析加一条 A 记录指向云服务器", ne_dns_mismatch: "域名解析到的不是这台云服务器",
+    ne_bad_host: "地址只能是 IP 或域名", ne_bad_port: "端口要在 1~65535", ne_bad_user: "用户名只许字母数字与 . _ -", ne_bad_pass: "密码里不能有换行等控制字符(最长 159 字节)",
+    ne_need_pass: "第一次保存要填密码", ne_cloud_broken: "设置文件被改坏了, 删掉 {0} 重填", ne_save_failed: "服务端写不了文件, 看 ds4-train 日志",
+    ne_empty: "空文件", ne_too_big: "压缩包太大(证书包一般几 KB)", ne_not_zip: "不是 zip 文件", ne_bad_zip: "zip 解不开", ne_no_cert: "压缩包里没找到 PEM 格式的证书(.pem / .crt)",
+    ne_no_key: "压缩包里没找到私钥(.key)", ne_key_encrypted: "私钥带了密码, 用不了: 下载证书时选不加密的 Nginx 版", ne_mismatch: "证书和私钥不是一对(私钥是别的证书的?)",
+    ne_expired: "证书已在 {0} 过期", ne_openssl: "openssl 读不了这个证书", ne_delete_failed: "删不掉证书文件",
   },
   en: {
     title: "YoungAi · DwarfStar", lang_btn: "中文", brand_sub: "DwarfStar engine",
+    tab_api: "API", hint_api: "Keys that outside programs use to call the model (/v1): create, delete, see usage",
+    k_title: "API keys", k_sub: "Outside programs (OpenAI / Anthropic-compatible clients, scripts) must send a key to call the model on this machine. A key is shown in full only once, when created; the server stores only its hash. Deleting one takes effect immediately, no restart.",
+    k_name_ph: "Name, e.g. Cursor on my laptop", k_create: "Create key", k_new_t: "New key created: copy it now", k_new_sub: "Once you close this you can never see the full key again (only its hash is stored); if you lose it, delete it and create another.", k_done: "I've saved it",
+    k_name: "Name", k_key: "Key", k_created: "Created", k_last: "Last used", k_reqs: "Requests", k_never: "never", k_del: "Delete", k_del_confirm: "Delete key \u201c{0}\u201d? Programs using it will get 401 right away.", k_none: "No keys yet",
+    k_file: "Stored in {0} (delete this file = remove every key)", k_use: "How to call it", k_use_sub: "Replace sk-ds4-… below with your key. OpenAI-compatible clients just need the Base URL and API key; the Anthropic SDK uses the x-api-key header. With no model loaded, /v1 answers 404.",
+    k_err_name_empty: "Give the key a name first", k_err_too_many: "Too many keys (64 max); delete unused ones first", k_err_keys_broken: "The keys file is corrupted; delete it and start over", k_err_save_failed: "Server can't write the keys file; see the ds4-train log",
     tab_chat: "Assistant", tab_models: "Models", tab_train: "Train", tab_data: "Data", tab_runs: "Runs", nav_monitor: "Monitor",
     hint_models: "Local models and sidecars, one-click load; download the release from Hugging Face", hint_train: "Context distillation + answer NLL, written to a separate ③ file", hint_data: "Upload Q&A data, raw text or documents",
     load_model: "Load model", pt: "Post-train", clear: "Clear", send: "Send", stop: "Stop", updated: "Updated {0}",
@@ -529,7 +881,15 @@ const I18N = {
     pl_after: "Will switch after this answer finishes", pl_fail: "Switch failed: {0}", pl_on: "Attached: {0}", pl_newer: " (newer one available: {0}; toggle off and on to use it)", pl_can: "Available: {0}", pl_tip: "Attach / detach the post-train file you trained",
     pl_switching: "Switching…", pl_err: "Sidecar switch failed: {0}",
     tab_mem: "Memory", tab_act: "Activity", hint_chat: "A personal assistant living on this machine: memory is plain text you can edit, every action runs in a sandbox, anything outside asks you first", hint_mem: "What the assistant remembers and the rules you give it (new conversations pick up changes)", hint_act: "Sandbox, allowed folders, standing approvals, every tool call",
-    a_token: "This device is not the host; the assistant API needs the token (in ~/.ds4/assistant/token on the machine running the studio):", a_new: "+ New chat", a_chats: "Chats", a_nosess: "No conversations yet", a_untitled: "New chat", a_del: "Delete", a_del_confirm: "Delete this conversation? (moved to ~/.ds4/assistant/trash/, still recoverable on disk)",
+    au_setup_t: "First run: set a username and password", au_setup_sub: "You'll sign in with these every time. Only a one-way hash is stored, on the machine running the studio ({0}); if you forget, delete that file and reload to set them again.",
+    au_login_t: "Sign in", au_login_sub: "This browser stays signed in for 30 days, renewed while you keep using it.", au_broken_t: "Login file unreadable",
+    au_user: "Username", au_pass: "Password", au_pass2: "Repeat password", au_rule: "Username: 3–32 characters, letters, digits and _ . - only. Password: 8–64 bytes, at least two of letters / digits / symbols, not the same as the username.",
+    au_go_setup: "Save and continue", au_go_login: "Sign in", au_logout: "Sign out", au_wait: "Checking…",
+    au_user_len: "Username must be 3–32 characters", au_user_chars: "Username may only use letters, digits and _ . -", au_pass_len: "Password must be 8–64 bytes", au_pass_chars: "Password can't contain control characters",
+    au_pass_weak: "Password too weak: use at least two of letters, digits, symbols", au_pass_same: "Password can't equal the username", au_mismatch: "The two passwords differ", au_bad_login: "Wrong username or password",
+    au_locked: "Too many wrong tries; wait 30 seconds", au_already_set: "Already set up; reload the page to sign in", au_not_set: "Not set up yet; reload the page", au_save_failed: "Server can't write the login file; see the ds4-train log",
+    au_auth_broken: "The login file is corrupted. Delete ~/.ds4/studio/auth on the machine running the studio, then reload to set up again.", au_net: "Can't reach the server: {0}",
+    a_new: "+ New chat", a_chats: "Chats", a_nosess: "No conversations yet", a_untitled: "New chat", a_del: "Delete", a_del_confirm: "Delete this conversation? (moved to ~/.ds4/assistant/trash/, still recoverable on disk)",
     a_need: "Needs your approval", a_running: "Running…", a_thinking: "Thinking…", a_args: "Arguments", a_result: "Result · {0} bytes", a_reason: "Wants to: {0}", a_target: "Scope: {0}",
     a_once: "Allow once", a_session: "Allow for this chat", a_always: "Always allow", a_deny: "Deny", a_once_only: "This kind of action can only be approved one at a time",
     dec_auto: "Auto-allowed", dec_once: "You allowed it", dec_session: "Allowed for this chat", dec_always: "Always allowed", dec_denied: "You denied it", dec_blocked: "Blocked by rules", dec_cancelled: "Cancelled",
@@ -541,6 +901,39 @@ const I18N = {
     act_write: "Writable", act_add: "Add", act_del: "Remove", act_rw: "read-write", act_ro: "read-only", act_appr: "Standing approvals", act_appr_sub: "Targets you approved with \"Always allow\"; after reading the web, writes outside the workspace still ask every time.", act_revoke: "Revoke",
     act_audit: "Activity log", act_audit_sub: "Every tool call, newest first: what it did, who allowed it, whether it worked. Hover a row to see the result.", act_none: "None yet", cls_read: "read", cls_write: "write", cls_web: "web", cls_exec: "command",
     pt_done: "Training finished: {0} is linked to sidecar {1}; switch to it and turn on Post-train to attach it",
+    tab_more: "More", ts_prog: "Progress", ts_cfg: "Setup", d_pick: "Tap to choose files to upload", mh_runs: "Config, status and results of every run", mh_monitor: "Live server metrics (new window)",
+    more_g_asst: "Assistant", more_g_train: "Training", more_g_dev: "Developer", more_g_app: "App", more_lang: "Language", more_lang_v: "English",
+    more_install: "Add to Home Screen", more_install_sub: "Opens full-screen like an app, with its own icon", more_install_ios: "In Safari, tap Share at the bottom → Add to Home Screen",
+    more_install_http: "Opened over http; browsers only install PWAs from https or this machine's own address (see docs/pwa.md)", more_installed: "Installed, running as an app",
+    set_btn: "Settings", set_t: "Settings", set_sub: "Cloud server, public tunnel and HTTPS certificate", close: "Close",
+    set_srv: "Cloud server", set_srv_sub: "SSH account of a cloud server with a public IP. Turning on the tunnel uses it to install the frp server there; the password is stored only on this machine in {0} (mode 0600) and is never sent back to the page.",
+    set_pub: "Public port", set_pub_hint: "Port used from the internet; empty = 443 with a certificate / the page port without. If 443 is taken on the server, or a mainland-China server's domain has no ICP filing (providers block 80/443), pick another such as 8443 and allow it in the security group.",
+    ne_bad_pub: "Public port must be 1–65535, or empty", ne_pub_busy: "Public port {0} is used by another program on the server — pick another public port (or stop that program)",
+    ne_frp_port_none: "Ports 7000–7099 are all taken on the server; no port left for frp", ne_survey: "Checking port usage on the server failed",
+    nt_reuse_frps: "The server already runs an frps (port {0}); reusing it, nothing installed on the server", nt_frp_port_moved: "7000 is taken on the server; our frp uses control port {0} (over SSH, no security group change needed)",
+    ne_sshfwd: "Cannot set up the SSH channel", ne_ssh_nofwd: "The server disables SSH port forwarding: set AllowTcpForwarding yes in /etc/ssh/sshd_config and restart sshd", ne_fwd_open: "The SSH channel is up but frps is not listening on its control port (did frps start?)",
+    nt_reuse_skipped: "The server has an frps that cannot be reused; installed our own", ne_pub_is_frp: "{0} is frp's own control port; pick another",
+    set_host: "Public IP or domain", set_port: "SSH port", set_user: "User", set_pass: "Password", set_pass_kept: "Saved; leave empty to keep", set_save: "Save", set_saved: "Saved",
+    set_tun: "Tunnel", set_tun_sub: "When on, this studio is reachable from the internet at the public address (sign-in still required). The first time it installs the frp server on the cloud server over SSH, about half a minute.",
+    set_cert: "HTTPS certificate", set_cert_sub: "Upload your domain certificate as a zip (the bundle downloaded from your CA / cloud console; the Nginx variant works). The public address then becomes https and phones can install the app. The domain must point to the cloud server above.",
+    set_cert_up: "Upload certificate zip", set_cert_del: "Delete certificate", set_cert_none: "No certificate: the public address is http, it opens but cannot be installed as an app", set_cert_del_q: "Delete the certificate? The public address falls back to http.",
+    set_cert_ok: "Certificate installed", set_cert_info: "{0} · expires {1} · chain of {2}", set_cert_files: "from {0} and {1} in the zip", set_cert_expired: "expired",
+    tun_off: "Off", tun_busy: "Setting up", tun_up: "Connected", tun_reconn: "Connection lost, frpc is reconnecting", tun_err: "Error", tun_open: "Open", tun_http_note: "This is http: reachable, but browsers only install apps over https — upload a certificate below",
+    tun_ports: "The cloud server's security group (provider console → security group → inbound) only needs the SSH port and public port TCP {0}; frp's control channel runs over SSH", tun_waiting: "waiting…",
+    st_ssh: "Connect", st_download: "Download frp", st_upload: "Upload", st_frps: "Start frps", st_sshfwd: "SSH channel", st_frpc: "Start frpc", st_public: "Check public port",
+    ne_no_server: "Fill in and save the cloud server address, user and password first", ne_ssh_auth: "SSH login refused: wrong user or password, or the server disabled password login (PasswordAuthentication must be yes in sshd_config)",
+    ne_ssh_conn: "Cannot reach the server's SSH: wrong address/port, or the security group blocks the SSH port", ne_ssh_hostkey: "The server's SSH fingerprint changed (reinstalled?). If it is really your server, delete {0} and try again",
+    ne_ssh_other: "SSH error", ne_arch: "Unsupported server CPU (only x86_64 / aarch64)", ne_no_systemd: "The server has no systemd to run the frp server",
+    ne_download: "Downloading frp failed (GitHub unreachable?). You can also put frpc / frps from the official package into {0}", ne_checksum: "Downloaded frp does not match the official checksum and was deleted; turn the tunnel on again",
+    ne_extract: "Extracting frp failed", ne_upload: "Uploading to the server failed", ne_sudo: "Not root, and sudo failed (no sudo rights?)", ne_frps_start: "The frp server did not start on the cloud server",
+    ne_port_public: "Cannot reach public port {0} — allow TCP {0} in the security group",
+    ne_frpc_start: "Local frpc failed to start", ne_frpc_exit: "Local frpc exited", ne_frpc_login: "frpc rejected by the server (token mismatch): turn the tunnel off and on to redeploy", ne_frpc_conn: "frpc cannot reach frps port {0} on the server through the SSH channel",
+    ne_proxy: "Public port is in use or not allowed", ne_thread: "Cannot start a worker thread", ne_dns_none: "Domain {0} does not resolve yet: add an A record pointing to the cloud server", ne_dns_mismatch: "The domain does not resolve to this cloud server",
+    ne_bad_host: "Address must be an IP or a domain", ne_bad_port: "Port must be 1–65535", ne_bad_user: "User may only contain letters, digits and . _ -", ne_bad_pass: "Password must not contain control characters (max 159 bytes)",
+    ne_need_pass: "A password is required the first time", ne_cloud_broken: "The settings file is corrupted; delete {0} and fill it in again", ne_save_failed: "The server cannot write the file, see the ds4-train log",
+    ne_empty: "Empty file", ne_too_big: "Zip too large (certificate bundles are a few KB)", ne_not_zip: "Not a zip file", ne_bad_zip: "Cannot unzip", ne_no_cert: "No PEM certificate (.pem / .crt) found in the zip",
+    ne_no_key: "No private key (.key) found in the zip", ne_key_encrypted: "The private key is password-protected; download the unencrypted Nginx variant", ne_mismatch: "Certificate and private key do not match (key from another certificate?)",
+    ne_expired: "Certificate expired on {0}", ne_openssl: "openssl cannot read this certificate", ne_delete_failed: "Cannot delete the certificate files",
   },
 };
 const LS_LANG = "ds4.lang";
@@ -558,6 +951,7 @@ function applyI18n() {
   document.title = t("title");
   for (const el of document.querySelectorAll("[data-i18n]")) el.textContent = t(el.dataset.i18n);
   for (const el of document.querySelectorAll("[data-i18n-ph]")) el.placeholder = t(el.dataset.i18nPh);
+  for (const el of document.querySelectorAll("[data-i18n-title]")) el.title = t(el.dataset.i18nTitle);
   $("lang").textContent = t("lang_btn");
 }
 
@@ -575,7 +969,9 @@ async function getJSON(url, opt) { const r = await fetch(url, Object.assign({ ca
 
 /* ---------------- 状态 ---------------- */
 let status = null, runs = [], detail = null, selected = null, userPicked = false, switching = 0, failCount = 0;
-const TABS = ["chat", "mem", "act", "models", "train", "data", "runs"];   /* 标题 = t("tab_<名>"), 副标题 = t("hint_<名>")(没有就空) */
+const TABS = ["chat", "mem", "act", "models", "train", "data", "runs", "api", "more"];   /* 标题 = t("tab_<名>"), 副标题 = t("hint_<名>")(没有就空) */
+const SUB = ["mem", "act", "data", "runs", "api"];   /* app 外壳里这几页从"更多"进: 底栏点亮"更多", 顶栏左键是返回 */
+const isApp = () => document.documentElement.dataset.shell === "app";
 /* 没有 #hash(直接开 http://host:8000/)时答"正显示的那页"(showTab 记下的): 曾经答 null, 页面明明在聊天页,
    poll 却以为不在、不再拉 /api/models/list, 后训练开关一切换就永远卡在"切换中…"且按钮灰掉(10-11 实撞)。
    起页前还没显示过任何页时仍是 null —— 起页那行靠它判"训练中就先开训练页" */
@@ -586,9 +982,90 @@ function showTab(tab) {
   document.querySelectorAll("nav a[data-tab]").forEach(a => a.classList.toggle("on", a.dataset.tab === tab));
   document.querySelectorAll(".view").forEach(v => v.classList.toggle("on", v.id === "v-" + tab));
   text("page-title", t("tab_" + tab)); $("page-hint").textContent = I18N.zh["hint_" + tab] ? t("hint_" + tab) : "";
-  if (tab === "train") { loadDetail(); } if (tab === "data") loadData(); if (tab === "chat") { inputEl.focus(); loadSessions(); } if (tab === "models") loadModels(); if (tab === "mem") loadMem(true); if (tab === "act") loadAct();
+  syncShell(tab);
+  /* 手机上程序聚焦输入框会直接弹键盘, 盖住半屏: app 外壳不自动聚焦, 用户点输入框才弹 */
+  if (tab === "train") { loadDetail(); if (isApp() && !trainPane) setTrainPane(training() || runs.length ? "prog" : "cfg"); } if (tab === "data") loadData(); if (tab === "chat") { if (!isApp()) inputEl.focus(); loadSessions(); } if (tab === "models") loadModels(); if (tab === "mem") loadMem(true); if (tab === "act") loadAct(); if (tab === "api") loadApi(); if (tab === "more") renderMore();
 }
-document.querySelectorAll("nav a[data-tab]").forEach(a => a.onclick = () => { location.hash = a.dataset.tab; });
+document.querySelectorAll("nav a[data-tab], .tabbar a[data-tab]").forEach(a => a.onclick = () => { location.hash = a.dataset.tab; });
+
+/* ---------------- app 外壳: 顶栏 / 底栏 / 抽屉 / 训练分段 / 表格卡片(desk 外壳下这些元素都藏着, 下面的代码跑了也看不见) ---------------- */
+function chatTitle() { const s = sessions.find(x => x.id === curSid); return s && s.title || t("tab_chat"); }
+function syncShell(tab) {
+  document.querySelectorAll(".tabbar a").forEach(a => a.classList.toggle("on", a.dataset.tab === (SUB.includes(tab) ? "more" : tab)));
+  const left = $("tb-left"), mode = tab === "chat" ? "menu" : SUB.includes(tab) ? "back" : "";
+  left.dataset.mode = mode; left.style.visibility = mode ? "" : "hidden";   /* 占位不撤: 标题始终居中 */
+  $("tb-new").style.visibility = tab === "chat" ? "" : "hidden";
+  if (isApp() && tab === "chat") text("page-title", chatTitle());   /* 对话页顶栏写当前对话的标题(像聊天 App), 列表在抽屉里 */
+  drawer(false);
+}
+function drawer(on) { document.documentElement.classList.toggle("drawer", !!on && isApp()); }
+$("tb-left").onclick = () => $("tb-left").dataset.mode === "back" ? (location.hash = "more") : drawer(true);
+$("tb-new").onclick = () => selectSession(null);
+$("tb-sub").onclick = () => { location.hash = "models"; };   /* 引擎状态 → 模型页(加载/换模型都在那) */
+$("scrim").onclick = () => drawer(false);
+/* 旋转、分屏、改窗口大小: 重判外壳(规则在 <head> 的 shellPick); 变了就按新外壳重排当前页 */
+window.addEventListener("resize", () => {
+  const s = window.shellPick(); if (document.documentElement.dataset.shell === s) return;
+  document.documentElement.dataset.shell = s; drawer(false); if (shownTab) showTab(curTab() || "chat");
+});
+/* iOS 弹键盘只缩可视区(visualViewport), 不缩布局视口: 把可视区高度写给 body(--app-h), 输入框才会贴在键盘上沿而不是被盖住。
+   Chrome 安卓有 interactive-widget=resizes-content(见 viewport meta), 两边读数一致, 写了也无害 */
+if (window.visualViewport) {
+  const fit = () => { document.documentElement.style.setProperty("--app-h", visualViewport.height + "px"); if (isApp()) window.scrollTo(0, 0); };
+  visualViewport.addEventListener("resize", fit); fit();
+}
+/* 训练页在 app 外壳里分"进度 / 设置"两段, 一屏只看一样; 第一次进按有没有训过选(有就看进度) */
+let trainPane = null;
+function setTrainPane(p) {
+  trainPane = p; $("train-grid").dataset.tp = p;
+  document.querySelectorAll(".tseg button").forEach(b => b.classList.toggle("on", b.dataset.tp === p));
+  if (p === "prog" && detail) { drawLoss(detail); drawEval(detail); }   /* 画布藏着时宽度是 0, 画出来是空的: 露出来再画一次 */
+}
+document.querySelectorAll(".tseg button").forEach(b => b.onclick = () => setTrainPane(b.dataset.tp));
+/* 表格 → 卡片: 卡片里每格前面要显示列名, 从 thead 抄进 data-label。挂在 tbody 上自动跟着重画走, 各个 render 函数不用管 */
+function labelRows(tb) {
+  const tbl = tb.closest("table"), ths = tbl.tHead ? [...tbl.tHead.rows[0].cells].map(th => th.textContent.trim()) : [];
+  for (const tr of tb.rows) [...tr.cells].forEach((td, i) => { if (ths[i]) td.dataset.label = ths[i]; });
+}
+{ const mo = new MutationObserver(ms => ms.forEach(m => labelRows(m.target)));
+  document.querySelectorAll("table.cards tbody").forEach(tb => { mo.observe(tb, { childList: true }); labelRows(tb); }); }
+
+/* ---------------- 更多(app 外壳的第四格) ---------------- */
+const MORE = [["more_g_asst", ["mem", "act"]], ["more_g_train", ["data", "runs"]], ["more_g_dev", ["api", "monitor"]]];
+let installEvt = null;   /* 安卓 Chrome 判定能装时发 beforeinstallprompt: 留着, 用户在"更多"里点安装时再弹系统框 */
+window.addEventListener("beforeinstallprompt", e => { installEvt = e; if (curTab() === "more") renderMore(); });
+window.addEventListener("appinstalled", () => { installEvt = null; if (curTab() === "more") renderMore(); });
+const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+function moreRow(icon, label, sub, val, onclick, cls) {
+  const r = node("div", "mrow" + (cls ? " " + cls : "")), mi = node("span", "mi");
+  if (icon) mi.appendChild(icon.cloneNode(true)); r.appendChild(mi);
+  const ml = node("div", "ml", label); if (sub) ml.appendChild(node("small", null, sub)); r.appendChild(ml);
+  if (val) r.appendChild(node("span", "mv", val));
+  if (onclick) { r.appendChild(node("span", "chev", "›")); r.onclick = onclick; }
+  return r;
+}
+function renderMore() {
+  const box = $("more-list"); box.replaceChildren();
+  const navIcon = k => document.querySelector(k === "monitor" ? 'nav a[href="/monitor"] svg' : `nav a[data-tab="${k}"] svg`);   /* 图标跟侧栏导航同一份 */
+  MORE.forEach(([gt, keys]) => {
+    box.appendChild(node("div", "mgt", t(gt))); const g = node("div", "mgroup");
+    keys.forEach(k => g.appendChild(k === "monitor" ? moreRow(navIcon(k), t("nav_monitor"), t("mh_monitor"), "↗", () => window.open("/monitor", "_blank"))
+      : moreRow(navIcon(k), t("tab_" + k), I18N.zh["hint_" + k] ? t("hint_" + k) : I18N.zh["mh_" + k] ? t("mh_" + k) : "", "", () => { location.hash = k; })));
+    box.appendChild(g);
+  });
+  box.appendChild(node("div", "mgt", t("more_g_app"))); const g = node("div", "mgroup");
+  const icon = d => { const s = document.createElementNS("http://www.w3.org/2000/svg", "svg"); s.setAttribute("class", "i"); s.setAttribute("viewBox", "0 0 24 24"); const p = document.createElementNS("http://www.w3.org/2000/svg", "path"); p.setAttribute("d", d); s.appendChild(p); return s; };
+  g.appendChild(moreRow(icon("M4 5h9M8.5 3v2M6 5c0 4 3 7 7 8M11 5c-1 4-4 7-7 8M13 21l4-9 4 9M14.5 18h5"), t("more_lang"), "", t("more_lang_v"), () => $("lang").click()));
+  /* 安装: 已装(独立窗口)/ 安卓能装(有 beforeinstallprompt)/ iOS(只能手动加)/ http 打开(装不了, 说清为什么) */
+  const inst = icon("M12 3v12M7 10l5 5 5-5M5 21h14");
+  if (document.documentElement.dataset.standalone === "1") g.appendChild(moreRow(inst, t("more_install"), t("more_installed")));
+  else if (installEvt) g.appendChild(moreRow(inst, t("more_install"), t("more_install_sub"), "", async () => { const e = installEvt; installEvt = null; e.prompt(); await e.userChoice.catch(() => {}); renderMore(); }));
+  else if (isIOS()) g.appendChild(moreRow(inst, t("more_install"), t("more_install_ios"), "", () => toast(t("more_install_ios"))));
+  else if (!window.isSecureContext) g.appendChild(moreRow(inst, t("more_install"), t("more_install_http")));
+  g.appendChild(moreRow($("btn-set").querySelector("svg"), t("set_btn"), t("set_sub"), "", openSettings));
+  if (sessGet()) g.appendChild(moreRow(icon("M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10"), t("au_logout"), "", "", () => $("logout").click(), "red"));
+  box.appendChild(g);
+}
 document.querySelectorAll("[data-goto]").forEach(a => a.onclick = () => { location.hash = a.dataset.goto; });
 window.addEventListener("hashchange", () => showTab(curTab() || "chat"));
 
@@ -603,6 +1080,8 @@ function renderEngine() {
   else if (status.mode === "training") { cls = "training"; title = t(status.proc.judge ? "eng_train_gate" : status.proc.script ? "eng_training" : "eng_handover"); sub = t("eng_train_sub"); }
   else { cls = ""; title = t("eng_lobby"); sub = t("eng_lobby_sub"); load = true; }
   dot.className = "dot " + cls; text("eng-title", title); text("eng-sub", sub + (status && status.mem_avail_mb >= 0 ? t("eng_avail", (status.mem_avail_mb / 1024).toFixed(1)) : ""));
+  $("tb-dot").className = $("more-dot").className = "dot " + cls; text("tb-eng", title); text("more-eng", title);   /* app 外壳: 顶栏标题下、"更多"页头 */
+  $("tab-train-dot").hidden = !training();
   $("btn-load").style.display = load && !switching ? "" : "none";
   $("btn-train").style.display = training() ? "none" : ""; $("btn-stop").style.display = training() ? "" : "none";
   $("btn-train").disabled = !!switching && !status;
@@ -637,7 +1116,8 @@ async function act(url, body, okMsg, sw) {
 $("btn-load").onclick = $("btn-load2").onclick = () => mdata && mdata.pick ? act("/api/train/serve", {}, t("load_started"), 2) : (location.hash = "models");
 $("btn-train").onclick = () => { if (!$("data").value) { toast(t("pick_data_first"), true); return; }
   const ex = [$("extra").value.trim(), $("evalf").value ? "eval=" + $("evalf").value : ""].filter(Boolean).join(",");
-  act("/api/train/start", { data: $("data").value, epochs: $("epochs").value, layers: $("layers").value, lr: $("lr").value, extra: ex }, t("train_started"), 1); };
+  act("/api/train/start", { data: $("data").value, epochs: $("epochs").value, layers: $("layers").value, lr: $("lr").value, extra: ex }, t("train_started"), 1)
+    .then(ok => { if (ok) setTrainPane("prog"); }); };   /* app 外壳: 发车后切到进度段看它跑 */
 $("btn-stop").onclick = () => { if (confirm(t("stop_confirm"))) act("/api/train/stop", {}, t("stopped_toast"), 2); };
 
 /* ---------------- 训练 ---------------- */
@@ -709,7 +1189,7 @@ function renderDetail() {
   renderChatGate();
 }
 let pane = "probe";
-document.querySelectorAll(".seg button").forEach(b => b.onclick = () => { pane = b.dataset.pane; document.querySelectorAll(".seg button").forEach(x => x.classList.toggle("on", x === b)); renderPane(); });
+document.querySelectorAll(".seg button[data-pane]").forEach(b => b.onclick = () => { pane = b.dataset.pane; document.querySelectorAll(".seg button[data-pane]").forEach(x => x.classList.toggle("on", x === b)); renderPane(); });   /* [data-pane]: 训练页顶上的 .tseg 也是 .seg, 别绑到它 */
 $("probe-sel").onchange = renderPane;
 function renderPane() {
   const r = detail, el = $("pane"); $("probe-sel").style.display = pane === "probe" ? "" : "none";
@@ -785,7 +1265,7 @@ async function loadData() {
     tr.appendChild(node("td", "muted", j.bytes >= 1048576 ? (j.bytes / 1048576).toFixed(1) + " MB" : (j.bytes / 1024).toFixed(0) + " KB"));
     const tc = node("td"); tc.appendChild(node("span", "badge " + (j.teacher ? "green" : ""), t(j.teacher ? "d_cached" : "d_first"))); tr.appendChild(tc);
     const ta = node("td"); const pv = node("button", "act ghost", t("d_preview")); pv.onclick = () => preview(j.path); ta.appendChild(pv);
-    if (!hold) { const go = node("button", "act primary", t("d_use")); go.onclick = () => { sel.value = j.path; lsSet("ds4.studio.data", j.path); location.hash = "train"; }; ta.appendChild(go); }
+    if (!hold) { const go = node("button", "act primary", t("d_use")); go.onclick = () => { sel.value = j.path; lsSet("ds4.studio.data", j.path); setTrainPane("cfg"); location.hash = "train"; }; ta.appendChild(go); }
     tr.appendChild(ta); jt.appendChild(tr);
   });
 }
@@ -834,14 +1314,13 @@ async function upload(files) {
    会话在服务端(~/.ds4/assistant/sessions/, 纯文本), 页面只是看: 消息流 = GET /api/assistant/stream?session=&from= 的事件
    (运行线程只往 events.jsonl 追加, 这里接着读), 关页/刷新/换设备都是从第 0 行重放再接着收, 断线 1.5 s 后从最后一行接上。
    发 = POST /api/assistant/send; 停 = /stop; 审批 = /approve。所有 POST 带 X-DS4-Assistant 头(挡 CSRF, 见 src/assistant/asst_api.c);
-   从别的设备打开时服务端要口令(~/.ds4/assistant/token), 页面问一次存 localStorage。旧聊天页存在浏览器里的对话不导入(10-11 用户定)。 */
+   鉴权靠工作台登录(登录票在服务端等同助理口令, 从别的设备打开也不用再输口令)。旧聊天页存在浏览器里的对话不导入(10-11 用户定)。 */
 const chatEl = $("chat"), scrollEl = $("chat-scroll"), inputEl = $("input"), sendBtn = $("btn-send");
 let sessions = [], curSid = lsGet("ds4.asst.sid", null), view = null, streamAbort = null, renderT = 0;
-function aHeaders(json) { const h = { "X-DS4-Assistant": "1" }; if (json) h["Content-Type"] = "application/json"; const tk = lsGet("ds4.asst.token", ""); if (tk) h.Authorization = "Bearer " + tk; return h; }
+function aHeaders(json) { const h = { "X-DS4-Assistant": "1" }; if (json) h["Content-Type"] = "application/json"; return h; }
 async function aFetch(path, body) {
   const post = body !== undefined, opt = post ? { method: "POST", headers: aHeaders(true), body: JSON.stringify(body) } : { cache: "no-store", headers: aHeaders(false) };
-  let r = await fetch("/api/assistant/" + path, opt);
-  if (r.status === 401) { const tk = prompt(t("a_token")); if (tk) { lsSet("ds4.asst.token", tk.trim()); opt.headers = aHeaders(post); r = await fetch("/api/assistant/" + path, opt); } }
+  const r = await fetch("/api/assistant/" + path, opt);
   const j = await r.json().catch(() => ({ error: "HTTP " + r.status }));
   if (!r.ok && j && !j.error) j.error = "HTTP " + r.status;
   return j;
@@ -985,7 +1464,7 @@ async function openStream(sid) {
     await new Promise(r => setTimeout(r, 1500));   /* 断了(服务重起、网络抖)就从最后一行接着读 */
   }
 }
-function selectSession(sid) { if (curTab() !== "chat") location.hash = "chat"; curSid = sid; lsSet("ds4.asst.sid", sid); renderSessions(); if (sid) openStream(sid); else { if (streamAbort) streamAbort.abort(); view = null; renderChat(); } inputEl.focus(); }
+function selectSession(sid) { if (curTab() !== "chat") location.hash = "chat"; curSid = sid; lsSet("ds4.asst.sid", sid); renderSessions(); drawer(false); if (sid) openStream(sid); else { if (streamAbort) streamAbort.abort(); view = null; renderChat(); } if (!isApp()) inputEl.focus(); }
 async function loadSessions() { try { const r = await aFetch("sessions"); if (Array.isArray(r)) { sessions = r; renderSessions(); } } catch (e) { /* 下一轮 */ } }
 function renderSessions() {
   const box = $("sess-list"); box.replaceChildren();
@@ -1001,6 +1480,7 @@ function renderSessions() {
     box.appendChild(a);
   });
   if (!sessions.length) box.appendChild(node("div", "muted", t("a_nosess")));
+  if (isApp() && curTab() === "chat") text("page-title", chatTitle());
 }
 $("btn-new").onclick = () => selectSession(null);
 function renderChatGate() {
@@ -1048,6 +1528,7 @@ $("mem-save2").onclick = async () => { const r = await aFetch("memory", { rules:
 
 /* ---------------- 活动 ----------------
    沙盒状态 / bash 开关 / 允许的目录 / 永久授权 / 审计流水: 全是 GET /api/assistant/activity 一份, 改动走 POST /api/assistant/policy。 */
+const actOpen = new Set();
 async function loadAct() {
   const [st, a] = await Promise.all([aFetch("status"), aFetch("activity")]);
   if (a.error || st.error) { toast(t("fail", a.error || st.error), true); return; }
@@ -1062,17 +1543,76 @@ async function loadAct() {
     const td = node("td"); const b = node("button", "ghost act", t("act_revoke")); b.onclick = () => policy({ op: "revoke", index: i }); td.appendChild(b); tr.appendChild(td); at.appendChild(tr); });
   if (!a.approvals.length) { const tr = node("tr"); tr.appendChild(node("td", "muted", t("act_none"))); at.appendChild(tr); }
   const au = $("act-audit"); au.replaceChildren();
-  a.audit.forEach(x => { const tr = node("tr"); tr.title = x.result || "";
+  /* 结果: 电脑上鼠标停在行上看(title); 手机没有悬停, 点一行展开(td.res, 只在 app 外壳显示)。每 2.5 s 重画一次, 展开了哪些记在 actOpen 里 */
+  a.audit.forEach(x => { const tr = node("tr"), key = `${x.t}|${x.tool}|${x.args || ""}`; tr.title = x.result || "";
+    tr.classList.toggle("open", actOpen.has(key)); tr.onclick = () => { if (!isApp()) return; actOpen.has(key) ? actOpen.delete(key) : actOpen.add(key); tr.classList.toggle("open"); };
     tr.appendChild(node("td", null, new Date(x.t * 1000).toLocaleString(locale()))); tr.appendChild(node("td", null, x.tool));
     tr.appendChild(node("td", "wrap", (x.args || "").slice(0, 160)));
     const td = node("td"); td.appendChild(node("span", "badge " + ({ auto: "", blocked: "red", denied: "red", once: "amber", session: "amber", always: "amber" }[x.decision] || ""), t("dec_" + x.decision))); tr.appendChild(td);
     tr.appendChild(node("td", x.ok ? "ok" : "bad", x.ok ? "✓" : "✗")); tr.appendChild(node("td", null, fmtMs(x.ms || 0)));
-    tr.appendChild(node("td", "muted", (x.session || "").slice(0, 6))); au.appendChild(tr); });
+    tr.appendChild(node("td", "muted", (x.session || "").slice(0, 6))); tr.appendChild(node("td", "res", x.result || "–")); au.appendChild(tr); });
   if (!a.audit.length) { const tr = node("tr"); tr.appendChild(node("td", "muted", t("act_none"))); au.appendChild(tr); }
 }
 async function policy(body) { const r = await aFetch("policy", body); if (r.error) toast(t("fail", r.error), true); loadAct(); }
 $("act-bash").onchange = () => policy({ op: "bash", value: $("act-bash").checked });
 $("act-add").onclick = () => { const p = $("act-path").value.trim(); if (!p) return; policy({ op: "dir_add", path: p, write: $("act-write").checked }); $("act-path").value = ""; };
+
+/* ---------------- API 密钥(服务端 src/train/train_keys.c) ----------------
+   列表 GET /api/keys/list; 建 POST /api/keys/create {name} → {key}(完整密钥只这一次); 删 POST /api/keys/delete {id}。
+   调用示例里的地址用当前页面的地址(浏览器怎么连上工作台, 外部程序就怎么连), 模型名取 /v1/models 的第一个, 没装模型时用默认名。 */
+let apiModel = "deepseek-v4-flash";
+async function kFetch(op, body) {
+  const r = await fetch("/api/keys/" + op, body === undefined ? { cache: "no-store" } : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const j = await r.json().catch(() => ({ error: "HTTP " + r.status }));
+  if (!r.ok && !j.error) j.error = "HTTP " + r.status;
+  if (j.error && r.status !== 401) toast(I18N.zh["k_err_" + j.error] ? t("k_err_" + j.error) : t("fail", j.error), true);
+  return j;
+}
+const kTime = s => s ? new Date(s * 1000).toLocaleString(locale()) : t("k_never");
+function renderSnips() {
+  const base = location.origin + "/v1";
+  $("k-snip-openai").textContent = `# OpenAI 兼容 / OpenAI-compatible\nBase URL: ${base}\nAPI Key:  sk-ds4-…\n\ncurl ${base}/chat/completions \\\n  -H "Authorization: Bearer sk-ds4-…" \\\n  -H "Content-Type: application/json" \\\n  -d '{"model":"${apiModel}","messages":[{"role":"user","content":"你好"}]}'`;
+  $("k-snip-anth").textContent = `# Anthropic 兼容 / Anthropic-compatible\ncurl ${base}/messages \\\n  -H "x-api-key: sk-ds4-…" \\\n  -H "anthropic-version: 2023-06-01" \\\n  -H "Content-Type: application/json" \\\n  -d '{"model":"${apiModel}","max_tokens":512,"messages":[{"role":"user","content":"你好"}]}'`;
+}
+async function loadApi() {
+  renderSnips();
+  const j = await kFetch("list");
+  if (j.error) return;
+  $("k-file").textContent = t("k_file", j.file);
+  const tb = $("api-keys"); tb.replaceChildren();
+  j.keys.forEach(k => {
+    const tr = node("tr");
+    tr.appendChild(node("td", null, k.name)); tr.appendChild(node("td", "mono", k.display));
+    tr.appendChild(node("td", null, kTime(k.created))); tr.appendChild(node("td", null, kTime(k.last_used))); tr.appendChild(node("td", null, String(k.requests)));
+    const td = node("td"); const b = node("button", "danger act", t("k_del"));
+    b.onclick = async () => { if (!confirm(t("k_del_confirm", k.name))) return; await kFetch("delete", { id: k.id }); loadApi(); };
+    td.appendChild(b); tr.appendChild(td); tb.appendChild(tr);
+  });
+  if (!j.keys.length) { const tr = node("tr"); tr.appendChild(node("td", "muted", t("k_none"))); tb.appendChild(tr); }
+  /* 模型名: 装着就用真的; 没装 /v1 答 404, 留默认名 */
+  try { const r = await fetch("/v1/models", { cache: "no-store" }); if (r.ok) { const m = await r.json(); if (m.data && m.data[0] && m.data[0].id !== apiModel) { apiModel = m.data[0].id; renderSnips(); } } } catch (_) {}
+}
+$("k-create").onclick = async () => {
+  const name = $("k-name").value.trim();
+  if (!name) { toast(t("k_err_name_empty"), true); $("k-name").focus(); return; }
+  $("k-create").disabled = true;
+  const j = await kFetch("create", { name });
+  $("k-create").disabled = false;
+  if (j.error) return;
+  $("k-name").value = ""; $("k-new-key").textContent = j.key; $("k-new").classList.add("on");
+  loadApi();
+};
+$("k-name").onkeydown = e => { if (e.key === "Enter") $("k-create").click(); };
+$("k-hide").onclick = () => { $("k-new").classList.remove("on"); $("k-new-key").textContent = ""; };   /* 原文从页面上抹掉, 只剩用户自己抄走的那份 */
+async function copyText(s, btn) {
+  try { await navigator.clipboard.writeText(s); }
+  catch (_) {   /* 非 https 且非 localhost 时 clipboard 接口不可用(局域网 IP 打开就是): 退回老办法 */
+    const ta = node("textarea"); ta.value = s; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); } catch (_) {} ta.remove();
+  }
+  const old = btn.textContent; btn.textContent = t("copied"); setTimeout(() => btn.textContent = old, 1200);
+}
+$("k-copy").onclick = () => copyText($("k-new-key").textContent, $("k-copy"));
+document.querySelectorAll("#v-api .snip .copy").forEach(b => b.onclick = () => copyText($(b.dataset.snip).textContent, b));
 
 /* ---------------- 模型 ----------------
    数据: GET /api/models/list(本机 GGUF + 同名前缀的侧车目录 + 正在用的 + 下载进度); POST /api/models/load|download|cancel。
@@ -1099,7 +1639,7 @@ async function loadModels(light) {   /* light: 聊天页只要侧车与切换状
   if (dlPrev && mdata.downloading && now > dlPrev.t) { const v = Math.max(0, (have - dlPrev.have) / ((now - dlPrev.t) / 1000)); dlSpeed = dlSpeed ? dlSpeed * 0.7 + v * 0.3 : v; }
   if (!mdata.downloading) dlSpeed = 0;
   dlPrev = { t: now, have };
-  $("nav-dl").textContent = mdata.downloading && tot ? Math.floor(100 * have / tot) + "%" : "";
+  $("nav-dl").textContent = $("tab-dl").textContent = mdata.downloading && tot ? Math.floor(100 * have / tot) + "%" : "";
   renderEngine();
   if (curTab() === "models") renderModels();
 }
@@ -1260,7 +1800,7 @@ function renderPlug() {
   const sel = $("plug"), st = $("plug-st"), d = mdata, sw = $("pt-sw"), on = $("pt-on");
   const live = !!(d && d.live && d.loaded && status && status.mode === "serving" && !switching);
   sel.style.display = live ? "" : "none";
-  if (!live) { st.textContent = ""; sw.style.display = "none"; return; }
+  if (!live) { st.textContent = ""; sw.style.display = "none"; $("plug-btn").style.display = "none"; return; }
   /* 开关只在有 ③ 可挂(配得上当前侧车)或正挂着 ③ 时出现; 没训过的机器上聊天页跟原来一样干净 */
   const want = bestPt(d.loaded.zchain), pend = !!(d.switch && d.switch.pending);
   sw.style.display = (d.loaded.posttrain || want) ? "" : "none";
@@ -1273,6 +1813,7 @@ function renderPlug() {
   if (document.activeElement !== sel) sel.value = d.loaded.zchain;
   sel.title = (sel.selectedOptions[0] || {}).textContent || "";
   sel.disabled = on.disabled = pend || plugBusy;
+  const pb = $("plug-btn"); pb.style.display = ""; pb.textContent = (sel.title || "–") + " ▾"; pb.disabled = sel.disabled;   /* app 外壳里替 select 露面的按钮 */
   st.textContent = pend ? t("pl_switching") : "";
   const err = d.switch ? d.switch.error : "";
   if (err && err !== renderPlug.lastErr) toast(t("pl_err", err), true);
@@ -1294,23 +1835,218 @@ $("plug").onchange = async () => {
   $("plug").blur();
   await sendPlug(z, $("pt-on").checked ? bestPt(z) : "");
 };
+/* 小菜单: 列出 select 的选项, 点一项 = 改 select 的值并发 change(原有的切换逻辑一行不改)。贴着按钮往上弹(按钮在屏幕底部的输入框里), 上面放不下就往下 */
+function pickMenu(btn, sel) {
+  const box = $("pick").querySelector(".pbox"); box.replaceChildren();
+  [...sel.options].forEach(o => {
+    const it = node("div", "pi" + (o.value === sel.value ? " on" : "")); it.setAttribute("role", "option");
+    it.appendChild(node("span", "ck", o.value === sel.value ? "✓" : "")); it.appendChild(node("span", null, o.textContent));
+    it.onclick = () => { closePick(); if (sel.value !== o.value) { sel.value = o.value; sel.dispatchEvent(new Event("change")); } };
+    box.appendChild(it);
+  });
+  $("pick").classList.add("on");
+  const r = btn.getBoundingClientRect(), h = box.offsetHeight;
+  box.style.left = Math.max(8, Math.min(r.left, innerWidth - box.offsetWidth - 8)) + "px";
+  box.style.top = (r.top - h - 6 > 8 ? r.top - h - 6 : r.bottom + 6) + "px";
+}
+function closePick() { $("pick").classList.remove("on"); }
+$("pick").onclick = e => { if (e.target === $("pick")) closePick(); };   /* 点菜单外面 = 关 */
+window.addEventListener("resize", closePick);
+$("plug-btn").onclick = () => pickMenu($("plug-btn"), $("plug"));
 $("pt-on").onchange = async () => { const z = mdata.loaded.zchain; await sendPlug(z, $("pt-on").checked ? bestPt(z) : ""); };
 
 /* 切语言: 静态文字走 applyI18n, 动态区域按当前数据重画一遍(不等下一轮 poll) */
 $("lang").onclick = () => {
   lang = lang === "zh" ? "en" : "zh";
   try { localStorage.setItem(LS_LANG, lang); } catch (_) {}
-  applyI18n(); showTab(curTab() || "chat"); renderEngine(); renderRuns(); renderChat(); renderSessions();
+  applyI18n(); authRender(); showTab(curTab() || "chat"); renderEngine(); renderRuns(); renderChat(); renderSessions();
   if (detail) renderDetail();
   if (dataCache) loadData();
   if (mdata) { renderPlug(); if (mdata.hub) renderModels(); }
 };
 
+/* ---------------- 登录框(fetch 包装与票的存取在脚本开头) ---------------- */
+let authFile = "~/.ds4/studio/auth", authDone = null;
+function authRender() {
+  if (!authMode) return;
+  const setup = authMode === "setup", broken = authMode === "broken";
+  text("auth-title", t(setup ? "au_setup_t" : broken ? "au_broken_t" : "au_login_t"));
+  $("auth-sub").textContent = broken ? t("au_auth_broken") : setup ? t("au_setup_sub", authFile) : t("au_login_sub");
+  $("auth-pass2-row").style.display = $("auth-rule").style.display = setup ? "" : "none";
+  for (const id of ["auth-user", "auth-pass", "auth-go"]) $(id).closest("label, button").style.display = broken ? "none" : "";
+  $("auth-pass").autocomplete = setup ? "new-password" : "current-password";
+  $("auth-go").textContent = t(setup ? "au_go_setup" : "au_go_login");
+}
+function authShow(mode) {
+  if (mode === "setup" || mode === "login") sessSet("");   /* 服务端说票不认了(过期 / 文件被删重置): 留着只会每条请求都白带 */
+  const was = authMode; authMode = mode;
+  authRender(); $("auth").classList.add("on");
+  if (was !== mode) { $("auth-err").textContent = ""; $("auth-pass").value = $("auth-pass2").value = ""; }
+  if (mode !== "broken") setTimeout(() => $(($("auth-user").value ? "auth-pass" : "auth-user")).focus(), 0);
+}
+/* 与服务端 tr_auth_check(src/train/train_auth.c)同一套规则, 改一处要改两处; 长度按 UTF-8 字节数, 和 C 的 strlen 对齐 */
+function authCheck(user, pass) {
+  const pl = new TextEncoder().encode(pass).length;
+  if (user.length < 3 || user.length > 32) return "user_len";
+  if (!/^[A-Za-z0-9_.-]+$/.test(user)) return "user_chars";
+  if (pl < 8 || pl > 64) return "pass_len";
+  if (/[\x00-\x1f\x7f]/.test(pass)) return "pass_chars";
+  if (/[A-Za-z]/.test(pass) + /[0-9]/.test(pass) + /[^A-Za-z0-9]/.test(pass) < 2) return "pass_weak";
+  if (user.toLowerCase() === pass.toLowerCase()) return "pass_same";
+  return "";
+}
+$("auth-form").onsubmit = async e => {
+  e.preventDefault();
+  const setup = authMode === "setup", user = $("auth-user").value.trim(), pass = $("auth-pass").value, err = $("auth-err");
+  if (setup) { const bad = authCheck(user, pass) || (pass !== $("auth-pass2").value ? "mismatch" : ""); if (bad) { err.textContent = t("au_" + bad); return; } }
+  else if (!user || !pass) return;
+  $("auth-go").disabled = true; err.textContent = t("au_wait");
+  try {
+    const r = await rawFetch("/api/auth/" + (setup ? "setup" : "login"), { method: "POST", headers: { "Content-Type": "application/json", "X-DS4-Studio": "1" }, body: JSON.stringify({ user, password: pass }) });
+    const j = await r.json().catch(() => ({ error: "HTTP " + r.status }));
+    if (r.ok && j.session) {
+      sessSet(j.session); authMode = null; $("auth").classList.remove("on"); $("logout").style.display = "";
+      $("auth-pass").value = $("auth-pass2").value = ""; err.textContent = "";
+      if (authDone) { const d = authDone; authDone = null; d(); }
+    } else err.textContent = I18N.zh["au_" + j.error] ? t("au_" + j.error) : (j.error || "HTTP " + r.status);
+  } catch (ex) { err.textContent = t("au_net", ex.message); }
+  $("auth-go").disabled = false;
+};
+$("logout").onclick = () => { sessSet(""); authShow("login"); };
+/* 起页先问登录状态: 没登录就等登录框过了再起页面(否则十几条轮询一起 401) */
+async function authBoot() {
+  let r;
+  try { r = await rawFetch("/api/auth/status", { cache: "no-store", headers: sessGet() ? { "X-DS4-Session": sessGet() } : {} }); }
+  catch (_) { return; }   /* 主进程连不上: 照常起页, 引擎卡片会显示连不上 */
+  if (r.status === 404) return;   /* ds4-server 直接开端口: 没有登录 */
+  const j = await r.json().catch(() => ({}));
+  if (j.file) authFile = j.file;
+  if (r.status === 500) { authShow("broken"); await new Promise(() => {}); }   /* 文件坏了不往下起: 一切接口都会 500 */
+  if (j.session) sessSet(j.session);   /* 票满一天, 服务端顺手给了张新的 */
+  if (j.state === "ok") { $("logout").style.display = sessGet() ? "" : "none"; return; }
+  authShow(j.state === "setup" ? "setup" : "login");
+  await new Promise(res => authDone = res);
+}
+
+/* ---------------- 设置弹窗(服务端 src/train/train_net.c; 一图流程见该文件头) ----------------
+   GET /api/net/status 一份全量(服务器 / 穿透 / 证书); POST save | tunnel {on} | cert(原始 zip 体) | cert_delete 都回同样的全量。
+   错误一律 "错误码: 原始输出最后一行", 页面按错误码出人话(ne_<码>), 原始那行放在下面小字里 —— 人话猜错了, 用户还能看原文。
+   弹窗开着每 1.5 秒拉一次: 部署要走 ssh / 下载 / 装 frps 好几步, 页面要跟着亮。 */
+let net = null, netT = 0;
+const NET_STEPS = ["ssh", "download", "upload", "frps", "sshfwd", "frpc", "public"];
+function netErr(s, el) {   /* "码: 原文" → 人话 + 原文小字 */
+  el.replaceChildren(); if (!s) return;
+  const i = s.indexOf(": "), code = i < 0 ? s : s.slice(0, i), raw = i < 0 ? "" : s.slice(i + 2);
+  const dir = net && net.file ? net.file.replace(/\/[^/]*$/, "") : "~/.ds4/studio";
+  const arg = { ssh_hostkey: dir + "/known_hosts", download: dir + "/frp/", cloud_broken: net ? net.file : "", pub_is_frp: net ? net.ports.frp : 7000, frpc_conn: net ? net.ports.frp : 7000, pub_busy: raw.split(" ")[0],
+                reuse_frps: raw.split(" ")[0], frp_port_moved: raw.split(" ")[0],
+                port_public: raw.replace(/^.*:/, ""), expired: raw, dns_none: raw }[code];
+  el.appendChild(document.createTextNode(I18N.zh["ne_" + code] ? t("ne_" + code, arg ?? raw) : s));
+  if (raw && code !== "expired") el.appendChild(node("code", null, raw));
+}
+async function netFetch(op, body, raw) {
+  const opt = body === undefined ? { cache: "no-store" } : raw ? { method: "POST", headers: { "Content-Type": "application/zip" }, body }
+    : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
+  try { const r = await fetch("/api/net/" + op, opt); const j = await r.json().catch(() => ({ error: "HTTP " + r.status })); if (!r.ok && !j.error) j.error = "HTTP " + r.status; return j; }
+  catch (e) { return { error: e.message }; }
+}
+function renderNet() {
+  if (!net) return;
+  const s = net.server, tu = net.tunnel, c = net.cert;
+  $("set-srv-sub").textContent = t("set_srv_sub", net.file);
+  $("set-pub").placeholder = String(c ? net.ports.default_https : net.ports.default_http);
+  for (const [id, v] of [["set-host", s.host], ["set-port", String(s.port)], ["set-user", s.user], ["set-pub", s.pub ? String(s.pub) : ""]]) if (document.activeElement !== $(id) && !$(id).dataset.dirty) $(id).value = v;
+  $("set-pass").placeholder = s.has_password ? t("set_pass_kept") : "";
+  $("set-tun").checked = tu.on; $("set-tun").disabled = false;
+  /* 穿透状态: 一行(点 + 文字 + 公网地址) + 步骤条 + 错误/提醒 */
+  const st = $("tun-st"); st.replaceChildren();
+  const ph = tu.on ? (tu.phase === "off" ? "busy" : tu.phase) : "off";
+  const dot = node("span", "dot " + { off: "", busy: "switching", up: tu.reconnecting ? "switching" : "serving", error: "error" }[ph]);
+  st.appendChild(dot); st.appendChild(node("span", null, t(ph === "up" && tu.reconnecting ? "tun_reconn" : "tun_" + ph)));
+  if (ph === "up" && tu.url) {
+    const a = node("a", null, tu.url); a.href = tu.url; a.target = "_blank"; a.rel = "noopener"; st.appendChild(a);
+    const b = node("button", "ghost act", t("copy")); b.onclick = () => copyText(tu.url, b); st.appendChild(b);
+  }
+  const steps = $("tun-steps"); steps.replaceChildren();
+  if (tu.on && (ph === "busy" || ph === "error") && tu.step) {   /* 只起 frpc 的那趟(开机自启、换证书)没有前面五步 */
+    const list = tu.deploy ? NET_STEPS : NET_STEPS.slice(NET_STEPS.indexOf("frpc")), cur = list.indexOf(tu.step);
+    list.forEach((k, i) => steps.appendChild(node("span", i < cur ? "done" : i === cur ? (ph === "error" ? "bad" : "cur") : "", t("st_" + k, net.ports.frp))));
+  }
+  netErr(!tu.on ? "" : ph === "error" ? tu.error : ph === "up" && tu.reconnecting ? (tu.fwd_up ? "frpc_conn: " + tu.log : "sshfwd: " + tu.fwd_log) : "", $("tun-err"));
+  netErr(tu.on && ph === "up" ? tu.warn : "", $("tun-warn"));
+  if (tu.on && ph === "up" && !tu.tls) $("tun-warn").appendChild(node("div", null, t("tun_http_note")));
+  { const nt = tu.on ? tu.note || "" : "", i = nt.indexOf(": "), code = i < 0 ? nt : nt.slice(0, i), raw = i < 0 ? "" : nt.slice(i + 2);   /* 定方案的结果: 复用了已有 frps / 换了口 */
+    $("tun-note").textContent = !nt ? "" : I18N.zh["nt_" + code] ? t("nt_" + code, raw.split(" ")[0]) + (code === "reuse_skipped" ? " (" + raw + ")" : "") : nt; }
+  $("tun-ports").textContent = t("tun_ports", net.ports.public);
+  /* 证书 */
+  const cc = $("cert-cur"); cc.replaceChildren();
+  if (c) {
+    cc.appendChild(node("span", "badge " + (c.expired ? "red" : "green"), c.expired ? t("set_cert_expired") : t("set_cert_ok")));
+    cc.appendChild(node("span", null, t("set_cert_info", c.domains.replace(/,/g, ", "), new Date(c.not_after * 1000).toLocaleDateString(locale()), c.chain)));
+    cc.appendChild(node("div", "muted", t("set_cert_files", c.cert_file, c.key_file))).style.flexBasis = "100%";
+  } else cc.appendChild(node("span", "muted", t("set_cert_none")));
+  $("cert-del").style.display = c ? "" : "none";
+}
+async function loadNet() {
+  const j = await netFetch("status");
+  if (j.error) { netErr(j.error, $("set-err")); return; }
+  net = j; renderNet();
+}
+function openSettings() {
+  drawer(false); $("settings").classList.add("on");
+  for (const id of ["set-host", "set-port", "set-user", "set-pass", "set-pub"]) delete $(id).dataset.dirty;
+  $("set-pass").value = ""; $("set-err").textContent = $("cert-err").textContent = "";
+  loadNet(); clearInterval(netT); netT = setInterval(loadNet, 1500);
+}
+function closeSettings() { $("settings").classList.remove("on"); clearInterval(netT); netT = 0; }
+$("btn-set").onclick = openSettings;
+$("set-close").onclick = closeSettings;
+$("settings").onclick = e => { if (e.target === $("settings")) closeSettings(); };   /* 点遮罩关 */
+window.addEventListener("keydown", e => { if (e.key === "Escape" && netT) closeSettings(); });
+for (const id of ["set-host", "set-port", "set-user", "set-pub"]) $(id).oninput = () => { $(id).dataset.dirty = "1"; };   /* 改了一半别被轮询刷回去 */
+$("set-save").onclick = async () => {
+  const body = { host: $("set-host").value.trim(), port: $("set-port").value.trim() || "22", user: $("set-user").value.trim() || "root", password: $("set-pass").value, pub: $("set-pub").value.trim() };
+  $("set-save").disabled = true; $("set-err").textContent = "";
+  const j = await netFetch("save", body);
+  $("set-save").disabled = false;
+  if (j.error) { netErr(j.error, $("set-err")); return; }
+  for (const id of ["set-host", "set-port", "set-user", "set-pub"]) delete $(id).dataset.dirty;
+  $("set-pass").value = ""; net = j; renderNet(); toast(t("set_saved"));
+};
+$("set-tun").onchange = async () => {
+  const on = $("set-tun").checked; $("set-tun").disabled = true;
+  const j = await netFetch("tunnel", { on });
+  if (j.error) { $("set-tun").checked = !on; $("set-tun").disabled = false; netErr(j.error, $("tun-err")); return; }
+  net = j; renderNet();
+};
+$("cert-up").onclick = () => $("cert-file").click();
+$("cert-file").onchange = async () => {
+  const f = $("cert-file").files[0]; $("cert-file").value = "";
+  if (!f) return;
+  $("cert-up").disabled = true; $("cert-err").textContent = "";
+  const j = await netFetch("cert", f, true);
+  $("cert-up").disabled = false;
+  if (j.error) { netErr(j.error + (j.detail ? ": " + j.detail : ""), $("cert-err")); return; }
+  net = j; renderNet(); toast(t("set_cert_ok"));
+};
+$("cert-del").onclick = async () => {
+  if (!confirm(t("set_cert_del_q"))) return;
+  const j = await netFetch("cert_delete", {});
+  if (j.error) { netErr(j.error, $("cert-err")); return; }
+  net = j; renderNet();
+};
+
 /* ---------------- 起 ---------------- */
-applyI18n(); renderChat(); autosize(); loadSessions(); if (curSid) openStream(curSid); loadData(); poll(); setInterval(poll, 2500); setInterval(loadData, 20000);
-(async () => { for (let i = 0; i < 20 && !status && failCount < 4; i++) await new Promise(r => setTimeout(r, 300));
-  showTab(curTab() || (status && status.busy ? "train" : "chat")); })();
+/* PWA: 注册 web/sw.js(缓存策略见该文件头)。只有 https 或 localhost 才让注册(isSecureContext); 局域网 http 打开时跳过, 页面照常用 */
+if ("serviceWorker" in navigator && window.isSecureContext) navigator.serviceWorker.register("/sw.js").catch(e => console.warn("service worker 没注册上:", e));
+applyI18n();
+authBoot().then(() => {
+  renderChat(); autosize(); loadSessions(); if (curSid) openStream(curSid); loadData(); poll(); setInterval(poll, 2500); setInterval(loadData, 20000);
+  (async () => { for (let i = 0; i < 20 && !status && failCount < 4; i++) await new Promise(r => setTimeout(r, 300));
+    showTab(curTab() || (status && status.busy ? "train" : "chat")); })();
+});
 window.addEventListener("resize", () => { if (detail && curTab() === "train") { drawLoss(detail); drawEval(detail); } });
+window.addEventListener("keydown", e => { if (e.key === "Escape") { drawer(false); closePick(); } });
 </script>
 </body>
 </html>

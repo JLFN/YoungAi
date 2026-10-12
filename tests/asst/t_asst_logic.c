@@ -126,13 +126,13 @@ static void test_sse(void) {
 
 static void test_auth(void) {
     int code; const char *why; char bearer[128]; snprintf(bearer, sizeof bearer, "Bearer %s", asst_token);
-    asst_req q = { "GET", "/api/assistant/status", "", "", 0, false, "192.168.2.97:8000", "", "" };
+    asst_req q = { "GET", "/api/assistant/status", "", "", 0, false, "192.168.1.20:8000", "", "", false };
     CHECKL(!asst_authorized(&q, &code, &why) && code == 401, "remote without token: %d", code);
     q.auth = "Bearer wrong"; CHECKL(!asst_authorized(&q, &code, &why) && code == 401, "remote wrong token");
     q.auth = bearer; CHECKL(asst_authorized(&q, &code, &why), "remote with token");
     q.method = "POST"; CHECKL(!asst_authorized(&q, &code, &why) && code == 403, "POST without X-DS4-Assistant: %d", code);
     q.xhdr = "1"; CHECKL(asst_authorized(&q, &code, &why), "POST with token + header");
-    asst_req l = { "GET", "/api/assistant/status", "", "", 0, true, "127.0.0.1:8000", "", "" };
+    asst_req l = { "GET", "/api/assistant/status", "", "", 0, true, "127.0.0.1:8000", "", "", false };
     CHECKL(asst_authorized(&l, &code, &why), "local GET");
     l.host = "evil.example:8000"; CHECKL(!asst_authorized(&l, &code, &why) && code == 403, "dns rebinding host");
     l.host = "localhost:8000"; l.method = "POST"; CHECKL(!asst_authorized(&l, &code, &why) && code == 403, "local CSRF post without header");

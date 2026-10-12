@@ -185,21 +185,42 @@ static int api_upload(const tr_req *rq, ds4_buf *out) {
     return reply(out, false, "kind 只认 jsonl / doc", 400);
 }
 
-/* 项目 logo(web/logo.jpg = site/img/youngai-avatar.jpg 缩到 192 px): 侧栏、聊天头像、favicon 共用 */
-static int serve_logo(ds4_buf *out, const char **ctype) {
-    char p[TR_PATH + 32]; snprintf(p, sizeof p, "%.900s/web/logo.jpg", tr_root);
-    size_t n = 0; char *t = tr_slurp(p, &n);
-    if (!t) { ds4_buf_puts(out, "{\"error\":\"没有 web/logo.jpg\"}"); return 404; }
-    ds4_buf_append(out, t, n); free(t);
-    *ctype = "image/jpeg";
-    return 200;
+/* 页面要的静态文件(都在 web/ 下)。logo.jpg = site/img/youngai-avatar.jpg 缩到 192 px: 侧栏、聊天头像、favicon 共用;
+ * 其余是 PWA(手机装成 App)要的: manifest、service worker、各尺寸图标(同一张头像用 sips 缩出来, 遮罩图标四周留白给系统裁圆角)。
+ * sw.js 必须挂在根路径: service worker 只能管它所在路径及以下, 放 /web/sw.js 就管不到 "/" 这一页。
+ * 登录闸只拦 /api/ 与 /metrics, 这些文件不用登录也能拿(浏览器装 PWA、取图标时不会带登录票) */
+static const struct { const char *url, *file, *ctype; } STATIC_FILES[] = {
+    { "/logo.jpg", "logo.jpg", "image/jpeg" },
+    { "/favicon.ico", "logo.jpg", "image/jpeg" },
+    { "/manifest.webmanifest", "manifest.webmanifest", "application/manifest+json" },
+    { "/sw.js", "sw.js", "text/javascript; charset=utf-8" },
+    { "/icon-192.png", "icon-192.png", "image/png" },
+    { "/icon-512.png", "icon-512.png", "image/png" },
+    { "/icon-maskable.png", "icon-maskable.png", "image/png" },
+    { "/apple-touch-icon.png", "apple-touch-icon.png", "image/png" },
+};
+bool tr_static_path(const char *path) {
+    for (size_t i = 0; i < sizeof STATIC_FILES / sizeof STATIC_FILES[0]; i++) if (!strcmp(path, STATIC_FILES[i].url)) return true;
+    return false;
+}
+static int serve_static(const char *path, ds4_buf *out, const char **ctype) {
+    for (size_t i = 0; i < sizeof STATIC_FILES / sizeof STATIC_FILES[0]; i++) {
+        if (strcmp(path, STATIC_FILES[i].url)) continue;
+        char p[TR_PATH + 64]; snprintf(p, sizeof p, "%.900s/web/%s", tr_root, STATIC_FILES[i].file);
+        size_t n = 0; char *t = tr_slurp(p, &n);
+        if (!t) { ds4_buf_printf(out, "{\"error\":\"没有 web/%s\"}", STATIC_FILES[i].file); return 404; }
+        ds4_buf_append(out, t, n); free(t);
+        *ctype = STATIC_FILES[i].ctype;
+        return 200;
+    }
+    return -1;
 }
 
 int tr_api(const tr_req *rq, ds4_buf *out, const char **ctype, int serving, int port) {
     const bool post = !strcmp(rq->method, "POST");
     *ctype = "application/json; charset=utf-8";
     if (!strcmp(rq->path, "/") || !strcmp(rq->path, "/index.html") || !strcmp(rq->path, "/studio") || !strcmp(rq->path, "/train")) return serve_page(out, ctype);
-    if (!strcmp(rq->path, "/logo.jpg") || !strcmp(rq->path, "/favicon.ico")) return serve_logo(out, ctype);
+    { const int sc = serve_static(rq->path, out, ctype); if (sc >= 0) return sc; }
     if (!strcmp(rq->path, "/api/train/status")) return api_status(out, serving, port);
     { const int mc = tr_models_api(rq, out, serving, port); if (mc >= 0) return mc; }
     if (!strcmp(rq->path, "/api/train/runs")) { tr_json_runs(out); return 200; }

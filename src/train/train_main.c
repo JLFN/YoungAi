@@ -11,10 +11,12 @@
 static int g_port = 8000;
 
 static asst_req to_asst(const tr_req *rq) {
-    return (asst_req){ rq->method, rq->path, rq->query, rq->body ? rq->body : "", rq->body_len, rq->peer_local, rq->host, rq->auth, rq->xhdr };
+    return (asst_req){ rq->method, rq->path, rq->query, rq->body ? rq->body : "", rq->body_len, rq->peer_local, rq->host, rq->auth, rq->xhdr, rq->signed_in };
 }
 
 static int handle(const tr_req *rq, ds4_buf *out, const char **ctype) {
+    { const int c = tr_keys_api(rq, out); if (c >= 0) return c; }   /* API 密钥管理(只在主进程; 闸已验过登录) */
+    { const int c = tr_net_api(rq, out); if (c >= 0) return c; }    /* 设置弹窗: 云服务器 / 穿透 / 证书(只在主进程) */
     if (asst_api_path(rq->path)) {   /* 个人助理(src/assistant/): 只在主进程, 先过鉴权 */
         const asst_req a = to_asst(rq); int code; const char *why;
         if (!asst_authorized(&a, &code, &why)) { ds4_buf_puts(out, "{\"error\":"); ds4_json_escape(out, why); ds4_buf_putc(out, '}'); return code; }
@@ -32,9 +34,11 @@ static bool takeover(int fd, const tr_req *rq) {
     return true;
 }
 
-static void on_term(int sig) { asst_browser_shutdown(); signal(sig, SIG_DFL); raise(sig); }   /* 火狐自成进程组, 主进程被杀它不会跟着走 */
+static void on_term(int sig) { asst_browser_shutdown(); tr_net_shutdown(); signal(sig, SIG_DFL); raise(sig); }   /* 火狐、frpc 都自成进程组, 主进程被杀它们不会跟着走 */
 
 int main(int argc, char **argv) {
+    /* ssh 问云服务器密码时执行的是 ~/.ds4/studio/ds4-askpass(指向本程序的符号链接, 见 train_exec.c): 只答密码就退, 不起服务 */
+    { const char *b = strrchr(argv[0], '/'); if (!strcmp(b ? b + 1 : argv[0], "ds4-askpass")) return tr_askpass_main(argv[0], argc > 1 ? argv[1] : ""); }
     const char *host = "0.0.0.0", *root = NULL;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--port") && i + 1 < argc) g_port = atoi(argv[++i]);
@@ -66,6 +70,9 @@ int main(int argc, char **argv) {
         asst_run_start(TR_MODEL_PORT(g_port));
         fprintf(stderr, "ds4-train: 助理 %s (沙盒 %s, 浏览器 %s); 别的设备访问要口令: %s/token\n", asst_root, asst_sbx_kind(), asst_browser_kind()[0] ? asst_browser_kind() : "无", asst_root);
     } else { asst_root[0] = 0; fprintf(stderr, "ds4-train: 助理不可用: %s(助理接口答 503, 训练/模型页不受影响)\n", aerr); }
+    tr_auth_init(NULL, asst_token); tr_keys_init(NULL);   /* 助理口令兼作本机脚本的登录口令(助理没起来就是空串 = 只认网页登录) */
+    tr_net_init(NULL, g_port);   /* 穿透开着就把 frpc 拉起来 */
+    fprintf(stderr, "ds4-train: 登录文件 %s(第一次打开页面会要求设置用户名密码; 忘了就删掉它重设)\n", tr_auth_file());
     signal(SIGTERM, on_term); signal(SIGINT, on_term);
     const int rc = tr_http_serve(host, g_port, handle, takeover);
     fprintf(stderr, "ds4-train: 退出(监听失败)\n");
