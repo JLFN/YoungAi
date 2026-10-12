@@ -21,7 +21,6 @@
 #endif
 
 #define TR_FRP_URL "https://github.com/fatedier/frp/releases/download/v" TR_FRP_VER "/"
-#define TR_FRPC_LOG_TAIL 32768
 
 #if defined(__aarch64__) || defined(__arm64__)
 #define TR_ARCH "arm64"
@@ -39,6 +38,11 @@
 static pthread_mutex_t g_mu = PTHREAD_MUTEX_INITIALIZER;
 static pid_t g_pid;
 static int g_exit = -1;   /* 上一个 frpc 的退出码(-1 = 没退过) */
+/* 日志读到哪儿 + 读出来的连接状态(tr_frpc_state; 每次起 frpc 清零)。不再每次截日志尾巴重猜: 公网口上的 TLS 握手报错每分钟好几条,
+   起来一小时尾巴就被灌满, "start proxy success" 滑出窗口, 页面一直显示断线(10-12 spark 实撞, 日志 38 KB 而窗口 32 KB) */
+static off_t g_log_off;
+static int g_conn = 1;
+static char g_conn_line[400], g_last_line[400];   /* 定下当前状态的那行 / 最后一行非空日志(进程退了, 它就是死因) */
 
 static void mkdirs(const char *p) {
     char b[TR_PATH * 2]; snprintf(b, sizeof b, "%s", p);
@@ -188,7 +192,7 @@ bool tr_frpc_start(const tr_cloud *c, int page_port, char *err, size_t en) {
     const char *argv[] = { bin, "-c", conf, NULL };
     const pid_t p = tr_spawn_bg(argv, logp, TR_EXEC_NOPROXY);
     if (p < 0) { snprintf(err, en, "frpc_start: fork: %s", strerror(errno)); return false; }
-    pthread_mutex_lock(&g_mu); g_pid = p; g_exit = -1; pthread_mutex_unlock(&g_mu);
+    pthread_mutex_lock(&g_mu); g_pid = p; g_exit = -1; g_log_off = 0; g_conn = 1; g_conn_line[0] = g_last_line[0] = 0; pthread_mutex_unlock(&g_mu);
     pthread_t th; pthread_create(&th, NULL, reaper, (void *)(intptr_t)p); pthread_detach(th);
     FILE *f = fopen(pf, "w"); if (f) { fprintf(f, "%d\n", (int)p); fclose(f); }
     return true;
@@ -201,23 +205,50 @@ static void strip(const char *l, char *out, size_t n) {
     snprintf(out, n, "%s", l);
 }
 
-int tr_frpc_state(char *line, size_t n, int *exit_code) {
-    pthread_mutex_lock(&g_mu); const pid_t p = g_pid; const int ex = g_exit; pthread_mutex_unlock(&g_mu);
-    *exit_code = ex; line[0] = 0;
+/* 只有连接类的行改状态。frp 打的源文件路径只带最后两级: 连接管理在 client/service.go、client/control.go, 它们的 [W]/[E] 才是断线;
+   单个请求的告警(httputil/reverseproxy.go 的 "context canceled" = 浏览器自己取消了请求)、插件的 TLS 握手报错(不带级别)与连接无关,
+   当成断线的话, 切一下页面就显示"重连中"(10-12 实撞) */
+int tr_frpc_line_state(const char *l) {
+    if (strstr(l, "start proxy success")) return 2;
+    if (strstr(l, "login to server success") || strstr(l, "try to connect")) return 1;
+    if ((strstr(l, "[W]") || strstr(l, "[E]")) && strstr(l, "] [client/")) return -1;
+    return 0;
+}
+
+/* g_mu 持有时调: 读日志新增的完整行(写了一半的那行留到下次) */
+static void scan_log(void) {
     char logp[TR_PATH + 32]; frp_path(logp, sizeof logp, "frpc.log");
-    size_t len = 0; char *s = tr_slurp(logp, &len);
-    int st = p ? 1 : 0;
-    if (s) {   /* 从尾巴往前找最后一条说明状态的行 */
-        char *start = len > TR_FRPC_LOG_TAIL ? s + len - TR_FRPC_LOG_TAIL : s, *e = s + len;
-        while (e > start) {
-            while (e > start && (e[-1] == '\n' || e[-1] == '\r')) *--e = 0;
-            char *b = e; while (b > start && b[-1] != '\n') b--;
-            if (strstr(b, "start proxy success")) { if (p) st = 2; strip(b, line, n); break; }
-            if (strstr(b, "login to server success") || strstr(b, "try to connect")) { strip(b, line, n); break; }
-            if (strstr(b, "[W]") || strstr(b, "[E]") || (!p && *b)) { if (p) st = -1; strip(b, line, n); break; }   /* 退了: 最后一行就是死因(配置错只打在这) */
-            e = b;
+    const int fd = open(logp, O_RDONLY); if (fd < 0) return;
+    struct stat sb;
+    if (!fstat(fd, &sb) && sb.st_size < g_log_off) { g_log_off = 0; g_conn = 1; g_conn_line[0] = g_last_line[0] = 0; }   /* 文件被截断(起了新 frpc) */
+    char buf[8192];
+    for (;;) {
+        const ssize_t got = pread(fd, buf, sizeof buf - 1, g_log_off);
+        if (got <= 0) break;
+        ssize_t use = got; while (use > 0 && buf[use - 1] != '\n') use--;
+        if (!use) { if (got < (ssize_t)sizeof buf - 1) break; use = got; }   /* 一行比缓冲还长: 整块当一行 */
+        buf[use] = 0;
+        for (char *b = buf, *e; *b; b = e) {
+            e = b + strcspn(b, "\n"); const char c = *e; *e = 0;
+            char *r = b + strlen(b); while (r > b && (r[-1] == '\r' || r[-1] == ' ')) *--r = 0;
+            if (*b) {
+                strip(b, g_last_line, sizeof g_last_line);
+                const int st = tr_frpc_line_state(b);
+                if (st) { g_conn = st; snprintf(g_conn_line, sizeof g_conn_line, "%s", g_last_line); }
+            }
+            if (c) e++;
         }
-        free(s);
+        g_log_off += use;
     }
+    close(fd);
+}
+
+int tr_frpc_state(char *line, size_t n, int *exit_code) {
+    pthread_mutex_lock(&g_mu);
+    scan_log();
+    const pid_t p = g_pid; *exit_code = g_exit;
+    const int st = p ? g_conn : 0;
+    snprintf(line, n, "%s", p ? g_conn_line : g_last_line);   /* 退了: 最后一行就是死因(配置错只打在 stdout, 没有级别标记) */
+    pthread_mutex_unlock(&g_mu);
     return st;
 }

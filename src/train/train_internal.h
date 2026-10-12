@@ -117,8 +117,9 @@ bool tr_frpc_ensure(char *path, size_t pn, char *err, size_t en);   /* 本机系
 bool tr_frp_ensure(const char *os, const char *arch, const char *bin, char *path, size_t pn, char *err, size_t en);
 bool tr_frpc_start(const tr_cloud *c, int page_port, char *err, size_t en);   /* 写 frpc.toml(有证书 = https2http 插件)再起; 在跑的先停 */
 void tr_frpc_stop(void);
-/* frpc 现状: 0 = 没在跑; 1 = 在连; 2 = 代理已起; -1 = 日志里最后一条是错误(frpc 自己会重试)。line = 那条日志(去掉时间与源码位置) */
+/* frpc 现状: 0 = 没在跑; 1 = 在连; 2 = 代理已起; -1 = 最后一条连接类日志是告警/错误(frpc 自己会重试)。line = 那条日志(去掉时间与源码位置) */
 int tr_frpc_state(char *line, size_t n, int *exit_code);
+int tr_frpc_line_state(const char *line);   /* 一行日志对连接状态的意思: 2 / 1 / -1 同上, 0 = 与连接无关(单个请求的告警、TLS 握手报错) */
 
 /* train_frps.c: 认服务器上已有的东西(纯文本解析) */
 typedef struct { int port, pid; char name[32], addr[64]; } tr_listener;   /* addr: 监听地址, 通配(0.0.0.0 / * / ::)记成 127.0.0.1 */

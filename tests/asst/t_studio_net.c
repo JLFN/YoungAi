@@ -55,8 +55,22 @@ static void test_frps_parse(void) {
     CHECKN(tr_ports_allow("", 8443) && tr_ports_allow("2000-3000,8443", 8443) && tr_ports_allow("2000-3000,8443", 2500) && !tr_ports_allow("2000-3000,3001", 8443), "allow ranges");
 }
 
+/* frpc 日志哪些行算连接状态(train_frp.c 的 tr_frpc_line_state)。行取自 10-12 spark 的 frpc.log(带颜色控制码; 对端地址换成了文档专用段 203.0.113.0/24):
+   请求级的告警与 TLS 握手报错曾被当成断线, 页面在隧道好好的时候显示"重连中" */
+static void test_frpc_lines(void) {
+    CHECKN(tr_frpc_line_state("\x1b[1;34m2026-10-12 12:18:04.315 [I] [client/control.go:174] [3cdca164a3663e7e] [ds4-studio] start proxy success") == 2, "proxy success = up");
+    CHECKN(tr_frpc_line_state("2026-10-12 12:18:04.120 [I] [client/service.go:332] [3cdca164a3663e7e] login to server success, get run id [3cdca164a3663e7e]") == 1, "login = connecting");
+    CHECKN(tr_frpc_line_state("2026-10-12 12:18:03.900 [I] [client/service.go:294] try to connect to server...") == 1, "try to connect = connecting");
+    CHECKN(tr_frpc_line_state("\x1b[0m\x1b[1;33m2026-10-12 13:02:08.793 [W] [httputil/reverseproxy.go:689] http: proxy error: context canceled") == 0, "browser-cancelled request is not a disconnect");
+    CHECKN(tr_frpc_line_state("2026/10/12 12:56:55 http: TLS handshake error from 203.0.113.7:56146: client sent an HTTP request to an HTTPS server") == 0, "TLS handshake noise ignored");
+    CHECKN(tr_frpc_line_state("2026-10-12 14:00:00.000 [I] [proxy/proxy_manager.go:180] [3cdca164a3663e7e] proxy added: [ds4-studio]") == 0, "proxy added is not a state");
+    CHECKN(tr_frpc_line_state("2026-10-12 14:00:01.000 [W] [client/service.go:300] connect to server error: dial tcp 127.0.0.1:17000: connect: connection refused") == -1, "connect error = down");
+    CHECKN(tr_frpc_line_state("2026-10-12 14:00:02.000 [W] [client/control.go:168] [ds4-studio] start error: port already used") == -1, "proxy start error = down");
+}
+
 int studio_net_test(const char *base) {
     test_frps_parse();
+    test_frpc_lines();
     char dir[4200], fx[4200], p[4400];
     snprintf(dir, sizeof dir, "%s/net-studio", base); snprintf(fx, sizeof fx, "%s/net-fx", base);
     mkdir(dir, 0700); mkdir(fx, 0700);
