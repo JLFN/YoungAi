@@ -259,6 +259,17 @@
   #v-models a.lnk { color: var(--accent-2); text-decoration: none; }
   label.ck { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--dim); padding-bottom: 8px; }
   @media (max-width: 1100px) { .train-grid, .data-grid, .charts { grid-template-columns: 1fr; } .cfg { position: static; } .tiles { grid-template-columns: repeat(3, 1fr); } }
+  /* ---------- 监控(训练页的卡片 / 进度条 / 读数格原样复用, 这里只补监控独有的: 格内火花线、资源条、事实表、数字列右对齐) ---------- */
+  .mon-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .tile .v small { font-size: 12px; color: var(--dim); font-weight: 400; margin-left: 4px; }
+  .tile svg.spk { display: block; width: 100%; height: 28px; margin-top: 6px; color: var(--accent-2); }
+  .mon-grid { display: grid; grid-template-columns: minmax(250px, 1fr) minmax(0, 3fr); gap: 16px; align-items: start; }   /* 请求表 10 列要 ~860 px: 1:2 时最后一列被挤出卡片 */
+  .mbar { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; } .mbar + .progress { margin: 6px 0 14px; }
+  .progress.warn > div { background: var(--warn); } .progress.bad > div { background: var(--err); }
+  dl.facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 5px 14px; margin: 4px 0 0; font-size: 13px; }
+  dl.facts dt { color: var(--dim); } dl.facts dd { margin: 0; overflow-wrap: anywhere; }
+  #v-monitor .num { text-align: right; font-variant-numeric: tabular-nums; }
+  @media (max-width: 1100px) { .mon-grid { grid-template-columns: minmax(0, 1fr); } .mon-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   /* ---------- API 密钥 ---------- */
   #v-api .card { margin-bottom: 16px; }
   .newkey { display: none; margin-top: 12px; padding: 12px 14px; border-radius: 10px; border: 1px solid rgba(245,158,11,.55); background: rgba(245,158,11,.08); }
@@ -438,7 +449,7 @@
     <a data-tab="runs"><svg class="i" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/></svg><span data-i18n="tab_runs">记录</span></a>
     <a data-tab="api"><svg class="i" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M15 8l2 2"/></svg><span data-i18n="tab_api">API</span></a>
     <div class="sep"></div>
-    <a href="/monitor" target="_blank"><svg class="i" viewBox="0 0 24 24"><path d="M3 12h4l3 7 4-14 3 7h4"/></svg><span data-i18n="nav_monitor">监控</span><span class="ext">↗</span></a>
+    <a data-tab="monitor"><svg class="i" viewBox="0 0 24 24"><path d="M3 12h4l3 7 4-14 3 7h4"/></svg><span data-i18n="tab_monitor">监控</span></a>
   </nav>
   <div class="sess"><div class="sess-h"><span data-i18n="a_chats">对话</span><button class="ghost" id="btn-new" data-i18n="a_new">+ 新对话</button></div><div id="sess-list"></div></div>
   <div class="engine">
@@ -612,6 +623,34 @@
     </div>
   </section>
 
+  <!-- ============ 监控(数据 = GET /metrics, 主进程转发给模型子进程; 字段语义以 src/server/server_monitor*.c 为准, 见 monRender) ============ -->
+  <section class="view" id="v-monitor">
+    <div class="empty" id="mon-empty"><h2 data-i18n="mon_off_t">模型没在服务</h2><div data-i18n="mon_off"></div></div>
+    <div class="right" id="mon-body" style="display:none">
+      <div class="card">
+        <div class="runhead"><span class="name" id="mon-state">–</span><span class="badge" id="mon-badge">–</span><span class="muted" id="mon-detail"></span><span class="spacer"></span><span class="muted" id="mon-upd"></span></div>
+        <div class="progress"><div id="mon-bar"></div></div>
+        <div class="tiles mon-tiles" id="mon-tiles"></div>
+      </div>
+      <div class="mon-grid">
+        <div class="card"><div class="card-title" data-i18n="mo_res">资源</div>
+          <div class="mbar"><span data-i18n="mo_ctx">上下文占用</span><span class="muted" id="mon-ctx-t">–</span></div><div class="progress"><div id="mon-ctx"></div></div>
+          <div class="mbar"><span data-i18n="mo_ram">系统内存</span><span class="muted" id="mon-ram-t">–</span></div><div class="progress" id="mon-ram-p"><div id="mon-ram"></div></div>
+          <div class="mbar"><span data-i18n="mo_experts">专家在显存</span><span class="muted" id="mon-exp-t">–</span></div><div class="progress"><div id="mon-exp"></div></div>
+          <dl class="facts" id="mon-facts"></dl>
+        </div>
+        <div class="card"><div class="card-title"><span data-i18n="mo_req">最近请求</span><span class="spacer"></span><button class="ghost" id="mon-all" style="font-size:12px;padding:2px 9px;text-transform:none;letter-spacing:0" hidden></button></div>
+          <div style="overflow:auto"><table class="cards"><thead><tr><th data-i18n="mo_th_time">时间</th><th data-i18n="mo_th_st">状态</th><th data-i18n="mo_th_api">接口</th><th class="num" data-i18n="mo_th_prompt">提示</th><th class="num" data-i18n="mo_th_reused">复用</th><th class="num" data-i18n="mo_th_out">输出</th><th class="num">t/s</th><th class="num" data-i18n="mo_th_drafts">草稿</th><th class="num" data-i18n="mo_th_first">首 token</th><th class="num" data-i18n="mo_th_dur">用时</th></tr></thead><tbody id="mon-reqs"></tbody></table></div>
+          <div class="muted" id="mon-totals" style="margin-top:10px"></div>
+        </div>
+      </div>
+      <div class="card" id="mon-cc" hidden><div class="card-title"><span data-i18n="mo_cc">磁盘 KV 缓存</span><span class="spacer"></span><span class="muted" id="mon-cc-sum" style="text-transform:none;letter-spacing:0"></span></div>
+        <div class="mbar"><span data-i18n="mo_cc_budget">占用预算</span><span class="muted" id="mon-cc-bar-t">–</span></div><div class="progress"><div id="mon-cc-bar"></div></div>
+        <dl class="facts" id="mon-cc-facts"></dl>
+      </div>
+    </div>
+  </section>
+
   <!-- ============ 更多(app 外壳底栏第四格: 记忆/活动/语料/记录/API/监控 + 语言/安装/退出; 列表由 renderMore 按 MORE 生成) ============ -->
   <section class="view" id="v-more"><div class="wrap">
     <div class="mhead"><img src="/logo.jpg" alt=""><div><b>YoungAi</b><div class="st"><span class="dot" id="more-dot"></span><span id="more-eng"></span></div></div></div>
@@ -709,7 +748,21 @@ const I18N = {
     k_name: "名称", k_key: "密钥", k_created: "创建于", k_last: "最近使用", k_reqs: "请求数", k_never: "从未", k_del: "删除", k_del_confirm: "删除密钥「{0}」? 用它的程序会立刻 401。", k_none: "还没有密钥",
     k_file: "存在 {0}(删掉这个文件 = 清空全部密钥)", k_use: "怎么调用", k_use_sub: "把下面的 sk-ds4-… 换成你的密钥。OpenAI 兼容客户端填 Base URL + API Key 即可; Anthropic SDK 用 x-api-key 头。模型没加载时 /v1 会答 404。",
     k_err_name_empty: "先给密钥起个名字", k_err_too_many: "密钥太多了(最多 64 把), 删掉不用的再建", k_err_keys_broken: "密钥文件被改坏了, 删掉它重建", k_err_save_failed: "服务端写不了密钥文件, 看 ds4-train 日志",
-    tab_chat: "助理", tab_models: "模型", tab_train: "训练", tab_data: "语料", tab_runs: "记录", nav_monitor: "监控",
+    tab_chat: "助理", tab_models: "模型", tab_train: "训练", tab_data: "语料", tab_runs: "记录", tab_monitor: "监控", hint_monitor: "模型服务的实时指标: 速度、显存、上下文、最近请求",
+    mon_off_t: "模型没在服务", mon_off: "监控读的是模型服务的实时数据, 到「模型」页加载一个模型后这里才有数。",
+    mo_lost: "连不上模型服务 · 重试中", mo_idle: "空闲", mo_reading: "读提示", mo_generating: "生成中", mo_queued: "{0} 条排队", mo_waiting: "等待请求",
+    mo_d_reading: "{0} / {1} token · {2}%", mo_d_tokens: "{0} token", mo_d_gen: "{0} token · {1} t/s", mo_d_last: "上一条: {0} token", mo_d_last_speed: " · {0} t/s",
+    mo_decode: "解码速度", mo_prefill: "预填速度", mo_gpu: "GPU 负载", mo_vram: "显存", mo_temp: "GPU 温度", mo_power: "功耗", mo_cpu: "CPU", mo_disk: "磁盘读",
+    mo_now: "当前", mo_this: "本请求", mo_last: "上一条", mo_gpu_none: "读不到(NVML/IOKit)", mo_mem_ram: "统一内存 = 整机内存", mo_mem_kernel: "统一内存 · 内核可见 {0} GB",
+    mo_mem_metal: "本进程 Metal 工作集 / 设备上限", mo_temp_none: "此平台无免 root 接口", mo_power_limit: "上限 {0} W", mo_cores: "{0} 核 · {1} 线程", mo_threads: "{0} 线程", mo_disk_w: "写 {0} MB/s",
+    mo_res: "资源", mo_ctx: "上下文占用", mo_ctx_v: "{0} / {1} token · {2}", mo_ram: "系统内存", mo_ram_v: "{0} / {1} GB", mo_experts: "专家在显存", mo_exp_all: "全部常驻(无专家缓存)", mo_exp_n: "{0} 个",
+    mo_f_backend: "后端", mo_f_ctx: "上下文", mo_f_par: "并发", mo_f_lanes: "{0} 路合批", mo_f_single: "单路", mo_f_spec: "投机解码", mo_on: "开", mo_off: "关",
+    mo_f_gpu: "GPU", mo_f_cpu: "CPU", mo_f_img: "图像输入", mo_f_pcie: "PCIe", mo_pcie_rx: "Gen{0} x{1} · 到 GPU {2} MB/s",
+    mo_req: "最近请求", mo_th_time: "时间", mo_th_st: "状态", mo_th_api: "接口", mo_th_prompt: "提示", mo_th_reused: "复用", mo_th_out: "输出", mo_th_drafts: "草稿", mo_th_first: "首 token", mo_th_dur: "用时",
+    mo_none: "还没有请求", mo_stream: " · 流式", mo_fin_stop: "完成", mo_fin_tool_calls: "工具调用", mo_fin_length: "到上限", mo_fin_cancel: "已停", mo_fin_disconnect: "客户端断开", mo_fin_error: "错误",
+    mo_all: "显示全部({0})", mo_fewer: "只看最近 12 条",
+    mo_totals: "自 {0}: {1} 条请求 · 读提示 {2} token{3}(复用 {4}) · 生成 {5} token{6}{7}", mo_tot_speed: " · {0} t/s", mo_tot_drafts: " · 草稿接受 {0}%",
+    mo_cc: "磁盘 KV 缓存", mo_cc_budget: "占用预算", mo_cc_mem: "{0} / {1} GB", mo_cc_sum: "{0} / {1} 条请求复用了提示前缀", mo_cc_parked: "盘上检查点", mo_cc_pr: "存盘 / 装回", mo_cc_evicted: " · 逐出 {0}",
     hint_models: "本机模型与侧车, 一键加载; 从 Hugging Face 下载发布包", hint_train: "上下文蒸馏 + 答案 NLL, 写进独立的 ③ 文件", hint_data: "上传问答料、原文料或文档",
     load_model: "加载模型", pt: "后训练", clear: "清空", send: "发送", stop: "停止", updated: "更新 {0}",
     eng_unreachable: "连不上", eng_connecting: "连接中", eng_switching: "切换中", eng_switching_sub: "停模型 / 装模型, 稍等", eng_unloading_sub: "卸下当前模型, 稍等",
@@ -784,7 +837,7 @@ const I18N = {
     act_write: "可写", act_add: "添加", act_del: "移除", act_rw: "读写", act_ro: "只读", act_appr: "永久授权", act_appr_sub: "你在审批卡上点过\"总是允许\"的目标; 上过网之后写工作区外仍会逐次问。", act_revoke: "撤销",
     act_audit: "活动流水", act_audit_sub: "每一次工具调用, 最新在前: 做了什么、谁放行的、成没成。鼠标停在一行上看结果。", act_none: "暂无", cls_read: "读", cls_write: "写", cls_web: "上网", cls_exec: "命令",
     pt_done: "训练完成: {0} 已关联侧车 {1}, 切到它并打开后训练开关即可挂上",
-    tab_more: "更多", ts_prog: "进度", ts_cfg: "设置", d_pick: "点这里选择文件上传", mh_runs: "每一趟训练的配置、状态与结果", mh_monitor: "服务端实时指标(新窗口)",
+    tab_more: "更多", ts_prog: "进度", ts_cfg: "设置", d_pick: "点这里选择文件上传", mh_runs: "每一趟训练的配置、状态与结果",
     more_g_asst: "助理", more_g_train: "训练", more_g_dev: "开发", more_g_app: "应用", more_lang: "语言", more_lang_v: "中文",
     more_install: "安装到主屏幕", more_install_sub: "像 App 一样全屏打开, 有自己的图标", more_install_ios: "在 Safari 里点底部的「分享」→「添加到主屏幕」",
     more_install_http: "现在是 http 打开的, 浏览器只给 https 或本机地址装 PWA(见 docs/pwa.md)", more_installed: "已安装, 正以 App 方式运行",
@@ -826,7 +879,21 @@ const I18N = {
     k_name: "Name", k_key: "Key", k_created: "Created", k_last: "Last used", k_reqs: "Requests", k_never: "never", k_del: "Delete", k_del_confirm: "Delete key \u201c{0}\u201d? Programs using it will get 401 right away.", k_none: "No keys yet",
     k_file: "Stored in {0} (delete this file = remove every key)", k_use: "How to call it", k_use_sub: "Replace sk-ds4-… below with your key. OpenAI-compatible clients just need the Base URL and API key; the Anthropic SDK uses the x-api-key header. With no model loaded, /v1 answers 404.",
     k_err_name_empty: "Give the key a name first", k_err_too_many: "Too many keys (64 max); delete unused ones first", k_err_keys_broken: "The keys file is corrupted; delete it and start over", k_err_save_failed: "Server can't write the keys file; see the ds4-train log",
-    tab_chat: "Assistant", tab_models: "Models", tab_train: "Train", tab_data: "Data", tab_runs: "Runs", nav_monitor: "Monitor",
+    tab_chat: "Assistant", tab_models: "Models", tab_train: "Train", tab_data: "Data", tab_runs: "Runs", tab_monitor: "Monitor", hint_monitor: "Live metrics of the model server: speed, memory, context, recent requests",
+    mon_off_t: "No model is serving", mon_off: "The monitor reads live data from the model server. Load a model on the Models page and it shows up here.",
+    mo_lost: "Model server unreachable · retrying", mo_idle: "Idle", mo_reading: "Reading prompt", mo_generating: "Generating", mo_queued: "{0} queued", mo_waiting: "Waiting for a request",
+    mo_d_reading: "{0} / {1} tokens · {2}%", mo_d_tokens: "{0} tokens", mo_d_gen: "{0} tokens · {1} t/s", mo_d_last: "last: {0} tokens", mo_d_last_speed: " at {0} t/s",
+    mo_decode: "Decode speed", mo_prefill: "Prefill speed", mo_gpu: "GPU load", mo_vram: "VRAM", mo_temp: "GPU temp", mo_power: "Power", mo_cpu: "CPU", mo_disk: "Disk read",
+    mo_now: "now", mo_this: "this request", mo_last: "last request", mo_gpu_none: "not readable (NVML/IOKit)", mo_mem_ram: "unified memory = system RAM", mo_mem_kernel: "unified memory · {0} GB visible to the kernel",
+    mo_mem_metal: "this process's Metal working set / device limit", mo_temp_none: "no unprivileged interface on this platform", mo_power_limit: "of {0} W limit", mo_cores: "{0} cores · {1} threads", mo_threads: "{0} threads", mo_disk_w: "write {0} MB/s",
+    mo_res: "Resources", mo_ctx: "Context fill", mo_ctx_v: "{0} / {1} tokens · {2}", mo_ram: "System RAM", mo_ram_v: "{0} / {1} GB", mo_experts: "Experts in VRAM", mo_exp_all: "all resident (no expert cache)", mo_exp_n: "{0}",
+    mo_f_backend: "Backend", mo_f_ctx: "Context", mo_f_par: "Parallel", mo_f_lanes: "{0} lanes batched", mo_f_single: "single lane", mo_f_spec: "Speculative decoding", mo_on: "on", mo_off: "off",
+    mo_f_gpu: "GPU", mo_f_cpu: "CPU", mo_f_img: "Images", mo_f_pcie: "PCIe", mo_pcie_rx: "Gen{0} x{1} · to GPU {2} MB/s",
+    mo_req: "Recent requests", mo_th_time: "Time", mo_th_st: "Status", mo_th_api: "API", mo_th_prompt: "Prompt", mo_th_reused: "Reused", mo_th_out: "Output", mo_th_drafts: "Drafts", mo_th_first: "First token", mo_th_dur: "Duration",
+    mo_none: "No requests yet", mo_stream: " · stream", mo_fin_stop: "Done", mo_fin_tool_calls: "Tool call", mo_fin_length: "Max tokens", mo_fin_cancel: "Stopped", mo_fin_disconnect: "Disconnected", mo_fin_error: "Error",
+    mo_all: "Show all ({0})", mo_fewer: "Show fewer",
+    mo_totals: "Since {0}: {1} requests · {2} prompt tokens read{3} ({4} reused) · {5} written{6}{7}", mo_tot_speed: " at {0} t/s", mo_tot_drafts: " · drafts accepted {0}%",
+    mo_cc: "Disk KV cache", mo_cc_budget: "Budget used", mo_cc_mem: "{0} / {1} GB", mo_cc_sum: "{0} of {1} requests reused part of their prompt", mo_cc_parked: "Checkpoints on disk", mo_cc_pr: "Parked / restored", mo_cc_evicted: " · {0} evicted",
     hint_models: "Local models and sidecars, one-click load; download the release from Hugging Face", hint_train: "Context distillation + answer NLL, written to a separate ③ file", hint_data: "Upload Q&A data, raw text or documents",
     load_model: "Load model", pt: "Post-train", clear: "Clear", send: "Send", stop: "Stop", updated: "Updated {0}",
     eng_unreachable: "Unreachable", eng_connecting: "Connecting", eng_switching: "Switching", eng_switching_sub: "Stopping / loading the model, hold on", eng_unloading_sub: "Unloading the current model, hold on",
@@ -901,7 +968,7 @@ const I18N = {
     act_write: "Writable", act_add: "Add", act_del: "Remove", act_rw: "read-write", act_ro: "read-only", act_appr: "Standing approvals", act_appr_sub: "Targets you approved with \"Always allow\"; after reading the web, writes outside the workspace still ask every time.", act_revoke: "Revoke",
     act_audit: "Activity log", act_audit_sub: "Every tool call, newest first: what it did, who allowed it, whether it worked. Hover a row to see the result.", act_none: "None yet", cls_read: "read", cls_write: "write", cls_web: "web", cls_exec: "command",
     pt_done: "Training finished: {0} is linked to sidecar {1}; switch to it and turn on Post-train to attach it",
-    tab_more: "More", ts_prog: "Progress", ts_cfg: "Setup", d_pick: "Tap to choose files to upload", mh_runs: "Config, status and results of every run", mh_monitor: "Live server metrics (new window)",
+    tab_more: "More", ts_prog: "Progress", ts_cfg: "Setup", d_pick: "Tap to choose files to upload", mh_runs: "Config, status and results of every run",
     more_g_asst: "Assistant", more_g_train: "Training", more_g_dev: "Developer", more_g_app: "App", more_lang: "Language", more_lang_v: "English",
     more_install: "Add to Home Screen", more_install_sub: "Opens full-screen like an app, with its own icon", more_install_ios: "In Safari, tap Share at the bottom → Add to Home Screen",
     more_install_http: "Opened over http; browsers only install PWAs from https or this machine's own address (see docs/pwa.md)", more_installed: "Installed, running as an app",
@@ -969,8 +1036,8 @@ async function getJSON(url, opt) { const r = await fetch(url, Object.assign({ ca
 
 /* ---------------- 状态 ---------------- */
 let status = null, runs = [], detail = null, selected = null, userPicked = false, switching = 0, failCount = 0;
-const TABS = ["chat", "mem", "act", "models", "train", "data", "runs", "api", "more"];   /* 标题 = t("tab_<名>"), 副标题 = t("hint_<名>")(没有就空) */
-const SUB = ["mem", "act", "data", "runs", "api"];   /* app 外壳里这几页从"更多"进: 底栏点亮"更多", 顶栏左键是返回 */
+const TABS = ["chat", "mem", "act", "models", "train", "data", "runs", "api", "monitor", "more"];   /* 标题 = t("tab_<名>"), 副标题 = t("hint_<名>")(没有就空) */
+const SUB = ["mem", "act", "data", "runs", "api", "monitor"];   /* app 外壳里这几页从"更多"进: 底栏点亮"更多", 顶栏左键是返回 */
 const isApp = () => document.documentElement.dataset.shell === "app";
 /* 没有 #hash(直接开 http://host:8000/)时答"正显示的那页"(showTab 记下的): 曾经答 null, 页面明明在聊天页,
    poll 却以为不在、不再拉 /api/models/list, 后训练开关一切换就永远卡在"切换中…"且按钮灰掉(10-11 实撞)。
@@ -984,7 +1051,7 @@ function showTab(tab) {
   text("page-title", t("tab_" + tab)); $("page-hint").textContent = I18N.zh["hint_" + tab] ? t("hint_" + tab) : "";
   syncShell(tab);
   /* 手机上程序聚焦输入框会直接弹键盘, 盖住半屏: app 外壳不自动聚焦, 用户点输入框才弹 */
-  if (tab === "train") { loadDetail(); if (isApp() && !trainPane) setTrainPane(training() || runs.length ? "prog" : "cfg"); } if (tab === "data") loadData(); if (tab === "chat") { if (!isApp()) inputEl.focus(); loadSessions(); } if (tab === "models") loadModels(); if (tab === "mem") loadMem(true); if (tab === "act") loadAct(); if (tab === "api") loadApi(); if (tab === "more") renderMore();
+  if (tab === "train") { loadDetail(); if (isApp() && !trainPane) setTrainPane(training() || runs.length ? "prog" : "cfg"); } if (tab === "data") loadData(); if (tab === "chat") { if (!isApp()) inputEl.focus(); loadSessions(); } if (tab === "models") loadModels(); if (tab === "mem") loadMem(true); if (tab === "act") loadAct(); if (tab === "api") loadApi(); if (tab === "monitor") syncMonitor(); if (tab === "more") renderMore();
 }
 document.querySelectorAll("nav a[data-tab], .tabbar a[data-tab]").forEach(a => a.onclick = () => { location.hash = a.dataset.tab; });
 
@@ -1046,11 +1113,10 @@ function moreRow(icon, label, sub, val, onclick, cls) {
 }
 function renderMore() {
   const box = $("more-list"); box.replaceChildren();
-  const navIcon = k => document.querySelector(k === "monitor" ? 'nav a[href="/monitor"] svg' : `nav a[data-tab="${k}"] svg`);   /* 图标跟侧栏导航同一份 */
+  const navIcon = k => document.querySelector(`nav a[data-tab="${k}"] svg`);   /* 图标跟侧栏导航同一份 */
   MORE.forEach(([gt, keys]) => {
     box.appendChild(node("div", "mgt", t(gt))); const g = node("div", "mgroup");
-    keys.forEach(k => g.appendChild(k === "monitor" ? moreRow(navIcon(k), t("nav_monitor"), t("mh_monitor"), "↗", () => window.open("/monitor", "_blank"))
-      : moreRow(navIcon(k), t("tab_" + k), I18N.zh["hint_" + k] ? t("hint_" + k) : I18N.zh["mh_" + k] ? t("mh_" + k) : "", "", () => { location.hash = k; })));
+    keys.forEach(k => g.appendChild(moreRow(navIcon(k), t("tab_" + k), I18N.zh["hint_" + k] ? t("hint_" + k) : I18N.zh["mh_" + k] ? t("mh_" + k) : "", "", () => { location.hash = k; })));
     box.appendChild(g);
   });
   box.appendChild(node("div", "mgt", t("more_g_app"))); const g = node("div", "mgroup");
@@ -1082,6 +1148,7 @@ function renderEngine() {
   dot.className = "dot " + cls; text("eng-title", title); text("eng-sub", sub + (status && status.mem_avail_mb >= 0 ? t("eng_avail", (status.mem_avail_mb / 1024).toFixed(1)) : ""));
   $("tb-dot").className = $("more-dot").className = "dot " + cls; text("tb-eng", title); text("more-eng", title);   /* app 外壳: 顶栏标题下、"更多"页头 */
   $("tab-train-dot").hidden = !training();
+  syncMonitor();   /* 模型起停跟着换: 监控页的读数 ↔ "没在服务" */
   $("btn-load").style.display = load && !switching ? "" : "none";
   $("btn-train").style.display = training() ? "none" : ""; $("btn-stop").style.display = training() ? "" : "none";
   $("btn-train").disabled = !!switching && !status;
@@ -1556,6 +1623,146 @@ async function loadAct() {
 async function policy(body) { const r = await aFetch("policy", body); if (r.error) toast(t("fail", r.error), true); loadAct(); }
 $("act-bash").onchange = () => policy({ op: "bash", value: $("act-bash").checked });
 $("act-add").onclick = () => { const p = $("act-path").value.trim(); if (!p) return; policy({ op: "dir_add", path: p, write: $("act-write").checked }); $("act-path").value = ""; };
+
+/* ---------------- 监控(数据 = GET /metrics: 主进程转发给模型子进程, 字段由 src/server/server_monitor*.c 产出) ----------------
+   只在监控页开着、且模型在服务时每秒拉一次; 切走或模型停了循环自己停, 不白拉。火花线的一分钟历史在服务端(history), 页面不攒。
+   模型没装着时 /metrics 没人答(主进程不转发, 回 404), 所以那时直接显示"没在服务", 不去拉。
+   直接起 ds4-server 不带工作台时用的是它自带的 web/monitor.html, 同一份 /metrics 的另一个画法; 改字段两边都要跟 */
+let monRun = false, monAll = false, monLast = null, monFail = 0;
+const monLive = () => !!status && status.mode === "serving";
+function syncMonitor() {   /* showTab 与每轮 renderEngine 调: 模型起停时在"没在服务"和读数之间换 */
+  const live = monLive();
+  $("mon-empty").style.display = live ? "none" : ""; $("mon-body").style.display = live ? "" : "none";
+  if (live && curTab() === "monitor") { if (monLast) monRender(monLast); if (!monRun) { monRun = true; monPoll(); } }
+}
+async function monPoll() {
+  if (curTab() !== "monitor" || !monLive()) { monRun = false; return; }
+  try {
+    const r = await fetch(monAll ? "/metrics?requests=all" : "/metrics", { cache: "no-store" });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    monLast = await r.json(); monFail = 0; monRender(monLast);
+    $("mon-upd").textContent = "";   /* 更新时间顶栏已有, 这里只在断线时说话 */
+  } catch (_) { if (++monFail >= 3) $("mon-upd").textContent = t("mo_lost"); }   /* 换模型时会断几秒: 连错三次才报 */
+  setTimeout(monPoll, 1000);
+}
+$("mon-all").onclick = () => { monAll = !monAll; if (monLast) monRender(monLast); };
+const mfmt = (v, d = 0) => v == null || Number.isNaN(v) ? "–" : Number(v).toLocaleString(locale(), { minimumFractionDigits: d, maximumFractionDigits: d });
+const mgb = (b, d = 1) => b == null ? "–" : mfmt(b / 1073741824, d);   /* 内存按二进制 GB(内存条、free、nvidia-smi 都这么标) */
+/* 上下文上限按 2 的幂写(元数据 1048576 = 1M): "1.05M" 对不上项目里说的 1M */
+const mctx = n => n % 1048576 === 0 ? `${n / 1048576}M` : n % 1024 === 0 ? `${n / 1024}K` : mfmt(n);
+/* 1M 上下文里一条 3k 的请求只有 0.3%, 四舍五入成 0% 像没数据: 10% 以下留一位小数, 0.1% 以下写 "<0.1%" */
+const mpct = f => f <= 0 ? "0%" : f * 100 < 0.1 ? "<0.1%" : f * 100 < 10 ? `${mfmt(f * 100, 1)}%` : `${Math.round(f * 100)}%`;
+/* 八格: 键 / 标题 / history 里的序列 / 火花线满刻度(不给 = 按序列自身最大值) */
+const MON_TILES = [["decode", "mo_decode", "tok_s"], ["prefill", "mo_prefill", "prefill_tok_s_mean"], ["gpu", "mo_gpu", "gpu_util", 100], ["vram", "mo_vram", "gpu_mem_used"],
+  ["temp", "mo_temp", "gpu_temp", 90], ["power", "mo_power", "gpu_power"], ["cpu", "mo_cpu", "cpu", 100], ["disk", "mo_disk", "disk_read_mb"]];
+{ const box = $("mon-tiles"), SVG = "http://www.w3.org/2000/svg";
+  for (const [k, lbl] of MON_TILES) {
+    const tile = node("div", "tile"), l = node("div", "l"); l.dataset.i18n = lbl; l.textContent = t(lbl);
+    const v = node("div", "v", "–"); v.id = "mo-v-" + k; const sub = node("div", "s"); sub.id = "mo-s-" + k;
+    const svg = document.createElementNS(SVG, "svg"); svg.setAttribute("class", "spk"); svg.setAttribute("viewBox", "0 0 100 32"); svg.setAttribute("preserveAspectRatio", "none"); svg.id = "mo-p-" + k;
+    for (const fill of [true, false]) { const p = document.createElementNS(SVG, "path"); p.setAttribute("fill", fill ? "currentColor" : "none");
+      if (fill) p.setAttribute("opacity", ".12"); else { p.setAttribute("stroke", "currentColor"); p.setAttribute("stroke-width", "1.6"); p.setAttribute("vector-effect", "non-scaling-stroke"); p.setAttribute("stroke-linejoin", "round"); }
+      svg.appendChild(p); }
+    tile.append(l, v, sub, svg); box.appendChild(tile);
+  } }
+function monTile(k, value, unit, sub, series, max) {
+  const v = $("mo-v-" + k); v.replaceChildren(value == null ? "–" : String(value)); if (value != null && unit) v.appendChild(node("small", null, unit));
+  $("mo-s-" + k).textContent = sub || "";
+  const ys = (series || []).map(x => x == null ? 0 : x), [area, line] = $("mo-p-" + k).children;
+  if (ys.length < 2) { area.setAttribute("d", ""); line.setAttribute("d", ""); return; }
+  const top = Math.max(max || 0, ...ys, 1e-9);
+  const d = ys.map((y, i) => `${i ? "L" : "M"}${(i / (ys.length - 1) * 100).toFixed(2)},${(30 - y / top * 26).toFixed(2)}`).join("");
+  line.setAttribute("d", d); area.setAttribute("d", d + "L100,32L0,32Z");
+}
+function monFacts(el, rows) { el.replaceChildren(); for (const [k, v] of rows) if (v != null && v !== "") el.append(node("dt", null, k), node("dd", null, v)); }
+function monBar(id, frac, label, tone) {
+  $(id).style.width = Math.min(100, Math.max(0, frac * 100)) + "%"; $(id + "-t").textContent = label;
+  if (tone !== undefined) $(id + "-p").className = "progress" + (tone ? " " + tone : "");
+}
+function monRender(m) {
+  const live = m.live || {}, hw = m.hardware || {}, st = m.hardware_static || {}, eng = m.engine || {}, h = m.history || {};
+  const reqs = m.requests || [], last = reqs[0];
+  /* 状态行: 名字 + 徽标 + 细节, 进度条 = 读提示进度 / 生成占 max_tokens */
+  /* 标题 = 模型名、徽标 = 状态(同训练页 "名字 + 徽标" 的写法) */
+  const badge = $("mon-badge"); let detail = last ? "" : t("mo_waiting"), pct = 0;
+  if (live.state === "reading") {
+    if (live.prompt_total) { pct = 100 * live.prompt_read / live.prompt_total; detail = t("mo_d_reading", mfmt(live.prompt_read), mfmt(live.prompt_total), mfmt(pct)); }
+    else detail = t("mo_d_tokens", mfmt(live.prompt_tokens));
+  } else if (live.state === "generating") {
+    pct = live.max_tokens ? Math.min(100, 100 * live.generated / live.max_tokens) : 0;
+    detail = t("mo_d_gen", mfmt(live.generated), mfmt(live.tok_s, 1));
+  } else if (last) detail = t("mo_d_last", mfmt(last.output_tokens)) + (last.decode_tok_s ? t("mo_d_last_speed", mfmt(last.decode_tok_s, 1)) : "");
+  $("mon-state").textContent = eng.model || "–"; $("mon-detail").textContent = detail; $("mon-bar").style.width = pct + "%";
+  if (live.queued > 0) { badge.className = "badge amber"; badge.textContent = t("mo_queued", live.queued); }
+  else if (live.state === "reading") { badge.className = "badge blue"; badge.textContent = t("mo_reading"); }
+  else if (live.state === "generating") { badge.className = "badge green"; badge.textContent = t("mo_generating"); }
+  else { badge.className = "badge"; badge.textContent = t("mo_idle"); }
+  /* 八格 */
+  const speed = live.state === "generating" ? live.tok_s : last ? last.decode_tok_s : null;
+  monTile("decode", speed == null ? null : mfmt(speed, 1), "t/s", live.state === "generating" ? t("mo_now") : last ? t("mo_last") : "", h.tok_s);
+  const prefill = live.state !== "idle" ? live.prefill_tok_s_mean
+    : last && last.prompt_ms > 0 ? Math.max(0, last.prompt_tokens - (last.reused || 0)) / (last.prompt_ms / 1000) : null;
+  monTile("prefill", prefill == null ? null : mfmt(prefill), "t/s", live.state === "reading" ? t("mo_now") : live.state === "generating" ? t("mo_this") : last ? t("mo_last") : "", h.prefill_tok_s_mean);
+  monTile("gpu", hw.gpu_util == null ? null : mfmt(hw.gpu_util), "%", st.gpu_name || (st.gpu_count ? "" : t("mo_gpu_none")), h.gpu_util, 100);
+  /* 统一内存: 总量是物理内存(GB10 128 GB), 副标题带上内核自己能分配的量(MemTotal 121.7 GB) —— 两个数都真, 差的是内核保留 */
+  const memSub = st.gpu_mem_source === "ram" ? (hw.ram_kernel_total && hw.ram_kernel_total < hw.gpu_mem_total ? t("mo_mem_kernel", mgb(hw.ram_kernel_total)) : t("mo_mem_ram"))
+    : st.gpu_mem_source === "metal" ? t("mo_mem_metal") : "";
+  monTile("vram", hw.gpu_mem_used == null ? null : mgb(hw.gpu_mem_used), hw.gpu_mem_total ? `/ ${mgb(hw.gpu_mem_total, 0)} GB` : "GB", memSub, h.gpu_mem_used, hw.gpu_mem_total);
+  monTile("temp", hw.gpu_temp == null ? null : mfmt(hw.gpu_temp), "°C", hw.gpu_temp == null && st.gpu_count ? t("mo_temp_none") : "", h.gpu_temp, 90);
+  monTile("power", hw.gpu_power == null ? null : mfmt(hw.gpu_power), "W", hw.gpu_power_limit ? t("mo_power_limit", mfmt(hw.gpu_power_limit)) : "", h.gpu_power, hw.gpu_power_limit);
+  monTile("cpu", hw.cpu == null ? null : mfmt(hw.cpu), "%", st.threads ? (st.cores ? t("mo_cores", st.cores, st.threads) : t("mo_threads", st.threads)) : "", h.cpu, 100);
+  const big = hw.disk_read_mb >= 1000;
+  monTile("disk", hw.disk_read_mb == null ? null : big ? mfmt(hw.disk_read_mb / 1024, 2) : mfmt(hw.disk_read_mb, hw.disk_read_mb < 10 ? 1 : 0), big ? "GB/s" : "MB/s",
+    hw.disk_write_mb == null ? "" : t("mo_disk_w", mfmt(hw.disk_write_mb, 1)), h.disk_read_mb);
+  /* 资源: 上下文 = 在跑的请求, 空闲时看上一条 */
+  const ctx = eng.max_context || 0;
+  const used = live.state !== "idle" ? (live.prompt_tokens || 0) + (live.generated || 0) : last ? (last.prompt_tokens || 0) + (last.output_tokens || 0) : 0;
+  const frac = ctx ? Math.min(1, used / ctx) : 0;
+  monBar("mon-ctx", used > 0 ? Math.max(0.005, frac) : 0, ctx ? t("mo_ctx_v", mfmt(used), mctx(ctx), mpct(frac)) : "–");   /* 用了就至少画半个百分点: 0.3% 按比例画不出来 */
+  const ramFrac = hw.ram_total ? hw.ram_used / hw.ram_total : 0;
+  monBar("mon-ram", ramFrac, hw.ram_total ? t("mo_ram_v", mgb(hw.ram_used), mgb(hw.ram_total, 0)) : "–", ramFrac > 0.92 ? "bad" : "");
+  monBar("mon-exp", eng.expert_slots ? 1 : 0, eng.expert_slots ? t("mo_exp_n", mfmt(eng.expert_slots)) : t("mo_exp_all"));
+  const gen = hw.gpu_pcie_gen_max || hw.gpu_pcie_gen;
+  monFacts($("mon-facts"), [
+    [t("mo_f_backend"), eng.backend ? `${eng.backend}${eng.variant ? ` · ${eng.variant}` : ""}` : null],
+    [t("mo_f_ctx"), ctx ? `${mctx(ctx)} token` : null], [t("mo_f_par"), eng.batch >= 2 ? t("mo_f_lanes", eng.batch) : t("mo_f_single")],
+    [t("mo_f_spec"), eng.spec == null ? null : eng.spec ? t("mo_on") : t("mo_off")],
+    [t("mo_f_gpu"), st.gpu_name ? (hw.gpu_mem_total ? `${st.gpu_name}, ${mgb(hw.gpu_mem_total, 0)} GB` : st.gpu_name) : null],
+    [t("mo_f_pcie"), gen && hw.gpu_pcie_rx_mb != null ? t("mo_pcie_rx", gen, hw.gpu_pcie_width || "?", mfmt(hw.gpu_pcie_rx_mb, hw.gpu_pcie_rx_mb < 10 ? 1 : 0)) : null],   /* 统一内存(GB10)没有 PCIe 搬运: 不出这行 */
+    [t("mo_f_cpu"), st.cpu_name], [t("mo_f_img"), eng.images == null ? null : eng.images ? t("mo_on") : t("mo_off")],
+  ]);
+  /* 最近请求 */
+  const body = $("mon-reqs"), fin = { stop: ["green", "mo_fin_stop"], tool_calls: ["green", "mo_fin_tool_calls"], length: ["", "mo_fin_length"], cancel: ["amber", "mo_fin_cancel"], disconnect: ["amber", "mo_fin_disconnect"], error: ["red", "mo_fin_error"] };
+  const rows = reqs.map(r => {
+    const [cls, key] = fin[r.finish] || ["", null], tr = node("tr"), tdS = node("td");
+    tdS.appendChild(node("span", "badge" + (cls ? " " + cls : ""), key ? t(key) : (r.finish || "–")));
+    tr.append(node("td", null, new Date(r.time * 1000).toLocaleTimeString(locale())), tdS, node("td", "muted", `${r.api || ""}${r.stream ? t("mo_stream") : ""}`),
+      node("td", "num", mfmt(r.prompt_tokens)), node("td", "num", mfmt(r.reused)), node("td", "num", mfmt(r.output_tokens)), node("td", "num", mfmt(r.decode_tok_s, 1)),
+      node("td", "num", r.drafts_offered == null ? "–" : `${mfmt(r.drafts_accepted)}/${mfmt(r.drafts_offered)}`),
+      node("td", "num", r.first_token_s == null ? "–" : `${mfmt(r.first_token_s, 2)} s`), node("td", "num", `${mfmt(r.duration_s, 1)} s`));
+    return tr;
+  });
+  if (!rows.length) { const tr = node("tr"), td = node("td", "muted", t("mo_none")); td.colSpan = 10; tr.appendChild(td); rows.push(tr); }
+  body.replaceChildren(...rows);
+  const kept = m.requests_kept == null ? reqs.length : m.requests_kept;
+  $("mon-all").hidden = kept <= 12; $("mon-all").textContent = monAll ? t("mo_fewer") : t("mo_all", kept);
+  const tt = m.totals;
+  if (tt && tt.requests) {
+    const read = tt.prompt_tokens - tt.reused, since = new Date(tt.since * 1000).toLocaleString(locale(), { weekday: "short", hour: "2-digit", minute: "2-digit" });
+    const pS = tt.prompt_ms > 0 && read > 0 ? t("mo_tot_speed", mfmt(read / (tt.prompt_ms / 1000))) : "";
+    const oS = tt.decode_ms > 0 && tt.output_tokens > 0 ? t("mo_tot_speed", mfmt(tt.output_tokens / (tt.decode_ms / 1000), 1)) : "";
+    const dr = tt.drafts_offered > 0 ? t("mo_tot_drafts", mfmt(100 * tt.drafts_accepted / tt.drafts_offered, 1)) : "";
+    $("mon-totals").textContent = t("mo_totals", since, mfmt(tt.requests), mfmt(read), pS, mfmt(tt.reused), mfmt(tt.output_tokens), oS, dr);
+  } else $("mon-totals").textContent = "";
+  /* 磁盘 KV 缓存: 只在开了时出卡(V4.1 服务路没有会话 KV, 表里的"复用"就是命中的活 KV 前缀) */
+  const c = m.conversation_cache; $("mon-cc").hidden = !(c && c.enabled);
+  if (c && c.enabled) {
+    const budget = (c.budget_mib || 0) * 1048576;
+    monBar("mon-cc-bar", budget ? c.bytes / budget : 0, budget ? t("mo_cc_mem", mgb(c.bytes, 2), mgb(budget, 1)) : mgb(c.bytes, 2) + " GB");
+    $("mon-cc-sum").textContent = c.requests ? t("mo_cc_sum", mfmt(c.requests_reused), mfmt(c.requests)) : "";
+    monFacts($("mon-cc-facts"), [[t("mo_cc_parked"), mfmt(c.parked)], [t("mo_cc_pr"), `${mfmt(c.parks)} / ${mfmt(c.restores)}${c.evictions ? t("mo_cc_evicted", mfmt(c.evictions)) : ""}`]]);
+  }
+}
 
 /* ---------------- API 密钥(服务端 src/train/train_keys.c) ----------------
    列表 GET /api/keys/list; 建 POST /api/keys/create {name} → {key}(完整密钥只这一次); 删 POST /api/keys/delete {id}。
