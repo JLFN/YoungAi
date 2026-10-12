@@ -247,6 +247,7 @@
   .mcard .nm { font-weight: 600; word-break: break-all; }
   .mcard .row { display: flex; gap: 8px; align-items: center; }
   .mcard select { flex: 1; min-width: 0; font-size: 13px; }
+  .mcard .mdel { padding: 6px 8px; color: var(--dim); display: inline-flex; } .mcard .mdel:hover:not(:disabled) { color: #fca5a5; border-color: rgba(239,68,68,.6); }
   .chips { display: flex; gap: 6px; flex-wrap: wrap; }
   .cur { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
   .cur img { width: 46px; height: 46px; border-radius: 50%; }
@@ -824,7 +825,8 @@ const I18N = {
     m_busy_train: "训练中, 模型被训练占着", m_busy_load: "正在加载…", m_none: "没有装着的模型", m_next: "下次起服用: {0}", m_next_pt: " + 后训练 {0}",
     ms_serving: "服务中", ms_training: "训练中", ms_loading: "加载中", ms_lobby: "未加载", m_loadlog: "最近一次加载的日志",
     m_mem: "本机内存 {0} GB", m_local: "本机模型", m_nolocal: "gguf/ 下还没有模型(≥8 GB 的 .gguf)。在下面从 Hugging Face 下载。",
-    m_pkg: "下载包", m_inuse: "使用中", m_load: "加载", m_engram: "n-gram 表: {0}",
+    m_pkg: "下载包", m_inuse: "使用中", m_load: "加载", m_del: "删除这个模型", m_del_using: "正在用的模型不能删, 先换成别的", m_del_picked: "这是下次要装的模型, 先换成别的再删",
+    m_del_q: "删除 {0}?\n文件 {1}, 腾出 {2}。\n它的 {3} 个侧车目录留着(很小, 同名模型放回来自动配上)。删了不能恢复。", m_del_done: "已删除 {0}, 腾出 {1}", m_engram: "n-gram 表: {0}",
     m_hub: "从 Hugging Face 下载", m_ep: "下载源", m_ep_hf: "Hugging Face 官方", m_ep_mirror: "hf-mirror.com 镜像(国内)",
     m_eg: "本机已有的官方 n-gram 分片目录(填了就不下那 203 GB)", m_eg_ph: "例如 hf/DeepSeek-V4.1-Flash, 不填就下载", m_noxet: "不走 Xet 通道(代理总掐连接时勾)",
     m_dl: "下载", m_cancel: "取消下载", m_dl_resume: "继续下载", m_dl_verify: "重新校验 / 补齐",
@@ -955,7 +957,8 @@ const I18N = {
     m_busy_train: "Training; the model is in use by training", m_busy_load: "Loading…", m_none: "No model loaded", m_next: "Next start uses: {0}", m_next_pt: " + post-train {0}",
     ms_serving: "Serving", ms_training: "Training", ms_loading: "Loading", ms_lobby: "Not loaded", m_loadlog: "Log of the last load",
     m_mem: "{0} GB memory", m_local: "Local models", m_nolocal: "No models under gguf/ yet (.gguf ≥8 GB). Download one from Hugging Face below.",
-    m_pkg: "Downloaded", m_inuse: "In use", m_load: "Load", m_engram: "n-gram table: {0}",
+    m_pkg: "Downloaded", m_inuse: "In use", m_load: "Load", m_del: "Delete this model", m_del_using: "The model in use can't be deleted; switch to another first", m_del_picked: "This is the model loaded next; switch to another first",
+    m_del_q: "Delete {0}?\nFile {1}, frees {2}.\nIts {3} sidecar folders stay (they are small and pair up again if the same model comes back). This can't be undone.", m_del_done: "Deleted {0}, freed {1}", m_engram: "n-gram table: {0}",
     m_hub: "Download from Hugging Face", m_ep: "Source", m_ep_hf: "Hugging Face (official)", m_ep_mirror: "hf-mirror.com mirror (China)",
     m_eg: "Existing local folder with the official n-gram shards (fill it in to skip the 203 GB)", m_eg_ph: "e.g. hf/DeepSeek-V4.1-Flash; leave empty to download", m_noxet: "Don't use Xet (tick if your proxy keeps dropping connections)",
     m_dl: "Download", m_cancel: "Cancel download", m_dl_resume: "Resume download", m_dl_verify: "Re-verify / fill gaps",
@@ -1924,7 +1927,14 @@ function renderLocal(d, mode) {
     const same = using && (d.loaded.zchain || "none") === sel.value, b = node("button", same ? "ghost" : "primary", t(same ? "m_inuse" : "m_load"));
     b.disabled = same || mode === "loading" || !!switching; b.onclick = () => loadModel(m.path, sel.value);
     sel.addEventListener("change", () => { const s2 = using && (d.loaded.zchain || "none") === sel.value; b.textContent = t(s2 ? "m_inuse" : "m_load"); b.className = s2 ? "ghost" : "primary"; b.disabled = s2; });
-    r.appendChild(sel); r.appendChild(b); c.appendChild(r);
+    /* 删除: 正在用的、下次要装的不让删(服务端也拒), 训练 / 加载中也不让 —— 删了起服就找不到文件 */
+    const del = node("button", "ghost mdel"); del.title = t("m_del"); del.setAttribute("aria-label", t("m_del"));
+    del.innerHTML = '<svg class="i" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>';   /* 固定图标, 不含数据 */
+    const picked = d.pick && d.pick.gguf === m.path;
+    del.disabled = using || picked || mode === "loading" || mode === "training" || !!switching;
+    if (using || picked) del.title = t(using ? "m_del_using" : "m_del_picked");
+    del.onclick = () => deleteModel(m);
+    r.appendChild(sel); r.appendChild(b); r.appendChild(del); c.appendChild(r);
     if (m.engram) c.appendChild(node("div", "muted", t("m_engram", m.engram)));
     box.appendChild(c);
   });
@@ -1979,6 +1989,15 @@ $("m-cancel").onclick = async () => {
   try { const r = await getJSON("/api/models/cancel", { method: "POST" }); toast(r.ok ? t("dl_cancelled") : t("fail", r.error), !r.ok); } catch (e) { toast(t("not_sent", e), true); }
   setTimeout(loadModels, 2500);
 };
+/* 删模型: 只删 GGUF 本体(服务端 train_models.c 的 api_delete), 侧车目录留着 —— 确认框里写清楚, 免得以为侧车也没了 */
+async function deleteModel(m) {
+  if (!(await ask(t("m_del_q", modelName(m.path), m.path, GB(m.bytes), m.sidecars.length), true, t("ask_del")))) return;
+  try {
+    const r = await getJSON("/api/models/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ gguf: m.path }) });
+    if (r.ok) toast(t("m_del_done", modelName(m.path), GB(m.bytes))); else toast(t("fail", r.error), true);
+  } catch (e) { toast(t("not_sent", e), true); }
+  loadModels();
+}
 async function loadModel(gguf, sidecar) {
   const mode = status ? status.mode : "";
   if (mode === "serving" && !(await ask(t("ld_confirm", modelName(gguf))))) return;

@@ -12,8 +12,10 @@
 #include "train_internal.h"
 #include "../common/ds4_gr_fnv.h"   /* ③ 配 ② 的指纹: 与引擎核对、解算器落盘同一份算法 */
 #include <dirent.h>
+#include <errno.h>
 #include <sys/stat.h>
 #include <time.h>
+#include <unistd.h>
 #ifdef __APPLE__
 #include <sys/sysctl.h>
 #endif
@@ -397,6 +399,32 @@ static int api_plugins(const tr_req *rq, ds4_buf *out, int serving) {
     return reply(out, true, false, "", 200);
 }
 
+/* 删本机模型(只在主进程): 只删 GGUF 本体。侧车目录留着 —— 每个几十 MB, 是反修跑出来的(可能几个小时), 同名 GGUF 放回来自动配上;
+ * n-gram 表几个模型共用, 也不动。正在用 / 下次要装(serve_pick.txt) / 训练或加载中 / 下载包下载中, 一律拒: 删了起服就找不到文件 */
+static int api_delete(const tr_req *rq, ds4_buf *out, int serving) {
+    char g[TR_PATH], ga[TR_PATH * 2 + 8], err[256] = "";
+    if (serving) return reply(out, false, false, "这是模型子进程; 删模型要从主进程 ds4-train 的页面操作", 409);
+    tr_body_get(rq, "gguf", g, sizeof g);
+    snprintf(ga, sizeof ga, "%s/%s", tr_root, g);
+    struct stat st;   /* lstat: 软链(ds4flash.gguf 这类别名)不删, 只认真文件 */
+    if (!tr_clean(g, "._/-") || strstr(g, "..") || strncmp(g, "gguf/", 5) || !ends_with(g, ".gguf") || lstat(ga, &st) || !S_ISREG(st.st_mode))
+        return reply(out, false, false, "模型路径不合法或不存在", 400);
+    const tr_model_phase mp = tr_model_state();
+    tr_job_info j; tr_job_status(&j);
+    if (j.active) return reply(out, false, false, "正在训练, 训完再删", 409);
+    if (mp == TR_MODEL_STARTING || mp == TR_MODEL_STOPPING) return reply(out, false, false, "正在加载模型, 等它装完再删", 409);
+    char lg[TR_PATH * 2 + 8], lz[TR_PATH * 2 + 8], lp[TR_PATH * 2 + 8], serr[256]; int pending = 0;
+    current_trio(lg, sizeof lg, lz, sizeof lz, lp, sizeof lp, &pending, serr, sizeof serr);
+    if (tr_model_live() && lg[0] && !strcmp(rel(lg), g)) return reply(out, false, false, "这个模型正在用, 先换成别的再删", 409);
+    read_pick(lg, sizeof lg, lz, sizeof lz, lp, sizeof lp);
+    if (lg[0] && !strcmp(rel(lg), g)) return reply(out, false, false, "这是下次要装的模型(serve_pick.txt), 先换成别的再删", 409);
+    tr_procs p; tr_proc_scan(&p);
+    if (p.dl && !strncmp(g, "gguf/hub/", 9)) return reply(out, false, false, "下载包正在下载, 先取消或等它下完", 409);
+    if (unlink(ga)) { snprintf(err, sizeof err, "删不掉 %s: %s", g, strerror(errno)); return reply(out, false, false, err, 500); }
+    tr_logf(stderr, "ds4-train: 删了模型 %s (%lld 字节)", g, (long long)st.st_size);
+    return reply(out, true, false, "", 200);
+}
+
 int tr_models_api(const tr_req *rq, ds4_buf *out, int serving, int port) {
     if (strncmp(rq->path, "/api/models/", 12)) return -1;
     const char *op = rq->path + 12;
@@ -408,6 +436,7 @@ int tr_models_api(const tr_req *rq, ds4_buf *out, int serving, int port) {
     if (!strcmp(op, "cancel")) { snprintf(hub, sizeof hub, "%s/gguf/hub", tr_root); const bool ok = tr_cancel_download(hub, err, sizeof err); return reply(out, ok, false, err, 409); }
     if (!strcmp(op, "load")) return api_load(rq, out, serving, port);
     if (!strcmp(op, "plugins")) return api_plugins(rq, out, serving);
+    if (!strcmp(op, "delete")) return api_delete(rq, out, serving);
     ds4_buf_puts(out, "{\"error\":\"没有这个路径\"}");
     return 404;
 }

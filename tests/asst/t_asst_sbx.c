@@ -183,6 +183,7 @@ int main(int argc, char **argv) {
     g_fail += asst_test_logic(base);
     { extern int studio_auth_test(const char *base); g_fail += studio_auth_test(base); }
     { extern int studio_net_test(const char *base); g_fail += studio_net_test(base); }
+    { extern int studio_models_test(const char *base); g_fail += studio_models_test(base); }
     char rm[4400]; snprintf(rm, sizeof rm, "rm -rf '%s'", base); if (system(rm)) {}
     printf("asst: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail ? 1 : 0;
