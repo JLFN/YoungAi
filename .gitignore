@@ -51,6 +51,8 @@ gguf-tools/zrec_to_zchain
 # 编译产物
 route_alpha_set
 /gguf-tools/quantize/v41_to_gguf
+/gguf-tools/tts/onnx_to_gguf
+/ds4_tts_test
 /gguf-tools/amp/finetune_solve
 /.playwright-mcp/
 /gguf-tools/bench/dspark_agree

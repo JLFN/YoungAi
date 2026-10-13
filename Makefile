@@ -53,6 +53,10 @@ OFFICE_OBJS := $(OFFICE_SRCS:.c=.o)
 # 视频格式基元(src/video/: H.264 Baseline 编码 + MP4 封装, 方案稿 docs/assistant_video.md); 纯主机 C, 零依赖(不用 ffmpeg)
 VIDEO_SRCS := $(sort $(wildcard src/video/*.c))
 VIDEO_OBJS := $(VIDEO_SRCS:.c=.o)
+# 旁白小模型(src/tts/: Piper VITS 的 C 推理, 权重是自家 GGUF; 方案稿 docs/assistant_video.md §3.3); 纯主机 C, 只在沙盒子进程里按需加载
+TTS_SRCS := $(sort $(wildcard src/tts/*.c))
+TTS_OBJS := $(TTS_SRCS:.c=.o)
+TTS_LINK := $(TTS_OBJS) src/common/ds4_gguf.o src/common/ds4_quantfmt.o
 # WEB 模块(重构阶段3: ds4_web.c 拆分为 src/web/*.c; 纯主机 C)
 WEB_SRCS := $(wildcard src/web/*.c)
 WEB_OBJS := $(WEB_SRCS:.c=.o)
@@ -267,6 +271,11 @@ src/video/%.o: src/video/%.c src/video/ds4_video.h src/video/video_internal.h sr
 # 视频单测: 规范向量逐位 + 码表无前缀冲突 + 合成 1080p 编两遍逐字节同; macOS 上再让系统解码器(vidcheck)解回来与重建逐字节比
 ds4_video_test: tests/video/t_video.c $(VIDEO_OBJS) src/common/ds4_json.o
 	$(CC) $(CFLAGS) -o $@ tests/video/t_video.c $(VIDEO_OBJS) src/common/ds4_json.o $(LDLIBS)
+src/tts/%.o: src/tts/%.c src/tts/ds4_tts.h src/tts/tts_internal.h src/common/ds4_gguf.h
+	$(CC) $(CFLAGS) -c -o $@ $<
+# 旁白小模型判决: 同一串音素 id 与官方 piper 噪声全 0 的波形逐样本对拍(夹具 tests/tts/fixtures; 模型 gguf/tts/zh-huayan.gguf 缺就 SKIP)
+ds4_tts_test: tests/tts/t_tts.c $(TTS_LINK)
+	$(CC) $(CFLAGS) -o $@ tests/tts/t_tts.c $(TTS_LINK) $(LDLIBS)
 tests/video/vidcheck: tests/video/vidcheck.m
 	$(CC) -O2 -fobjc-arc -Wall -o $@ $< -framework Foundation -framework AVFoundation -framework CoreMedia -framework CoreVideo
 ifeq ($(UNAME_S),Darwin)
@@ -450,10 +459,12 @@ ds4_unit: tests/unit/test_common.c tests/unit/test_zmod.c tests/unit/t_zfinetune
 	$(CC) $(CFLAGS) -Isrc/common -I. -o $@ tests/unit/test_common.c tests/unit/test_zmod.c tests/unit/t_zfinetune.c tests/unit/t_sha256.c \
 	    src/common/ds4_sha256.c src/common/ds4_quantfmt.c src/common/ds4_gguf.c ds4_z.c ds4_zchain.c ds4_zfinetune.c ds4_loss.c $(LDLIBS)
 
-test: ds4_test ds4-eval ds4_unit ds4_asst_test ds4_office_test ds4_video_test linecount
+test: ds4_test ds4-eval ds4_unit ds4_asst_test ds4_office_test ds4_video_test ds4_tts_test linecount
 	./ds4_unit
 	./ds4_office_test
 	./ds4_video_test
+	./ds4_tts_test gguf/tts/zh-huayan.gguf tests/tts/fixtures zh
+	./ds4_tts_test gguf/tts/en-lessac.gguf tests/tts/fixtures en
 	./ds4_asst_test
 	./ds4-eval --self-test-extractors
 	./ds4_test

@@ -389,6 +389,12 @@ vq_blob_truesize: $(CAL)/vq_blob_truesize
 $(CAL)/vq_blob_truesize: $(CAL)/vq_blob_truesize.c
 	$(CC) $(BARE) $(NATIVE) -o $@ $< -lm -lpthread
 
+# 旁白小模型转换: Piper VITS 的 .onnx(+ .onnx.json 音素表/默认档) → 自家 GGUF(引擎 src/tts 只认这个); 自带最小 protobuf 读取, 零依赖
+.PHONY: onnx_to_gguf
+onnx_to_gguf: tts/onnx_to_gguf
+tts/onnx_to_gguf: tts/onnx_to_gguf.c tts/onnx_pb.h ../src/common/ds4_gguf_write.h
+	$(CC) $(BARE) -std=c99 -Wall -D_POSIX_C_SOURCE=200809L -o $@ tts/onnx_to_gguf.c -lm
+
 dump_gguf_meta: dump_gguf_meta.bin
 .PHONY: dump_gguf_meta.bin
 dump_gguf_meta.bin: $(QZ)/dump_gguf_meta.c
