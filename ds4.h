@@ -7,18 +7,13 @@
 #include <stdio.h>
 
 /* Public engine boundary.
- *
  * The CLI and server should treat ds4_engine as the loaded model and
  * ds4_session as one mutable inference timeline.  A session owns the live KV
  * cache and logits; callers provide full token prefixes and let
  * ds4_session_sync() reuse, extend, or rebuild the graph state.  Keep this
  * header narrow so HTTP/CLI code does not depend on tensor internals. */
 
-typedef enum {
-    DS4_BACKEND_METAL,
-    DS4_BACKEND_CUDA,
-    DS4_BACKEND_CPU,
-} ds4_backend;
+typedef enum { DS4_BACKEND_METAL, DS4_BACKEND_CUDA, DS4_BACKEND_CPU } ds4_backend;
 
 typedef enum {
     DS4_THINK_NONE,
@@ -51,9 +46,8 @@ typedef struct {
 } ds4_token_score;
 
 /* 采样默认=模型卡官方评测配方(温 1.0/top_p 0.95/无 min_p), 各入口不带参数都落这里; min_p 非 0 在复读区砍光备选=退回贪心(09-28 实测死循环)。
- * top_p 为什么是 0.95 不是 1.0(2026-10-12, 用户定): 1.0 = 整个 129,280 词表按分布抽, 对 2 位量化模型(p(top-1) 第 10 分位只有 0.3)
- * 每 ~160 个 token 就抽出一个 top-32 外的词, 9.5k token 的 SVG 里混进 `#fant`/`排队`/`自行面`(忠实度门证明采样器没错, 是分布的尾巴);
- * 0.95 是 hf 模型卡评测用的值, 只动 ~2.4% 的采样位, 把 ≤1e-4 的垃圾切掉。改回 1.0 乱码就回来。 */
+ * top_p 0.95 不是 1.0(2026-10-12 用户定): 1.0 = 整个 129,280 词表按分布抽, 2 位量化模型每 ~160 token 抽出一个 top-32 外的词(SVG 里混进 `#fant`/`排队`;
+ * 忠实度门证明采样器没错, 是分布尾巴); 0.95 是 hf 模型卡评测值, 只动 ~2.4% 采样位, 切掉 ≤1e-4 的垃圾。改回 1.0 乱码就回来。 */
 #define DS4_DEFAULT_TEMPERATURE 1.0f
 #define DS4_DEFAULT_TOP_P 0.95f
 #define DS4_DEFAULT_MIN_P 0.0f
