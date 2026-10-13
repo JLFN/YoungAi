@@ -6,12 +6,15 @@
  * 一 warp 一 token: lane 持 12 个专家(384/32), topk 每轮一次 warp argmax(同分取小号, 与顺序扫同语义)。
  * 第一版一 block 一 token、线程 0 串行 6×384 扫: nsys 实测 400 µs/层 = 16 ms/token。 */
 #define V41_ROUTER_PER_LANE 12u
-__global__ static void v41_router_kernel(int32_t *sel, float *wts, const float *logits, const float *bias,
+__global__ static void v41_router_kernel(int32_t *sel, float *wts, const float *logits, const float *bias_txt,
+                                         const float *bias_vl, const int32_t *vl_rows,
                                          uint32_t n_tok, uint32_t n_expert, uint32_t topk, float route_scale) {
     v41_pdl_wait();   /* PDL: 第一句就等上游(见 cuda_internal.cuh); 不经 PDL 发射时立即返回 */
     const uint32_t t = blockIdx.x * (blockDim.x >> 5) + (threadIdx.x >> 5), lane = threadIdx.x & 31u;
     if (t >= n_tok) return;
     const float *lg = logits + (uint64_t)t * n_expert;
+    /* 图片位置换 bias_vl(官方 torch.where(image_mask, bias_vl, bias)); 一个 token 的 32 个 lane 读同一个判断, 不分叉 */
+    const float *bias = (bias_vl && vl_rows && vl_rows[t] >= 0) ? bias_vl : bias_txt;
     float pr[V41_ROUTER_PER_LANE], sc[V41_ROUTER_PER_LANE];
     #pragma unroll
     for (uint32_t k = 0; k < V41_ROUTER_PER_LANE; k++) {
@@ -76,15 +79,25 @@ int ds4_gpu_v41_set_rb_override(const void *model_map, uint64_t model_size, uint
     return ok;
 }
 
+/* 盘上 bias(或挂了侧车的那份)的设备指针; 文本 bias 与图片 bias_vl 同一条取法, 侧车 Δb 按偏移认 —— 没给 vl 偏置的层(V4 / 老 GGUF)就只有文本那份 */
+static const float *v41_router_bias_ptr(const void *model_map, uint64_t model_size, uint64_t off, uint32_t n_expert, const char *what) {
+    if (off > model_size || (uint64_t)n_expert * 4 > model_size - off) return NULL;
+    const float *bias = (const float *)cuda_model_range_ptr(model_map, off, (uint64_t)n_expert * 4, what);
+    if (!bias) return NULL;
+    for (uint32_t i = 0; i < g_v41_rb_n; i++) if (g_v41_rb[i].off == off && g_v41_rb[i].n == n_expert) return g_v41_rb[i].dev;
+    return bias;
+}
 int ds4_gpu_v41_router_tensor(ds4_gpu_tensor *selected, ds4_gpu_tensor *weights, const ds4_gpu_tensor *logits,
                               const void *model_map, uint64_t model_size, uint64_t bias_offset,
+                              const ds4_gpu_tensor *bias_vl, const ds4_gpu_tensor *vl_rows,
                               uint32_t n_tok, uint32_t n_expert, uint32_t topk, float route_scale) {
     if (!selected || !weights || !logits || topk > 16u || n_expert > 32u * V41_ROUTER_PER_LANE) return 0;
-    const float *bias = (const float *)cuda_model_range_ptr(model_map, bias_offset, (uint64_t)n_expert * 4, "v41 gate bias");
+    const float *bias = v41_router_bias_ptr(model_map, model_size, bias_offset, n_expert, "v41 gate bias");
     if (!bias) return 0;
-    for (uint32_t i = 0; i < g_v41_rb_n; i++) if (g_v41_rb[i].off == bias_offset && g_v41_rb[i].n == n_expert) { bias = g_v41_rb[i].dev; break; }
+    const bool vl = bias_vl && vl_rows && bias_vl->ptr && vl_rows->ptr;
     v41_router_kernel<<<(n_tok + 7u) / 8u, 256, 0, g_cur_stream>>>((int32_t *)selected->ptr, (float *)weights->ptr,
-        (const float *)logits->ptr, bias, n_tok, n_expert, topk, route_scale);
+        (const float *)logits->ptr, bias, vl ? (const float *)bias_vl->ptr : NULL, vl ? (const int32_t *)vl_rows->ptr : NULL,
+        n_tok, n_expert, topk, route_scale);
     return cuda_ok(cudaGetLastError(), "v41 router");
 }
 

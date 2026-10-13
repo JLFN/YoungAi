@@ -33,7 +33,8 @@ bool parse_chat_request(ds4_engine *e, server *s, const char *body, int def_toke
         p++;
         if (!strcmp(key, "messages")) {
             chat_msgs_free(&msgs);
-            if (!parse_messages(&p, &msgs)) {
+            img_sink sk = { ds4_engine_mm(e), e, r };   /* image_url 分块: 有视觉塔进请求, 否则按老规矩拒 */
+            if (!parse_messages(&p, &msgs, &sk)) {
                 free(key);
                 goto bad;
             }
@@ -209,6 +210,7 @@ bool parse_chat_request(ds4_engine *e, server *s, const char *body, int def_toke
     ds4_tokenize_rendered_chat(e, r->prompt_text, &r->prompt);
     chat_msgs_free(&msgs);
     free(tool_schemas);
+    if (!request_expand_images(e, r, err, errlen)) { request_free(r); return false; }   /* 占位 → 图片 span(无图是空操作) */
     return true;
 bad:
     chat_msgs_free(&msgs);

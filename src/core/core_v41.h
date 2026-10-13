@@ -67,6 +67,10 @@ typedef struct {
     uint32_t n_past;            /* 已入缓存的位置数 */
     uint32_t n, pos0;           /* 本 chunk: token 数, 起始绝对位置 */
     int32_t *hist;              /* 主机 token 历史 [ctx](engram 哈希回看 3 个 token 要跨 chunk) */
+    uint8_t *himg;              /* 主机 [ctx]: 该位置是图片 span 的一位(engram 哈希回看撞到它就停, 官方 NgramHashState 的 DEAD) */
+    const struct ds4_v41_images *vimg;   /* 本次预填的图片(core_v41_vision.c); 只在 v41_forward 的一块里被读, 解码/草稿态恒 NULL */
+    ds4_gpu_tensor *vrows;      /* i32 [cap]: 本块各行在 vimg->embd 里的行号(-1 = 文本); vrows_on = 本块真有图片位置(块结束即清零) */
+    int vrows_on;
     ds4_gpu_tensor *tok, *pos, *posg;                    /* i32 [cap]: id / 绝对位置; i32 [cap]: 新组位置 g·ratio */
     int32_t *posg_pin[DS4_MAX_LAYER];   /* 压缩源层各自的 pinned 位置槽 [cap](零拷贝小核按流灌进 posg; 同步 memcpy 会把并发道串行化, 2026-09-30) */
     ds4_gpu_tensor *hc, *hc2;   /* [cap][hc][E] 残差四路, 乒乓 */
@@ -341,8 +345,8 @@ bool v41_engram_apply(ds4_engine *e, ds4_v41_state *st, uint32_t il);   /* core_
 extern int g_ds4_v41_chunk;   /* --v41-chunk(core_v41_api.c): 预填分块, 0 = DS4_V41_CHUNK */
 /* 单请求路的 KV 前缀复用(core_v41_kvreuse.c): 预填完存检查点 / 新请求接上就从检查点位置起填(返回起点, 0 = 整段, = np 同提示一块不填) / 热切插件时作废 */
 extern int g_ds4_v41_kv_reuse;
-void v41_kvreuse_save(const ds4_v41_state *st, const int32_t *prompt, uint32_t np);
-uint32_t v41_kvreuse_restore(ds4_v41_state *st, const int32_t *prompt, uint32_t np);
+void v41_kvreuse_save(const ds4_v41_state *st, const int32_t *prompt, uint32_t np, const uint64_t *sig);        /* sig = 每位的图片指纹(无图 NULL) */
+uint32_t v41_kvreuse_restore(ds4_v41_state *st, const int32_t *prompt, uint32_t np, const uint64_t *sig);
 void v41_kvreuse_drop(void);
 #define DS4_V41_LOGIT_LOG 1024   /* 逐步 logits 指纹最多记几步(core_v41_sample.c) */
 void v41_logit_log_reset(void);
@@ -391,6 +395,38 @@ bool v41_tproj_grouped(const ds4_model *m, ds4_gpu_tensor *low, const ds4_tensor
 bool v41_embed(const ds4_model *m, ds4_gpu_tensor *out, const ds4_gpu_tensor *tok, const ds4_tensor *w,
                uint64_t n_vocab, uint32_t n, uint64_t dim);
 bool v41_draft_push_main(ds4_engine *e, ds4_v41_state *st, uint32_t rows);   /* core_v41_attn.c: 已确认位置的 main_x 进各塔窗口 */
+/* ---- 视觉(2026-10-13; core_v41_image.c 预处理 / core_v41_vision.c 编码与 span 展开; 官方 inference/image_processor.py + vision.py) ----
+ * 一张图 = 提示里的一个 span: [start] + ([img]·n_llm_w + [newline])·n_llm_h + [end], 全是 image_token_id, 位置靠类型分;
+ * 预填前 v41_vision_encode 把每个 span 每一位的向量(定界向量 / aligner 行)按 span 顺序铺进 embd, v41_forward 按块行号盖掉词嵌入。 */
+typedef struct {
+    uint32_t start, n_tok;              /* span 在(展开后)提示里的起始位置与长度 */
+    uint32_t n_vit_h, n_vit_w;          /* ViT patch 网格 */
+    uint32_t n_llm_h, n_llm_w;          /* aligner 之后的 token 网格 */
+    uint32_t row0;                      /* 在 embd 里的首行 */
+    uint64_t sig;                       /* 图片字节的 FNV-1a(KV 复用对账: 同 token 不同图不能接) */
+    float *patches;                     /* 主机 [n_vit_h·n_vit_w][3·p·p], bf16 格点; 编码完释放 */
+} v41_image;
+struct ds4_v41_images {
+    v41_image *img; uint32_t n;
+    uint32_t np, n_rows;                /* 展开后的提示长 / embd 行数(Σ n_tok) */
+    int32_t *row_of;                    /* [np] 位置 → embd 行(-1 文本) */
+    uint64_t *sig_of;                   /* [np] 位置 → 所属图片的 sig(0 文本) */
+    ds4_gpu_tensor *embd;               /* [n_rows][E] f32 */
+    int encoded;
+};
+/* 官方 plan_image_grid + load_image 的尺寸账: 原图 w×h → ViT 网格 / token 网格 / 缩放补边后的像素尺寸。false = 装不进 max_image_tokens */
+bool v41_image_plan(uint32_t w, uint32_t h, uint32_t *n_vit_h, uint32_t *n_vit_w, uint32_t *n_llm_h, uint32_t *n_llm_w, uint32_t *best_w, uint32_t *best_h);
+/* 解码(stb_image) → 官方 ImageOps.pad(双三次, 灰 127 补边; PIL 的定点卷积逐式) → 归一化舍 bf16 → 切 patch。返回 malloc 的 [n_vit][3·p·p], 失败 NULL + err */
+float *v41_image_patches(const uint8_t *bytes, size_t len, uint32_t *n_vit_h, uint32_t *n_vit_w, uint32_t *n_llm_h, uint32_t *n_llm_w, char *err, size_t errn);
+/* 只做预处理里"缩放+补边"这一步(金标夹具与 --vision-golden 对拍用): 返回 malloc 的 RGB8 [best_h][best_w][3] */
+uint8_t *v41_image_resize_pad(const uint8_t *rgb, uint32_t w, uint32_t h, uint32_t best_w, uint32_t best_h);
+/* 跑 ViT + aligner, 填 imgs->embd(每个 span 每一位一行); 已编码直接返回 true。第一次还顺手把各层 bias_vl 上传成设备张量 */
+bool v41_vision_encode(ds4_engine *e, struct ds4_v41_images *imgs);
+/* 各层路由的图片位偏置(官方 gate.bias_vl)设备副本 [n_expert] f32(core_v41_vision.c 懒建, 40 × 384 × 4 B): 张量住侧车文件, 与主映射不是
+ * 一个文件, 所以不按偏移给路由核而是上传一份; NULL = 还没传(没图片进来过) —— v41_moe 只在块里有图片位时才读它 */
+extern ds4_gpu_tensor *g_v41_bias_vl[DS4_MAX_LAYER];
+/* 单张图的 ViT + aligner(--vision-golden 对拍用): patches[n_vit][3·p·p] 主机 → out[n_llm_h·n_llm_w][E] 主机(malloc) */
+float *v41_vision_run(ds4_engine *e, const float *patches, uint32_t n_vit_h, uint32_t n_vit_w, uint32_t *n_llm_h, uint32_t *n_llm_w);
 bool v41_engram(ds4_engine *e, ds4_v41_state *st, uint32_t il);      /* core_v41_engram.c: 就地改 st->hc(engram 层才调) */
 bool v41_engram_prefetch(ds4_engine *e, ds4_v41_state *st);          /* 前向开头: 所有 engram 层的行一次性后台并行 pread */
 void v41_engram_close(ds4_v41_state *st);

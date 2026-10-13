@@ -247,6 +247,11 @@ typedef struct {
     bool tool_force_any;     /* force some tool call (name still model-chosen) */
     tool_replay_stats tool_replay;
     int ds4_mode;            /* 接口显式意图(2026-07-25): 0=auto(问句启发式兜底) 1=code 2=qa */
+    /* 图片(2026-10-13): 解析时按出现顺序攒原始字节(Anthropic image 块 / OpenAI image_url 的 data: URL), 文本处放占位 token 字串;
+     * 分词后 request_expand_images 把占位展开成 span 并预处理(ds4_v41_images_prepare), images 随请求活到生成结束(server_msgs.c 释放) */
+    struct { unsigned char *data; size_t len; } *img;
+    int n_img, cap_img;
+    struct ds4_v41_images *images;
 } request;
 
 typedef struct {

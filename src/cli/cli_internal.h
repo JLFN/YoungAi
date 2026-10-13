@@ -58,6 +58,9 @@ typedef struct {
     int verify_k;                /* --dspark-verify N: 投机每轮验证几位(0=引擎默认) */
     int dspark;                  /* --dspark: 显式要投机(默认本来就开); 与采样同开时硬拒而不是悄悄走纯解码, 见 core_v41_api.c */
     const char *score_nll_path;  /* --score-nll FILE: 逐位 NLL f32[S](后训练判决尺, 4 B/位置) */
+#define CLI_MAX_IMAGES 8
+    const char *images[CLI_MAX_IMAGES]; int n_images;   /* --image FILE(可多次, 2026-10-13): 图写在用户文本前, 引擎按图展开占位 */
+    const char *vision_golden;   /* --vision-golden FILE: tools/vision_golden.py 的金标, 比我们的预处理与 ViT 输出(cli_diag.c) */
     const char *score_topk_path; /* --score-topk K FILE: 逐位 top-K (id,p)+目标 p+覆盖质量(后训练靶) */
     int score_topk;
     const char *score_rms_path;  /* --score-rms FILE: 逐位 inv=rsqrt(mean(x²)+eps) f32[S](后训练靶的单位) */

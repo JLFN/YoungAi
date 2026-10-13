@@ -94,8 +94,10 @@ bool v41_moe(const ds4_model *m, const ds4_layer_weights *l, ds4_v41_state *st, 
     if (l->ffn_gate_inp->type == DS4_GGT_F32) {
         if (!ds4_gpu_v41_matmul_f32_tensor(st->glog, m->map, m->size, l->ffn_gate_inp->abs_offset, E, NE, st->xn, n)) return false;
     } else if (!ds4_gpu_v41_matmul_bf16_tensor(st->glog, m->map, m->size, l->ffn_gate_inp->abs_offset, E, NE, st->xn, n)) return false;
-    if (!ds4_gpu_v41_router_tensor(st->sel, st->rw, st->glog, m->map, m->size, l->ffn_exp_probs_b->abs_offset, n, NE,
-                                   KU, DS4_EXPERT_WEIGHT_SCALE)) return false;
+    /* 图片位置的路由用 bias_vl 选专家(官方 Gate.bias_vl); 草稿塔与没图片的块传 NULL = 全文本 */
+    const bool vl = st->vrows_on && !st->draft;
+    if (!ds4_gpu_v41_router_tensor(st->sel, st->rw, st->glog, m->map, m->size, l->ffn_exp_probs_b->abs_offset,
+                                   vl ? g_v41_bias_vl[il] : NULL, vl ? st->vrows : NULL, n, NE, KU, DS4_EXPERT_WEIGHT_SCALE)) return false;
     /* 后训练: 存路由选择 / 梯度检查的冻结选择前向照存的选(见 v41_tsave.replay)。草稿态只有草稿器蒸馏的训练态带 tsave(塔号当层号),
      * 推理的草稿态 tsave 恒 NULL —— 同一个判断, 不另开分支 */
     if (st->tsave && st->tsave->sel[il]) {
@@ -301,6 +303,8 @@ bool v41_forward_body(ds4_engine *e, ds4_v41_state *st) {
     const uint32_t n = st->n, E = DS4_N_EMBD;
     st->ced_done = 0;
     bool ok = v41_embed(&e->model, st->x, st->tok, e->weights.token_embd, DS4_N_VOCAB, n, E) != 0;
+    /* 图片 span 的位置用视觉嵌入盖掉词嵌入(官方 merge_image_embeddings 在 embed 之后、hc 展开之前); 只有带图片的预填块才开 */
+    if (ok && st->vrows_on) ok = ds4_gpu_v41_row_select_tensor(st->x, st->vimg->embd, st->vrows, n, E) != 0;
     if (ok) ok = ds4_gpu_v41_expand_hc_tensor(st->hc, st->x, E, DS4_N_HC, n) != 0;
     const double t0 = now_sec();
     double lt[DS4_N_LAYER + 1], tprev = t0;
@@ -382,6 +386,22 @@ bool v41_forward(ds4_engine *e, ds4_v41_state *st, const int32_t *ids, uint32_t 
         free(pos);
         if (!ok) return false;
     }
+    /* 图片(2026-10-13): 本块各行 → vimg->embd 的行号; 塔在第一块之前跑一次(所有图一起), 之后每块只按位置取行。
+     * himg 跟 hist 一样按位置记, engram 哈希回看按它停; 块结束 vrows_on 清零, 解码整步图/合批路永远看不到它 */
+    st->vrows_on = 0;
+    if (st->vimg && !st->draft) {
+        if (!v41_vision_encode(e, (struct ds4_v41_images *)st->vimg)) return false;
+        int32_t *rows = xmalloc((size_t)n * 4); int any = 0;
+        for (uint32_t i = 0; i < n; i++) {
+            const uint32_t p = st->pos0 + i;
+            rows[i] = p < st->vimg->np ? st->vimg->row_of[p] : -1;
+            st->himg[p] = rows[i] >= 0; any |= rows[i] >= 0;
+        }
+        const bool ok = !any || ds4_gpu_tensor_write(st->vrows, 0, rows, (uint64_t)n * 4);
+        free(rows);
+        if (!ok) return false;
+        st->vrows_on = any;
+    } else if (st->himg) memset(st->himg + st->pos0, 0, n);
     float *pm = xmalloc((size_t)n * DS4_N_HC * 4);   /* pre_mix = one-hot(第 0 路) */
     for (uint32_t i = 0; i < n * DS4_N_HC; i++) pm[i] = (i % DS4_N_HC) == 0 ? 1.0f : 0.0f;
     const bool okpm = ds4_gpu_tensor_write(st->pre_mix, 0, pm, (uint64_t)n * DS4_N_HC * 4) != 0;
@@ -390,7 +410,9 @@ bool v41_forward(ds4_engine *e, ds4_v41_state *st, const int32_t *ids, uint32_t 
     if (!st->no_engram && !v41_engram_prefetch(e, st)) return false;   /* engram 行读盘与前面几层的 GPU 算重叠 */
     st->mainh_wrote = 0;
     if (ds4_gpu_begin_commands() == 0) return false;
-    if (!v41_forward_body(e, st)) return false;
+    const bool body_ok = v41_forward_body(e, st);
+    st->vrows_on = 0;   /* 图片行只属于这一块 */
+    if (!body_ok) return false;
     if (ds4_gpu_end_commands() == 0 || ds4_gpu_synchronize() == 0) return false;
     if (st->mainh && st->mainh_wrote) {   /* mainh 环的账: 与上一段连续就接着数, 断了(CED 跳过的块)就从头数 */
         const int64_t first = (int64_t)st->pos0 + (int64_t)(n - st->mainh_wrote);

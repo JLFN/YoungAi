@@ -99,7 +99,7 @@ static void run_one(const char *sid, const char *text, const char *device, const
     ds4_buf_puts(&full, ctx); ds4_buf_putc(&full, '\n'); free(ctx);   /* 事实行在用户文本前面: 模型看到, 页面不显示(事件里只有 text) */
     if (att) { ds4_buf_puts(&full, att); ds4_buf_putc(&full, '\n'); free(att); }
     ds4_buf_puts(&full, text);
-    ds4_buf_puts(&b, "{\"role\":\"user\",\"content\":"); ds4_json_escape(&b, full.ptr); ds4_buf_putc(&b, '}');
+    ds4_buf_puts(&b, "{\"role\":\"user\",\"content\":"); asst_content_with_images(&b, full.ptr, files); ds4_buf_putc(&b, '}');   /* 图片附件随消息进模型(asst_image.c) */
     asst_msg(sid, b.ptr); ds4_buf_free(&b); ds4_buf_free(&full);
     ev_str(sid, "user", "text", text);
     char upd[32]; snprintf(upd, sizeof upd, "%ld", (long)time(NULL)); asst_meta_set(sid, "updated", upd);
@@ -160,7 +160,10 @@ static void run_one(const char *sid, const char *text, const char *device, const
             asst_ev(sid, t.ptr); ds4_buf_free(&t);
             ds4_buf tm = {0};
             ds4_buf_puts(&tm, "{\"role\":\"tool\",\"tool_call_id\":"); ds4_json_escape(&tm, id);
-            ds4_buf_puts(&tm, ",\"content\":"); ds4_json_escape(&tm, res); ds4_buf_putc(&tm, '}');
+            /* pick_file 拍/选的是图 ⇒ 工具结果里顺手带上 image_url 块, 模型直接看, 不用再去读路径(asst_image.c) */
+            char picked[ASST_PATH] = ""; const char *sv = !strcmp(name, "pick_file") ? strstr(res, "saved: ") : NULL;
+            if (sv) { const char *sp = strchr(sv + 7, ' '); if (sp && (size_t)(sp - sv - 7) < sizeof picked) snprintf(picked, sizeof picked, "%.*s", (int)(sp - sv - 7), sv + 7); }
+            ds4_buf_puts(&tm, ",\"content\":"); asst_content_with_images(&tm, res, picked); ds4_buf_putc(&tm, '}');
             asst_msg(sid, tm.ptr); ds4_buf_free(&tm);
             free(res);
         }

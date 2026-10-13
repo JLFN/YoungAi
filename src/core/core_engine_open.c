@@ -52,6 +52,15 @@ int ds4_engine_open(ds4_engine **out, const ds4_engine_options *opt) {
     if (opt->warm_weights) model_warm_weights(&e->model);
     if (!opt->inspect_only) vocab_load(&e->vocab, &e->model);
     config_validate_model(&e->model);
+    /* 视觉塔侧车(2026-10-13, --vision-gguf): 第二个 GGUF 映射, 只带视觉塔 + aligner + 各层 bias_vl + deepseek4.vision.* 元数据; 主 GGUF 不动
+     * (HF 上的 40 片不用重传)。元数据在 config_validate_model 之后装(那里 memset 过 g_ds4_v41), 绑定在 weights_bind 里按 g_vision_model 取。 */
+    if (opt->vision_gguf_path && opt->vision_gguf_path[0]) {
+        if (DS4_MODEL_VARIANT != DS4_VARIANT_V41) { fprintf(stderr, "ds4: --vision-gguf 只配 V4.1 模型\n"); exit(1); }
+        g_vision_model = xmalloc(sizeof(*g_vision_model));
+        model_open(g_vision_model, opt->vision_gguf_path, graph_backend, false);
+        v41_load_vision_metadata(g_vision_model);
+        if (!g_ds4_v41.vis_layers) { fprintf(stderr, "ds4: --vision-gguf %s 没有 deepseek4.vision.* 元数据(不是视觉侧车)\n", opt->vision_gguf_path); exit(1); }
+    }
     weights_bind(&e->weights, &e->model);
     dspark_bind_with_draft(&e->dspark, &e->model, graph_backend);
 #ifndef DS4_NO_GPU
@@ -551,6 +560,8 @@ int ds4_engine_open(ds4_engine **out, const ds4_engine_options *opt) {
             g_dspark_ready_global = 0;
             g_dspark_bound_for_prefill = NULL;
         }
+        /* 视觉侧车★不注册★(2026-10-13 下午, 用户: 多模态权重不常驻): 注册 = cudaHostRegister 把 1 GB 钉在 RAM; 视觉塔来图时按块
+         * 从 mmap 读进临时设备张量(core_v41_vision.c), 跑完释放并丢页缓存, 文本请求一个字节不碰它 */
         if (!accelerator_cache_model_tensors(e->backend, &e->model)) {
             fprintf(stderr, "ds4: %s failed to prepare startup model cache\n",
                     ds4_backend_name(e->backend));

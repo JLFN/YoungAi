@@ -45,6 +45,24 @@ void ds4_encode_chat_prompt(
     token_vec_push(out, ds4_think_mode_enabled(think_mode) ? vocab->think_start_id : vocab->think_end_id);
 }
 
+/* 同上, 用户轮开头先放 n_images 个图片占位(官方 encoding 把 <image> 块按出现顺序换成占位; CLI --image 的图写在文本前面)。
+ * 占位是特殊 token 直接按 id 推(不走 BPE); 词表没有它(V4)就什么都不放, 调用方按 has_vision 先拒。 */
+void ds4_encode_chat_prompt_images(ds4_engine *e, const char *system, const char *prompt, int n_images, ds4_think_mode think_mode, ds4_tokens *out) {
+    const ds4_vocab *vocab = &e->vocab;
+    if (!prompt) prompt = "";
+    token_vec_push(out, vocab->bos_id);
+    const char *effort = ds4_think_effort_prefix(think_mode);
+    const bool has_system = system && system[0];
+    if (effort[0] || has_system) chat_open_system_block(vocab, out);
+    if (effort[0]) bpe_tokenize_text(vocab, effort, out);
+    if (has_system) bpe_tokenize_text(vocab, system, out);
+    token_vec_push(out, vocab->user_id);
+    if (vocab->image_id >= 0) for (int i = 0; i < n_images; i++) token_vec_push(out, vocab->image_id);
+    bpe_tokenize_text(vocab, prompt, out);
+    token_vec_push(out, vocab->assistant_id);
+    token_vec_push(out, ds4_think_mode_enabled(think_mode) ? vocab->think_start_id : vocab->think_end_id);
+}
+
 /* 多轮对话(REPL/agent)按块追加: begin(BOS) → [open_system / max 前缀 / system 消息] → user … → assistant 前缀 */
 void ds4_chat_begin(ds4_engine *e, ds4_tokens *tokens) {
     token_vec_push(tokens, e->vocab.bos_id);

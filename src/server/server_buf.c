@@ -161,7 +161,11 @@ char *json_pyfmt_raw_value(const char *json) {
     return ds4_buf_take(&b);
 }
 
-bool json_content(const char **p, char **out) {
+bool json_content(const char **p, char **out) { return json_content_sink(p, out, NULL); }
+
+/* OpenAI 消息 content: 字串 / null / 分块数组。分块 {"type":"text"} 取文本; {"type":"image_url"} 进 sink(2026-10-13 之前这里把图片块
+ * 悄悄跳过 —— 用户拍照上传"识别不了"的直接原因: 图片根本没进模型); sk == NULL 时图片块 = 解析失败(400), 不再静默丢。 */
+bool json_content_sink(const char **p, char **out, img_sink *sk) {
     json_ws(p);
     if (**p == '"') return json_string(p, out);
     if (json_lit(p, "null")) {
@@ -186,34 +190,48 @@ bool json_content(const char **p, char **out) {
         } else if (**p == '{') {
             (*p)++;
             json_ws(p);
-            while (**p && **p != '}') {
+            char *type = NULL, *url = NULL;
+            bool ok = true;
+            while (ok && **p && **p != '}') {
                 char *key = NULL;
-                if (!json_string(p, &key)) goto fail;
+                if (!json_string(p, &key)) { ok = false; break; }
                 json_ws(p);
-                if (**p != ':') {
-                    free(key);
-                    goto fail;
-                }
+                if (**p != ':') { free(key); ok = false; break; }
                 (*p)++;
                 if (!strcmp(key, "text")) {
                     char *s = NULL;
-                    if (!json_string(p, &s)) {
-                        free(key);
-                        goto fail;
-                    }
-                    ds4_buf_puts(&b, s);
+                    ok = json_string(p, &s);
+                    if (ok) ds4_buf_puts(&b, s);
                     free(s);
-                } else if (!json_skip_value(p)) {
-                    free(key);
-                    goto fail;
-                }
+                } else if (!strcmp(key, "type")) {
+                    free(type); type = NULL;
+                    ok = json_string(p, &type);
+                } else if (!strcmp(key, "image_url")) {   /* "image_url": "data:…" 或 {"url": "data:…", "detail": …} */
+                    json_ws(p);
+                    free(url); url = NULL;
+                    if (**p == '"') ok = json_string(p, &url);
+                    else if (**p == '{') {
+                        (*p)++; json_ws(p);
+                        while (ok && **p && **p != '}') {
+                            char *k2 = NULL;
+                            ok = json_string(p, &k2);
+                            if (ok) { json_ws(p); ok = **p == ':'; if (ok) (*p)++; }
+                            if (ok) { if (!strcmp(k2, "url")) { free(url); url = NULL; ok = json_string(p, &url); } else ok = json_skip_value(p); }
+                            free(k2);
+                            if (ok) { json_ws(p); if (**p == ',') (*p)++; json_ws(p); }
+                        }
+                        if (ok) ok = **p == '}';
+                        if (ok) (*p)++;
+                    } else ok = json_skip_value(p);
+                } else ok = json_skip_value(p);
                 free(key);
-                json_ws(p);
-                if (**p == ',') (*p)++;
-                json_ws(p);
+                if (ok) { json_ws(p); if (**p == ',') (*p)++; json_ws(p); }
             }
-            if (**p != '}') goto fail;
-            (*p)++;
+            if (ok) ok = **p == '}';
+            if (ok) (*p)++;
+            if (ok && type && !strcmp(type, "image_url")) ok = url && mm_image_data_url(sk, url, &b);
+            free(type); free(url);
+            if (!ok) goto fail;
         } else if (!json_skip_value(p)) {
             goto fail;
         }

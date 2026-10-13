@@ -109,8 +109,11 @@ int ds4_gpu_v41_set_rb_override(const void *model_map, uint64_t model_size, uint
     return 1;
 }
 int ds4_gpu_v41_router_tensor(ds4_gpu_tensor *selected, ds4_gpu_tensor *weights, const ds4_gpu_tensor *logits, const void *model_map, uint64_t model_size,
-                              uint64_t bias_offset, uint32_t n_tok, uint32_t n_expert, uint32_t topk, float route_scale) {
+                              uint64_t bias_offset, const ds4_gpu_tensor *bias_vl, const ds4_gpu_tensor *vl_rows,
+                              uint32_t n_tok, uint32_t n_expert, uint32_t topk, float route_scale) {
     if (!selected || !weights || !logits || topk > 16u || n_expert > 32u * 12u || n_tok == 0) return 0;
+    /* 图片位置的 bias_vl(2026-10-13)Metal 还没接: 视觉塔本身在 Metal 也还是桩(metal_v41_vision.m), 图片请求到不了这里; 到了就明说失败, 不拿文本偏置充数 */
+    if (bias_vl && vl_rows) { fprintf(stderr, "ds4: Metal V4.1 路由还没有图片位置的 bias_vl\n"); return 0; }
     uint64_t bo = 0;
     id<MTLBuffer> bb = v41_model_buf(model_map, model_size, bias_offset, (uint64_t)n_expert * 4, &bo, "v41 gate bias");
     if (!bb) return 0;

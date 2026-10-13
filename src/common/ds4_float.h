@@ -62,6 +62,16 @@ DS4_HOSTDEV uint16_t ds4_f64_to_f16(double d) {
     return (uint16_t)(sign | h);
 }
 
+/* f32 → bf16 位型, round-to-nearest-even(torch .to(torch.bfloat16) 同式; NaN 保持 NaN, 进位可自然溢进指数位)。
+ * 2026-10-13 为图片预处理加(官方把归一化后的像素舍到 bf16 再切 patch); GPU 核侧有自己的 v41_bf16r, 两边同式。 */
+DS4_HOSTDEV uint16_t ds4_f32_to_bf16(float f) {
+    uint32_t u; memcpy(&u, &f, 4);
+    if ((u & 0x7f800000u) == 0x7f800000u) return (uint16_t)((u >> 16) | ((u & 0xffffu) ? 0x40u : 0u));
+    u += 0x7fffu + ((u >> 16) & 1u);
+    return (uint16_t)(u >> 16);
+}
+DS4_HOSTDEV float ds4_bf16_round_f32(float f) { return ds4_bf16_to_f32(ds4_f32_to_bf16(f)); }
+
 /* f32 小端字节 → f32(不经对齐读) */
 DS4_HOSTDEV float ds4_f32_load_le(const uint8_t *p) {
     uint32_t b = (uint32_t)p[0] | ((uint32_t)p[1] << 8) |

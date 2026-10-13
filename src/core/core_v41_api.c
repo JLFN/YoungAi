@@ -107,7 +107,7 @@ void ds4_engine_v41_set_chunk(int n) { g_ds4_v41_chunk = n > 0 ? n : 0; }
 /* 取下一个 token 的三条路(设备 argmax / 设备采样核 / 主机惩罚路)在 core_v41_sample.c(2026-09-28); 以前"采样 = 读回 517 KB 主机采样"
  * 的那版量过每步只贵 0.32 ms, 真正丢的是投机(采样下关掉, −32%), 所以采样进了设备核, 投机在采样下按拒绝采样走。 */
 
-int ds4_engine_v41_generate_argmax(ds4_engine *e, const int *prompt, int n_prompt, int n_predict,
+int ds4_engine_v41_generate_argmax(ds4_engine *e, const int *prompt, int n_prompt, struct ds4_v41_images *imgs, int n_predict,
                                    ds4_v41_emit_fn emit, void *ud) {
     if (!e || !prompt || n_prompt < 1 || !ds4_engine_is_v41(e)) return 1;
     if (!e->metal_ready) { fprintf(stderr, "ds4: V4.1 前向需要 GPU 后端\n"); return 1; }
@@ -176,7 +176,9 @@ int ds4_engine_v41_generate_argmax(ds4_engine *e, const int *prompt, int n_promp
         if (g_ds4_v41_emit_trace) for (uint32_t i = 0; i < np; i++) fprintf(stderr, "[ptok] %u %d\n", i, prompt[i]);
         const double t0 = now_sec();
         bool ok = true, aborted = false;
-        const uint32_t reused = v41_kvreuse_restore(&st, prompt, np);   /* 提示以上一条的提示开头 ⇒ 从那里接着填(core_v41_kvreuse.c) */
+        const uint64_t *isig = imgs ? imgs->sig_of : NULL;   /* 图片位的指纹: 同占位 token 不同图不许接上一条的 KV */
+        const uint32_t reused = v41_kvreuse_restore(&st, prompt, np, isig);   /* 提示以上一条的提示开头 ⇒ 从那里接着填(core_v41_kvreuse.c) */
+        st.vimg = imgs;   /* 预填块按位置盖视觉嵌入(core_v41_forward.c); 预填完清掉 */
         for (uint32_t c0 = reused; ok && c0 < np; ) {
             ok = v41_prefill_chunk(e, &st, prompt, np, &c0, cap);   /* 分块 / CED / 窗口尾规则在 core_v41_forward.c, 与并发路同一份 */
             /* 回调非 0 = 调用方不要这趟了(服务端: 客户端已挂断)。立刻停, 别把剩下的块算完 —— 13 万 token
@@ -188,8 +190,9 @@ int ds4_engine_v41_generate_argmax(ds4_engine *e, const int *prompt, int n_promp
                 break;
             }
         }
+        st.vimg = NULL;
         if (!ok || aborted) break;
-        if (reused < np) v41_kvreuse_save(&st, prompt, np);   /* 解码前存提示末尾的检查点, 给下一条请求接(同提示整份接上的, 检查点就是它, 不重存) */
+        if (reused < np) v41_kvreuse_save(&st, prompt, np, isig);   /* 解码前存提示末尾的检查点, 给下一条请求接(同提示整份接上的, 检查点就是它, 不重存) */
         const double t1 = now_sec();
         fprintf(stderr, "[v41] prefill %u token %.1fs (%.1f t/s)\n", np - reused, t1 - t0, (double)(np - reused) / (t1 - t0 + 1e-9));
         if (sampling) fprintf(stderr, "[v41] 解码采样(%s) temp %.2f top_p %.2f min_p %.2f top_k %d seed %llu%s dry %.2f/%.2f/%d freq %.2f presence %.2f\n",
@@ -428,8 +431,8 @@ int ds4_engine_v41_generate_argmax(ds4_engine *e, const int *prompt, int n_promp
     return rc;
 }
 #else
-int ds4_engine_v41_generate_argmax(ds4_engine *e, const int *prompt, int n_prompt, int n_predict, ds4_v41_emit_fn emit, void *ud) {
-    (void)e; (void)prompt; (void)n_prompt; (void)n_predict; (void)emit; (void)ud;
+int ds4_engine_v41_generate_argmax(ds4_engine *e, const int *prompt, int n_prompt, struct ds4_v41_images *imgs, int n_predict, ds4_v41_emit_fn emit, void *ud) {
+    (void)e; (void)prompt; (void)n_prompt; (void)imgs; (void)n_predict; (void)emit; (void)ud;
     fprintf(stderr, "ds4: V4.1 只有 GPU 路\n"); return 1;
 }
 #endif

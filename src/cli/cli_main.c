@@ -190,6 +190,9 @@ int main(int argc, char **argv) {
                                         cfg.gen.imatrix_max_tokens);
     } else if (cfg.gen.perplexity_file_path) {
         rc = run_perplexity_file(engine, &cfg);
+    } else if (cfg.gen.vision_golden) {   /* 视觉塔金标门(2026-10-13): --image 图 --vision-golden 金标 */
+        rc = cfg.gen.n_images == 1 ? ds4_engine_v41_vision_golden(engine, cfg.gen.images[0], cfg.gen.vision_golden)
+                                   : (fprintf(stderr, "ds4: --vision-golden 要配一张 --image\n"), 1);
     } else if (cfg.gen.gen_ids_path) {
         rc = run_gen_ids(engine, &cfg);
     } else if (cfg.gen.gen_jobs_path) {

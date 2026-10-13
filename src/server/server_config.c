@@ -120,6 +120,7 @@ void usage(FILE *fp) {
         "  --no-kv-reuse\n      V4.1: prefill every request from token 0 (default: resume from the previous prompt's KV).\n"
         "  --draft-gguf FILE | --draft-zchain FILE\n"
         "      Standalone DSpark drafter GGUF and its amplifier sidecar.\n"
+        "  --vision-gguf FILE\n      Vision tower sidecar GGUF (DeepSeek-ViT + aligner); image blocks go through it, without it images are rejected.\n"
         "  --posttrain DIR\n"
         "      V4.1 three-file deploy, third file: post-training gain directory multiplied into --zchain.\n"
         "  --engram-dir DIR\n"
@@ -331,10 +332,9 @@ server_config parse_options(int argc, char **argv) {
              * 解析期就设: 它还决定开模型时三塔的装载优先级。 */
             ds4_engine_v41_set_dspark(0);
         } else if (!strcmp(arg, "--no-kv-reuse")) { ds4_engine_v41_set_kv_reuse(0);   /* 只给 A/B 与精确门(kv_reuse_gate.sh) */
-        } else if (!strcmp(arg, "--draft-gguf")) {
-            c.engine.draft_gguf_path = need_arg(&i, argc, argv, arg);
-        } else if (!strcmp(arg, "--draft-zchain")) {
-            c.engine.draft_zchain_path = need_arg(&i, argc, argv, arg);
+        } else if (!strcmp(arg, "--draft-gguf")) { c.engine.draft_gguf_path = need_arg(&i, argc, argv, arg);
+        } else if (!strcmp(arg, "--vision-gguf")) { c.engine.vision_gguf_path = need_arg(&i, argc, argv, arg);   /* 视觉塔侧车(2026-10-13) */
+        } else if (!strcmp(arg, "--draft-zchain")) { c.engine.draft_zchain_path = need_arg(&i, argc, argv, arg);
         } else if (!strcmp(arg, "--mm-image-cmd")) {
             c.engine.mm_image_cmd = need_arg(&i, argc, argv, arg);
         } else if (!strcmp(arg, "--mem-budget-mb")) {

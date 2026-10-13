@@ -145,6 +145,7 @@ void weights_bind_v41(ds4_weights *w, const ds4_model *m) {
         fprintf(stderr, "ds4: [v41] DSpark 三塔已接线: %u 塔 × %u 专家\n", v->mtp_towers, v->mtp_experts);
     }
 
+    weights_bind_vision(w, m);   /* 视觉塔 + aligner + 各层 bias_vl(core_bind_vision.c): 元数据说有才绑, 绑了就严校; 张量在侧车或主文件 */
     /* ---- 形状/类型校验: 一处错就停(V4.1 的格式解错不报错只出假数) ---- */
     const uint64_t E = DS4_N_EMBD, hc_dim = (uint64_t)E * DS4_N_HC, mix = 2u * DS4_N_HC + (uint64_t)DS4_N_HC * DS4_N_HC;
     const uint64_t q_dim = (uint64_t)DS4_N_HEAD * DS4_N_HEAD_DIM, out_low = (uint64_t)DS4_N_OUT_GROUP * DS4_N_LORA_O;
@@ -191,6 +192,7 @@ void weights_bind_v41(ds4_weights *w, const ds4_model *m) {
         expect(l->ffn_norm, DS4_TENSOR_F32, 1, E, 0);
         expect(l->ffn_gate_inp, DS4_TENSOR_BF16, 2, E, DS4_N_EXPERT);
         expect(l->ffn_exp_probs_b, DS4_TENSOR_F32, 1, DS4_N_EXPERT, 0);
+        expect(l->ffn_exp_probs_b_vl, DS4_TENSOR_F32, 1, DS4_N_EXPERT, 0);
         expect_skel(l->ffn_gate_shexp, 2, E, DS4_N_FF_EXP);
         expect_skel(l->ffn_up_shexp, 2, E, DS4_N_FF_EXP);
         expect_skel(l->ffn_down_shexp, 2, DS4_N_FF_EXP, E);

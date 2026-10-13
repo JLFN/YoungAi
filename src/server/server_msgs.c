@@ -168,7 +168,28 @@ void request_init(request *r, req_kind kind, int max_tokens) {
     r->think_mode = DS4_THINK_NONE;
 }
 
+/* 图片(2026-10-13): 解析期攒字节, 分词后展开。见 server_internal.h img_sink 的说明。 */
+void request_push_image(request *r, unsigned char *data, size_t len) {
+    if (r->n_img == r->cap_img) { r->cap_img = r->cap_img ? r->cap_img * 2 : 4; r->img = xrealloc(r->img, (size_t)r->cap_img * sizeof r->img[0]); }
+    r->img[r->n_img].data = data; r->img[r->n_img].len = len; r->n_img++;
+}
+bool request_expand_images(ds4_engine *e, request *r, char *err, size_t errlen) {
+    if (r->n_img <= 0) return true;
+    ds4_v41_image_src *src = xmalloc((size_t)r->n_img * sizeof *src);
+    for (int i = 0; i < r->n_img; i++) { src[i].data = r->img[i].data; src[i].len = r->img[i].len; }
+    int *tok = NULL, n = 0;
+    r->images = ds4_v41_images_prepare(e, r->prompt.v, r->prompt.len, src, r->n_img, &tok, &n, err, errlen);
+    free(src);
+    if (!r->images) return false;
+    ds4_tokens_free(&r->prompt);
+    r->prompt.v = tok; r->prompt.len = n; r->prompt.cap = n;
+    return true;
+}
+
 void request_free(request *r) {
+    for (int i = 0; i < r->n_img; i++) free(r->img[i].data);
+    free(r->img);
+    ds4_v41_images_free(r->images);
     ds4_tokens_free(&r->prompt);
     free(r->model);
     for (int i = 0; i < r->stops.len; i++) free(r->stops.v[i]);

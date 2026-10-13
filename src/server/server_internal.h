@@ -58,12 +58,19 @@ char *responses_namespace_function_schema_from_tool(const char *raw, const char 
 void tool_schema_orders_add_json_wire(tool_schema_orders *orders, const char *json, const char *namespace, const char *wire_name, bool responses_tool_search);
 void tool_schema_orders_add_json(tool_schema_orders *orders, const char *json);
 bool parse_tools_value(const char **p, char **out, tool_schema_orders *orders);
-bool parse_messages(const char **p, chat_msgs *msgs);
+/* 图片块的去处(2026-10-13): 模型带视觉塔(e 非 NULL 且 ds4_engine_v41_has_vision)⇒ 原始字节攒到 r 上、文本处放占位 token 字串,
+ * 分词后 request_expand_images 展开成 span 真正送进模型; 否则(V4 / 老 GGUF)照旧走 mm 文本编码器(mm-ui 的 UI 草图), NULL = 拒绝图片。 */
+typedef struct { ds4_mm *mm; ds4_engine *e; request *r; } img_sink;
+bool parse_messages(const char **p, chat_msgs *msgs, img_sink *sk);   /* sk 可 NULL(图片块一律拒) */
 bool append_anthropic_block_content(buf *dst, const char *text);
 bool json_parse_image_source(const char **p, char **src_type, char **src_media, char **src_data);
-bool mm_image_source_to_text(ds4_mm *mm, const char *src_type, const char *src_media, const char *src_data, buf *dst);
-bool json_tool_result_content(const char **p, ds4_mm *mm, char **out);
-bool parse_anthropic_messages(const char **p, chat_msgs *msgs, ds4_mm *mm);
+bool mm_image_source_to_text(img_sink *sk, const char *src_type, const char *src_media, const char *src_data, buf *dst);
+bool mm_image_data_url(img_sink *sk, const char *url, buf *dst);   /* OpenAI image_url 的 data:<media>;base64,<data>; 别的 URL 不抓(服务端不出网) */
+bool json_content_sink(const char **p, char **out, img_sink *sk);   /* json_content 的带图片版: {"type":"image_url"} 分块进 sink */
+bool json_tool_result_content(const char **p, img_sink *sk, char **out);
+bool parse_anthropic_messages(const char **p, chat_msgs *msgs, img_sink *sk);
+void request_push_image(request *r, unsigned char *data, size_t len);                 /* 接管 data */
+bool request_expand_images(ds4_engine *e, request *r, char *err, size_t errlen);     /* 分词后调: 占位 → span + 预处理; 无图直接 true */
 bool parse_anthropic_system(const char **p, char **out);
 void knowledge_load(const char *path);
 const char *knowledge_retrieve(const char *query);

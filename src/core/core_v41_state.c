@@ -20,6 +20,7 @@ static void v41_alloc_dense(ds4_v41_state *st, uint32_t cap, uint32_t logits_row
     const uint64_t E = DS4_N_EMBD, HC = DS4_N_HC, FF = DS4_N_FF_EXP, NE = DS4_N_EXPERT, K = DS4_N_EXPERT_USED;
     const uint64_t mix = 2 * HC + HC * HC;
     st->tok = v41_alloc((uint64_t)cap * 4, ok);          st->pos = v41_alloc((uint64_t)cap * 4, ok);
+    st->vrows = v41_alloc((uint64_t)cap * 4, ok);        /* 图片行号(2026-10-13); 没图片的块不读它 */
     st->hc = v41_alloc((uint64_t)cap * HC * E * 4, ok);  st->hc2 = v41_alloc((uint64_t)cap * HC * E * 4, ok);
     st->mix = v41_alloc((uint64_t)cap * mix * 4, ok);    st->pre = v41_alloc((uint64_t)cap * HC * 4, ok);
     st->post = v41_alloc((uint64_t)cap * HC * 4, ok);    st->comb = v41_alloc((uint64_t)cap * HC * HC * 4, ok);
@@ -62,7 +63,7 @@ static void v41_free_list(ds4_gpu_tensor ***list, size_t n) {
 }
 #define V41_FREE(...) do { ds4_gpu_tensor **l_[] = { __VA_ARGS__ }; v41_free_list(l_, sizeof(l_) / sizeof(l_[0])); } while (0)
 static void v41_free_dense(ds4_v41_state *st) {
-    V41_FREE(&st->tok, &st->pos, &st->hc, &st->hc2, &st->mix, &st->pre, &st->post, &st->comb, &st->pre_mix, &st->x, &st->xn, &st->attn_out,
+    V41_FREE(&st->tok, &st->pos, &st->vrows, &st->hc, &st->hc2, &st->mix, &st->pre, &st->post, &st->comb, &st->pre_mix, &st->x, &st->xn, &st->attn_out,
              &st->glog, &st->sel, &st->rw, &st->routed, &st->sg, &st->su, &st->sh, &st->so, &st->y, &st->logits, &st->xlast);
 }
 static void v41_free_attn(ds4_v41_state *st) {
@@ -123,6 +124,7 @@ bool v41_state_alloc(ds4_v41_state *st, uint32_t cap, uint32_t ctx, uint32_t log
     const uint64_t E = DS4_N_EMBD, HD = DS4_N_HEAD_DIM, SWA = DS4_N_SWA;
     bool ok = true;
     st->hist = xmalloc((size_t)ctx * 4);
+    st->himg = xcalloc((size_t)ctx, 1);
     v41_alloc_dense(st, cap, logits_rows, &ok);
     v41_alloc_attn(st, cap, &ok);
     st->wintmp = v41_alloc(SWA * HD * 4, &ok);
@@ -239,6 +241,9 @@ bool v41_state_clone(ds4_v41_state *dst, const ds4_v41_state *src) {
     bool ok = true;
     dst->hist = xmalloc((size_t)src->ctx * 4);
     memcpy(dst->hist, src->hist, (size_t)src->ctx * 4);
+    dst->himg = xmalloc((size_t)src->ctx);
+    memcpy(dst->himg, src->himg, (size_t)src->ctx);
+    dst->vimg = NULL; dst->vrows = NULL; dst->vrows_on = 0;   /* 分身只解码, 没有图片块 */
     dst->posg = v41_dup(src->posg, &ok);     dst->ckv = v41_dup(src->ckv, &ok);   dst->csc = v41_dup(src->csc, &ok);
     dst->pooled = v41_dup(src->pooled, &ok); dst->latent = v41_dup(src->latent, &ok); dst->ktmp = v41_dup(src->ktmp, &ok);
     dst->iq = v41_dup(src->iq, &ok);         dst->iw = v41_dup(src->iw, &ok);     dst->idx = v41_dup(src->idx, &ok);
@@ -316,6 +321,7 @@ void v41_state_free(ds4_v41_state *st) {
         if (st->posg_pin[il]) { ds4_gpu_host_free(st->posg_pin[il]); st->posg_pin[il] = NULL; }
     }
     free(st->hist); st->hist = NULL;
+    free(st->himg); st->himg = NULL;
 }
 #else
 /* 只为让服务端在 -DDS4_NO_GPU 构建里链得上: V4.1 插件只在 GPU 上挂, 这里不是 CPU 实现 */

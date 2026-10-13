@@ -334,6 +334,7 @@ void vocab_load(ds4_vocab *vocab, const ds4_model *model) {
     vocab->think_start_id = vocab_lookup(vocab, "<think>");
     vocab->think_end_id = vocab_lookup(vocab, "</think>");
     vocab->dsml_id = vocab_lookup(vocab, "｜DSML｜");
+    vocab->image_id = vocab_lookup_opt(vocab, "<｜deepseek_image｜>");   /* 图片占位(2026-10-13); V4 词表没有 = -1 */
 }
 
 void vocab_free(ds4_vocab *vocab) {
@@ -361,6 +362,7 @@ static bool special_token_at(const ds4_vocab *vocab, const char *p, int *token, 
         {"<think>",                vocab->think_start_id},
         {"</think>",               vocab->think_end_id},
         {"｜DSML｜",                vocab->dsml_id},
+        {"<｜deepseek_image｜>",    vocab->image_id},   /* 图片占位: 服务端把 image 块换成这个字串, 分词后引擎再按图片展开成 span */
     };
 
     for (size_t i = 0; i < sizeof(specials) / sizeof(specials[0]); i++) {

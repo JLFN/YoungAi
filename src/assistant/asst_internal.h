@@ -148,6 +148,10 @@ void asst_browser_shutdown(void);
 /* ---------------- 设备(asst_device.c): 设备事实行 + 设备工具通道(总纲 §3) ---------------- */
 char *asst_device_line(const char *device_json, const char *caps, bool zh, const char *sid);   /* "[设备: 手机 · 时间 · 时区 · 可用: … · 上次定位: …]"; 只放事实; sid 可 NULL(不查上次定位) */
 char *asst_attach_line(const char *files, bool zh);   /* files = 换行分隔的工作区相对路径(页面上传进 inbox/ 的); 每个存在的文件一行 "[附件: inbox/x (N KB)]"; 没有 → NULL */
+/* asst_image.c(2026-10-13): 图片附件 → OpenAI image_url 分块(data: URL), 模型真正看到像素 */
+bool asst_image_part(const char *rel, ds4_buf *b);                                 /* 一个工作区路径 → ",{image_url…}" 追加; 不是图/太大 → false */
+int asst_image_parts(const char *files, ds4_buf *b);                               /* 附件表里所有图片; 返回张数 */
+void asst_content_with_images(ds4_buf *out, const char *text, const char *files);  /* content: 没图 = 字串, 有图 = [text 块, image_url…] */
 bool asst_device_request(const char *sid, const char *client, const char *call_id, const char *kind, const char *args, char **out);   /* 写 device 事件, 等页面答复或停止; 返回 true = 设备做成了 */
 bool asst_device_answer(const char *sid, const char *call_id, bool ok, const char *data, size_t n, char *err, size_t errn);
 bool asst_device_waiting(void);        /* asst_mu 下读 */

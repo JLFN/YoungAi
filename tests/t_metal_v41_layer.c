@@ -126,7 +126,7 @@ static void test_router_swiglu_pool_rope(void) {
     const uint64_t o_b = put_f32(bias, NE);
     TEST_ASSERT(test_v41_map());
     ds4_gpu_tensor *tl = test_v41_tensor(lg, (size_t)N * NE * 4), *tsel = test_v41_tensor(NULL, N * K * 4), *tw = test_v41_tensor(NULL, N * K * 4);
-    TEST_ASSERT(ds4_gpu_v41_router_tensor(tsel, tw, tl, test_v41_model_map(), test_v41_model_size(), o_b, N, NE, K, rs) != 0);
+    TEST_ASSERT(ds4_gpu_v41_router_tensor(tsel, tw, tl, test_v41_model_map(), test_v41_model_size(), o_b, NULL, NULL, N, NE, K, rs) != 0);
     int32_t *sel = malloc(N * K * 4); float *w = malloc(N * K * 4);
     TEST_ASSERT(test_v41_read(tsel, sel, N * K * 4) && test_v41_read(tw, w, N * K * 4));
     int bad = 0;
@@ -141,7 +141,7 @@ static void test_router_swiglu_pool_rope(void) {
     /* 路由偏置侧车: Δb 推高某专家 ⇒ 它必入选 */
     float *delta = calloc(NE, 4); delta[123] = 100.0f;
     TEST_ASSERT(ds4_gpu_v41_set_rb_override(test_v41_model_map(), test_v41_model_size(), o_b, delta, NE) != 0);
-    TEST_ASSERT(ds4_gpu_v41_router_tensor(tsel, tw, tl, test_v41_model_map(), test_v41_model_size(), o_b, N, NE, K, rs) != 0);
+    TEST_ASSERT(ds4_gpu_v41_router_tensor(tsel, tw, tl, test_v41_model_map(), test_v41_model_size(), o_b, NULL, NULL, N, NE, K, rs) != 0);
     TEST_ASSERT(test_v41_read(tsel, sel, N * K * 4));
     for (uint32_t t = 0; t < N; t++) TEST_ASSERT(sel[t * K] == 123);
     TEST_ASSERT(ds4_gpu_v41_set_rb_override(NULL, 0, 0, NULL, 0) != 0);

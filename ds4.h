@@ -126,6 +126,7 @@ typedef struct {
     /* --draft-zchain: drafter 反修放大器侧车, 3 层链合并进主链槽 43..45。 */
     const char *draft_zchain_path;
     const char *finetune_path;   /* --finetune: 三文件部署的第三件, 契约见 ds4_zfinetune.h */
+    const char *vision_gguf_path;   /* --vision-gguf: 视觉塔侧车 GGUF(视觉塔 + aligner + 各层 bias_vl, 2026-10-13; v41_to_gguf vision 模式出), 主 GGUF 不动; 不给 = 看不了图 */
     /* --mm-image-cmd: 多模态外部图像编码器命令(缺省探 ./mm-ui)。 */
     const char *mm_image_cmd;
     /* --spec: DSpark 投机解码 + 在线调度仲裁(投机/纯解码谁快用谁)。贪心 verify
@@ -299,6 +300,7 @@ void ds4_tokenize_rendered_chat(ds4_engine *e, const char *text, ds4_tokens *out
 void ds4_chat_begin(ds4_engine *e, ds4_tokens *tokens);
 void ds4_chat_open_system(ds4_engine *e, ds4_tokens *tokens);   /* 开 system 块(<｜System｜>, 只在没开着时写; V4 无此 token = 不写) */
 void ds4_encode_chat_prompt(ds4_engine *e, const char *system, const char *prompt, ds4_think_mode think_mode, ds4_tokens *out);
+void ds4_encode_chat_prompt_images(ds4_engine *e, const char *system, const char *prompt, int n_images, ds4_think_mode think_mode, ds4_tokens *out);   /* 用户轮开头放 n 个图片占位(2026-10-13) */
 void ds4_chat_append_max_effort_prefix(ds4_engine *e, ds4_tokens *tokens);
 void ds4_chat_append_message(ds4_engine *e, ds4_tokens *tokens, const char *role, const char *content);
 void ds4_chat_append_assistant_prefix(ds4_engine *e, ds4_tokens *tokens, ds4_think_mode think_mode);

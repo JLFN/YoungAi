@@ -442,7 +442,7 @@ void generate_job_v41(server *s, job *j) {
                v41_kind(&g), g.ctx_span, g.req_flags[0] ? " " : "", g.req_flags, g.max_tokens);
     ds4_engine_v41_set_progress(v41_progress_cb, &g);
     mon_prefill(s, j->mon, g.prompt_tokens, 0, g.max_tokens);   /* 监控: 排队结束, 开始读提示 */
-    const int rc = ds4_engine_v41_generate_argmax(s->engine, j->req.prompt.v, j->req.prompt.len, g.max_tokens, v41_emit, &g);
+    const int rc = ds4_engine_v41_generate_argmax(s->engine, j->req.prompt.v, j->req.prompt.len, j->req.images, g.max_tokens, v41_emit, &g);
     ds4_engine_v41_set_progress(NULL, NULL);
     ds4_engine_set_decode_sampling(NULL);   /* 采样面里的 greedy_ud 指向栈上的 g, 请求结束就清, 不留悬空指针给下一个读全局的人 */
     ds4_engine_v41_last_spec_stats(&g.spec_rounds, &g.spec_offered, &g.spec_accepted);

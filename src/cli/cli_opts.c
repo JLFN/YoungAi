@@ -249,8 +249,8 @@ cli_config parse_options(int argc, char **argv) {
             ds4_gpu_set_model_cache_limit_mb((uint64_t)parse_int(need_arg(&i, argc, argv, arg), arg));
         } else if (!strcmp(arg, "--spec")) {
             c.engine.spec = true;
-        } else if (!strcmp(arg, "--draft-gguf")) {
-            c.engine.draft_gguf_path = need_arg(&i, argc, argv, arg);
+        } else if (!strcmp(arg, "--draft-gguf")) { c.engine.draft_gguf_path = need_arg(&i, argc, argv, arg);
+        } else if (!strcmp(arg, "--vision-gguf")) { c.engine.vision_gguf_path = need_arg(&i, argc, argv, arg);   /* 视觉塔侧车(2026-10-13) */
         } else if (!strcmp(arg, "--draft-zchain")) {
             c.engine.draft_zchain_path = need_arg(&i, argc, argv, arg);
         } else if (!strcmp(arg, "--vq-dir")) {
@@ -349,6 +349,9 @@ cli_config parse_options(int argc, char **argv) {
             c.gen.gen_jobs_path = need_arg(&i, argc, argv, arg);
         } else if (!strcmp(arg, "--score-ids")) {
             c.gen.score_ids_path = need_arg(&i, argc, argv, arg);
+        } else if (!strcmp(arg, "--image")) {   /* 图片(2026-10-13): 可多次, 写在用户文本前 */
+            if (c.gen.n_images >= CLI_MAX_IMAGES) { fprintf(stderr, "ds4: --image 最多 %d 张\n", CLI_MAX_IMAGES); exit(2); } c.gen.images[c.gen.n_images++] = need_arg(&i, argc, argv, arg);
+        } else if (!strcmp(arg, "--vision-golden")) { c.gen.vision_golden = need_arg(&i, argc, argv, arg);
         } else if (!strcmp(arg, "--ptrain")) {
             c.gen.ptrain_spec = need_arg(&i, argc, argv, arg);
         } else if (!strcmp(arg, "--draft-train")) {

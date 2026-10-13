@@ -31,7 +31,8 @@ bool parse_anthropic_request(ds4_engine *e, server *s, const char *body, int def
         p++;
         if (!strcmp(key, "messages")) {
             chat_msgs_free(&msgs);
-            if (!parse_anthropic_messages(&p, &msgs, ds4_engine_mm(e))) {
+            img_sink sk = { ds4_engine_mm(e), e, r };   /* 图片块: 有视觉塔进请求, 否则走 mm 文本编码器 */
+            if (!parse_anthropic_messages(&p, &msgs, &sk)) {
                 free(key);
                 goto bad;
             }
@@ -243,6 +244,7 @@ bool parse_anthropic_request(ds4_engine *e, server *s, const char *body, int def
     chat_msgs_free(&msgs);
     free(system);
     free(tool_schemas);
+    if (!request_expand_images(e, r, err, errlen)) { request_free(r); return false; }   /* 占位 → 图片 span(无图是空操作) */
     return true;
 bad:
     chat_msgs_free(&msgs);

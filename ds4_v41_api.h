@@ -52,9 +52,26 @@ int ds4_engine_v41_dspark_capture(ds4_engine *e, const int *ids, int n_ids, cons
  * 主模型一个字节不碰 —— 所以它**不可能**动五指标, 只动接受率。传 NULL/不传 = 不挂, 整条路恒等。 */
 void ds4_engine_v41_set_draft_amp(const char *path);
 void ds4_engine_v41_set_draft_amp_scale(float s);   /* --draft-amp-scale β: 诊断修正幅度 */
+/* ---- 视觉(2026-10-13; src/core/core_v41_vision.c / core_v41_image.c; 官方 image_processor.py + vision.py) ----
+ * 用法: 提示里每张图放一个占位 token(ds4_engine_v41_image_token_id, 渲染文本里是 <｜deepseek_image｜>), 分词后调
+ * ds4_v41_images_prepare 把占位展开成图片 span(每张 ≤ max_image_tokens 位)并做好预处理, 拿展开后的 token 去开请求 / 生成,
+ * 图片对象挂上(ds4_v41_req_set_images / generate_argmax 的 imgs), 预填前引擎跑一次视觉塔。
+ * 没带视觉塔的 GGUF(deepseek4.vision.block_count 缺/0): has_vision = 0, prepare 直接报错 —— 不假装看见。 */
+typedef struct { const unsigned char *data; size_t len; } ds4_v41_image_src;   /* 图片原始字节(jpeg/png/gif/bmp 等 stb_image 认的格式) */
+struct ds4_v41_images;
+struct ds4_v41_req;   /* 完整声明在下面的并发段; 这里先引名, 免得原型参数里的 struct 变成只在原型作用域里的新类型 */
+int ds4_engine_v41_has_vision(ds4_engine *e);
+int ds4_engine_v41_image_token_id(ds4_engine *e);   /* -1 = 没视觉塔 */
+struct ds4_v41_images *ds4_v41_images_prepare(ds4_engine *e, const int *prompt, int n_prompt, const ds4_v41_image_src *imgs, int n_imgs,
+                                              int **out_tokens, int *out_n, char *err, size_t errn);   /* out_tokens 是 malloc 的, 调用方 free */
+void ds4_v41_images_free(struct ds4_v41_images *imgs);
+uint64_t ds4_v41_images_bytes(const struct ds4_v41_images *imgs);   /* 预填期额外峰值(服务端准入账) */
+int ds4_v41_req_set_images(struct ds4_v41_req *r, struct ds4_v41_images *imgs);   /* 开请求之后、第一块预填之前调; 1 = 挂上 */
+int ds4_engine_v41_vision_golden(ds4_engine *e, const char *image_path, const char *golden_path);   /* --vision-golden: 对官方金标四道比(core_v41_vision_gate.c); 0 = 过 */
+
 /* 没有 ctx 参数: V4.1 的上下文来自模型元数据(ds4_engine_v41_ctx), 调用方定不了边界, 只定生成上限 n_predict
- * (INT_MAX = 不设上限, 生成到 EOS 或上下文边界)。 */
-int ds4_engine_v41_generate_argmax(ds4_engine *e, const int *prompt, int n_prompt, int n_predict,
+ * (INT_MAX = 不设上限, 生成到 EOS 或上下文边界)。imgs = 提示里图片的展开结果(ds4_v41_images_prepare), 无图 NULL。 */
+int ds4_engine_v41_generate_argmax(ds4_engine *e, const int *prompt, int n_prompt, struct ds4_v41_images *imgs, int n_predict,
                                    ds4_v41_emit_fn emit, void *ud);
 /* --ptrain <配置>(2026-10-01, 后训练 ③ 第八版 = 上下文蒸馏; src/core/core_ptrain*.c): 读复盘块 + 自出问答 → 教师 top-K →
  * 反传训练 ③ 的低秩放大器 → 落 amp_Lnn.bin + base.fnv(引擎 --posttrain 直接挂)。配置是 key=value 文本, 字段见 core_ptrain_data.c。

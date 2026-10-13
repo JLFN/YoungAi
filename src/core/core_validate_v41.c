@@ -43,6 +43,29 @@ static uint64_t v41_req_u64(const ds4_model *m, const char *key) {
     return v;
 }
 
+/* 视觉塔(2026-10-13): 可选 —— 没带的 GGUF vis_layers=0, 引擎拒绝图片请求但文本照常。带了就七件全要(少一件引擎只能猜,
+ * 猜错不报错只是看图胡说), 与三塔同一条纪律。vm = 视觉张量所在的文件(主文件或 --vision-gguf 侧车), 之后 g_vision_model 指它。 */
+void v41_load_vision_metadata(const ds4_model *vm) {
+    ds4_v41_cfg *v = &g_ds4_v41;
+    uint32_t nl = 0;
+    if (!model_get_u32(vm, "deepseek4.vision.block_count", &nl) || !nl) return;
+    if (nl > DS4_VIS_MAX_LAYERS) ds4_die("deepseek4.vision.block_count over engine limit");
+    v->vis_layers  = nl;
+    v->vis_dim     = required_u32(vm, "deepseek4.vision.embedding_length");
+    v->vis_heads   = required_u32(vm, "deepseek4.vision.attention.head_count");
+    v->vis_inter   = required_u32(vm, "deepseek4.vision.feed_forward_length");
+    v->vis_patch   = required_u32(vm, "deepseek4.vision.patch_size");
+    v->vis_ds      = required_u32(vm, "deepseek4.vision.downsample_ratio");
+    v->vis_max_tok = required_u32(vm, "deepseek4.vision.max_image_tokens");
+    v->vis_min_px  = required_u32(vm, "deepseek4.vision.min_pixels");
+    v->image_token_id = (int32_t)required_u32(vm, "deepseek4.image_token_id");
+    float theta = 0.f;
+    if (!model_get_f32_compat(vm, "deepseek4.vision.rope.freq_base", &theta) || !(theta > 0.f)) ds4_die("deepseek4.vision.rope.freq_base missing");
+    v->vis_theta = theta;
+    if (!v->vis_dim || !v->vis_heads || v->vis_dim % v->vis_heads || !v->vis_inter || !v->vis_patch || !v->vis_ds || !v->vis_max_tok)
+        ds4_die("deepseek4.vision.* 不合法");
+}
+
 void v41_load_metadata(const ds4_model *m) {
     ds4_v41_cfg *v = &g_ds4_v41;
     memset(v, 0, sizeof *v);
@@ -153,6 +176,8 @@ void v41_load_metadata(const ds4_model *m) {
     v->engram_cvocab    = required_u32(m, "deepseek4.engram.compressed_vocab_size");
     v->engram_pad       = required_u32(m, "deepseek4.engram.pad_id_compressed");
     v->swiglu_limit     = DS4_SWIGLU_CLAMP_EXP;
+
+    v41_load_vision_metadata(m);   /* 主文件自带视觉塔的情况; --vision-gguf 侧车由 core_engine_open.c 再调一次 */
 
     int nk = 0, ni = 0;
     for (uint32_t il = 0; il < DS4_N_LAYER; il++) { nk += v->is_kv_source[il]; ni += v->is_index_source[il]; }

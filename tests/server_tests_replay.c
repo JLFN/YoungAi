@@ -2,6 +2,10 @@
 
 #include "server_tests_internal.h"
 
+/* 2026-10-13 起图片块经 img_sink 走: 这些单测验证的是"没视觉塔时走 mm 文本编码器"那条路(e/r 为 NULL), 语义与改前一字不差 */
+static img_sink g_sk;
+static img_sink *SK(ds4_mm *mm) { g_sk.mm = mm; g_sk.e = NULL; g_sk.r = NULL; return &g_sk; }
+
 void test_anthropic_image_block_renders_encoder_text(void) {
     /* The Claude Code paste-a-screenshot path: an image content block turns
      * into the encoder's UI-sketch text inside the user message, in client
@@ -18,7 +22,7 @@ void test_anthropic_image_block_renders_encoder_text(void) {
         "]}]";
     const char *p = json;
     chat_msgs msgs = {0};
-    TEST_ASSERT(parse_anthropic_messages(&p, &msgs, mm));
+    TEST_ASSERT(parse_anthropic_messages(&p, &msgs, SK(mm)));
     TEST_ASSERT(msgs.len == 1);
     const char *sketch = strstr(msgs.v[0].content, "<image>");
     const char *instruction = strstr(msgs.v[0].content, "make the button red");
@@ -42,7 +46,7 @@ void test_anthropic_image_block_renders_encoder_text(void) {
         "]}]";
     p = json_wav;
     chat_msgs msgs_wav = {0};
-    TEST_ASSERT(!parse_anthropic_messages(&p, &msgs_wav, mm));
+    TEST_ASSERT(!parse_anthropic_messages(&p, &msgs_wav, SK(mm)));
     chat_msgs_free(&msgs_wav);
 
     /* fail closed: url source (the server does not fetch) */
@@ -53,7 +57,7 @@ void test_anthropic_image_block_renders_encoder_text(void) {
         "]}]";
     p = json_url;
     chat_msgs msgs_url = {0};
-    TEST_ASSERT(!parse_anthropic_messages(&p, &msgs_url, mm));
+    TEST_ASSERT(!parse_anthropic_messages(&p, &msgs_url, SK(mm)));
     chat_msgs_free(&msgs_url);
     ds4_mm_free(mm);
 }
@@ -74,7 +78,7 @@ void test_anthropic_tool_result_mcp_blocks(void) {
         "]}]";
     const char *p = json_str;
     chat_msgs msgs = {0};
-    TEST_ASSERT(parse_anthropic_messages(&p, &msgs, mm));
+    TEST_ASSERT(parse_anthropic_messages(&p, &msgs, SK(mm)));
     TEST_ASSERT(msgs.len == 1);
     TEST_ASSERT(!strcmp(msgs.v[0].content, "<tool_result>ok</tool_result>"));
     chat_msgs_free(&msgs);
@@ -92,7 +96,7 @@ void test_anthropic_tool_result_mcp_blocks(void) {
         "]}]}]";
     p = json_mixed;
     chat_msgs msgs_mixed = {0};
-    TEST_ASSERT(parse_anthropic_messages(&p, &msgs_mixed, mm));
+    TEST_ASSERT(parse_anthropic_messages(&p, &msgs_mixed, SK(mm)));
     TEST_ASSERT(msgs_mixed.len == 1);
     TEST_ASSERT(!strcmp(msgs_mixed.v[0].content,
                         "<tool_result>shot:<image>\n"
@@ -110,7 +114,7 @@ void test_anthropic_tool_result_mcp_blocks(void) {
         "]}]";
     p = json_err;
     chat_msgs msgs_err = {0};
-    TEST_ASSERT(parse_anthropic_messages(&p, &msgs_err, mm));
+    TEST_ASSERT(parse_anthropic_messages(&p, &msgs_err, SK(mm)));
     TEST_ASSERT(msgs_err.len == 1);
     TEST_ASSERT(!strcmp(msgs_err.v[0].content,
                         "<tool_result>[tool_error] exit status 1</tool_result>"));
@@ -126,7 +130,7 @@ void test_anthropic_tool_result_mcp_blocks(void) {
         "]}]}]";
     p = json_img_url;
     chat_msgs msgs_img_url = {0};
-    TEST_ASSERT(!parse_anthropic_messages(&p, &msgs_img_url, mm));
+    TEST_ASSERT(!parse_anthropic_messages(&p, &msgs_img_url, SK(mm)));
     chat_msgs_free(&msgs_img_url);
 
     p = json_mixed;

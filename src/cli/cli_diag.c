@@ -29,6 +29,16 @@
 /* teacher-forced 逐位打分(2026-08-14 公开对拍): 读 ids 文件(空白分隔 token id),
  * 首 token prefill 后逐位: 导出全词表 raw logits → 强制喂真值下一 token。
  * 输出=量化器 DS4_DUMP_LOGITS 同构二进制(int32 S,V + fp32[S*V]) → anchor_metrics 直接对表。 */
+/* 整文件读进内存(--image 的图片字节; 二进制, 不加 NUL 语义) */
+static unsigned char *cli_read_file(const char *path, size_t *len) {
+    FILE *f = fopen(path, "rb"); if (!f) return NULL;
+    if (fseek(f, 0, SEEK_END) != 0) { fclose(f); return NULL; }
+    const long L = ftell(f); if (L < 0) { fclose(f); return NULL; }
+    rewind(f);
+    unsigned char *b = malloc((size_t)L + 1); if (!b) { fclose(f); return NULL; }
+    if (fread(b, 1, (size_t)L, f) != (size_t)L) { free(b); fclose(f); return NULL; }
+    fclose(f); *len = (size_t)L; return b;
+}
 /* V4.1 贪心生成(P2c 冒烟出口): 逐 token 打印文本, 采样/会话/服务接入是 P5 */
 static int v41_emit_print(int token, void *ud) {
     ds4_engine *engine = (ds4_engine *)ud;
@@ -63,8 +73,25 @@ int run_v41_generation(ds4_engine *engine, const cli_config *cfg, const ds4_toke
     ds4_engine_v41_set_verify_k(cfg->gen.verify_k > 0 ? (unsigned)cfg->gen.verify_k : 0u);
     ds4_engine_v41_set_draft_amp(cfg->gen.draft_amp);
     ds4_engine_v41_set_chunk(cfg->gen.v41_chunk);
-    int rc = ds4_engine_v41_generate_argmax(engine, prompt->v, (int)prompt->len, cfg->gen.n_predict, v41_emit_print, engine);
+    /* --image FILE(可多次): 提示里的占位 token 按图展开(core_v41_vision.c); 没给图就是纯文本 */
+    struct ds4_v41_images *imgs = NULL;
+    int *ptok = (int *)prompt->v, pn = (int)prompt->len;
+    if (cfg->gen.n_images > 0) {
+        ds4_v41_image_src src[CLI_MAX_IMAGES]; unsigned char *blob[CLI_MAX_IMAGES];
+        for (int i = 0; i < cfg->gen.n_images; i++) {
+            size_t len = 0;
+            blob[i] = cli_read_file(cfg->gen.images[i], &len);
+            if (!blob[i]) { fprintf(stderr, "ds4: --image 读不到 %s\n", cfg->gen.images[i]); for (int j = 0; j < i; j++) free(blob[j]); return 1; }
+            src[i].data = blob[i]; src[i].len = len;
+        }
+        char err[256];
+        imgs = ds4_v41_images_prepare(engine, prompt->v, (int)prompt->len, src, cfg->gen.n_images, &ptok, &pn, err, sizeof err);
+        for (int i = 0; i < cfg->gen.n_images; i++) free(blob[i]);
+        if (!imgs) { fprintf(stderr, "ds4: 图片处理失败: %s\n", err); return 1; }
+    }
+    int rc = ds4_engine_v41_generate_argmax(engine, ptok, pn, imgs, cfg->gen.n_predict, v41_emit_print, engine);
     fputc('\n', stdout);
+    if (imgs) { ds4_v41_images_free(imgs); free(ptok); }
     return rc;
 }
 

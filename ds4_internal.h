@@ -79,6 +79,11 @@ typedef struct {
     int16_t  mtp_target[DS4_MTP_MAX_TOWERS * 2];   /* main_x 取哪几层的注意力输入(官方 37/38/39) */
     int16_t  mtp_target_slot[DS4_MAX_LAYER];       /* 层 → 在 main_hidden 里的第几段, -1 = 不取 */
     uint32_t n_mtp_target;
+    /* 视觉塔(2026-10-13; GGUF deepseek4.vision.* ← HF config.json 的 vision_config; 官方 inference/model.py 的 vision_* 字段)。
+     * vis_layers == 0 = 这份 GGUF 没带视觉塔(转换器没写 v.* 张量) ⇒ 图片请求拒绝, 不猜不糊。 */
+    uint32_t vis_layers, vis_dim, vis_heads, vis_inter, vis_patch, vis_ds, vis_max_tok, vis_min_px;
+    float    vis_theta;        /* 2D RoPE 的 theta(官方 vision_rope_theta 10000) */
+    int32_t  image_token_id;   /* <｜deepseek_image｜>: 提示里每个图片 span 的每一位都是它, 靶位只靠位置区分 */
 } ds4_v41_cfg;
 extern ds4_v41_cfg g_ds4_v41;
 

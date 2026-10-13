@@ -60,9 +60,11 @@ static bool v41_engram_open_shard(ds4_v41_state *st, uint32_t ei) {
     return true;
 }
 
-/* 官方 NgramHashState.forward(无 image mask): tokens[shift] = compressed[p-shift](p-shift<0 → pad);
+/* 官方 NgramHashState.forward: tokens[shift] = compressed[p-shift](p-shift<0 → pad);
  * products[k] = tokens[k]·mult[layer][k]; rolling = products[0]; for i=1..G-1: rolling ^= products[i];
- * hash_i = rolling % primes[layer][i-1][head] + offsets[layer][(i-1)·heads+head]。p 是绝对位置。 */
+ * hash_i = rolling % primes[layer][i-1][head] + offsets[layer][(i-1)·heads+head]。p 是绝对位置。
+ * 图片位置(2026-10-13, 官方 image mask): 回看撞到图片位(DEAD)就 blocked, 它和更远的 shift 全取 pad —— n-gram 不跨图片;
+ * 图片位自己当 query 时 shift 0 就 DEAD ⇒ 全 pad(查到的行在 v41_engram_rows 里整行清零, 不出贡献)。 */
 static void v41_engram_hash(const ds4_engine *e, const ds4_v41_state *st, uint32_t ei, uint32_t p, int64_t *rows /*[cols]*/) {
     const ds4_v41_cfg *v = &g_ds4_v41;
     const ds4_weights *W = &e->weights;
@@ -72,9 +74,11 @@ static void v41_engram_hash(const ds4_engine *e, const ds4_v41_state *st, uint32
     const int64_t *offs = (const int64_t *)v41_tensor_host(&e->model, W->engram_offsets);
     const uint32_t G = v->engram_max_ngram, H = v->engram_heads;
     int64_t prod[8];
+    int blocked = 0;
     for (uint32_t k = 0; k < G; k++) {
         int64_t cid;
-        if ((int64_t)p - (int64_t)k < 0) cid = (int64_t)v->engram_pad;
+        if ((int64_t)p - (int64_t)k < 0 || blocked) cid = (int64_t)v->engram_pad;
+        else if (st->himg && st->himg[p - k]) { blocked = 1; cid = (int64_t)v->engram_pad; }
         else { int32_t tok = st->hist[p - k]; cid = (tok >= 0 && (uint32_t)tok < DS4_N_VOCAB) ? tmap[tok] : (int64_t)v->engram_pad; }
         prod[k] = (int64_t)((uint64_t)cid * (uint64_t)mult[(uint64_t)ei * G + k]);   /* 官方 int64 乘(乘子有界不溢出) */
     }
@@ -451,7 +455,10 @@ bool v41_engram_rows(ds4_engine *e, ds4_v41_state *st, uint32_t il) {
         FILE *df = fopen(p, "w");
         if (df) { for (uint32_t q = 0; q < n; q++) for (uint32_t c = 0; c < cols; c++) fprintf(df, "%lld%c", (long long)J->rows[ei][(size_t)q * cols + c], c + 1 == cols ? '\n' : ' '); fclose(df); }
     }
-    return ds4_gpu_v41_engram_rows_tensor(st->erows, st->eraw[ei], n * cols, HD) != 0;
+    if (!ds4_gpu_v41_engram_rows_tensor(st->erows, st->eraw[ei], n * cols, HD)) return false;
+    /* 图片位置不出 engram 贡献(官方 engram_mask): 行清零 ⇒ wkv 出 0 ⇒ 门乘 value 0 = 加 0 */
+    if (st->vrows_on) return ds4_gpu_v41_rows_zero_tensor(st->erows, st->vrows, n, (uint32_t)in_dim) != 0;
+    return true;
 }
 
 bool v41_engram_apply(ds4_engine *e, ds4_v41_state *st, uint32_t il) {

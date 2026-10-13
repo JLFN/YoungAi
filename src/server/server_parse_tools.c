@@ -141,7 +141,7 @@ bad:
     return false;
 }
 
-bool parse_messages(const char **p, chat_msgs *msgs) {
+bool parse_messages(const char **p, chat_msgs *msgs, img_sink *sk) {
     json_ws(p);
     if (**p != '[') return false;
     (*p)++;
@@ -169,7 +169,7 @@ bool parse_messages(const char **p, chat_msgs *msgs) {
                 }
             } else if (!strcmp(key, "content")) {
                 free(msg.content);
-                if (!json_content(p, &msg.content)) {
+                if (!json_content_sink(p, &msg.content, sk)) {
                     free(key);
                     goto fail;
                 }
@@ -278,12 +278,20 @@ bool json_parse_image_source(const char **p, char **src_type,
  * anything unsupported -- no registry (encoder tool not built), url sources
  * (the server does not fetch), unknown media type, bad base64, encoder
  * rejection: a 400 beats answering on top of silently dropped pixels. */
-bool mm_image_source_to_text(ds4_mm *mm, const char *src_type,
+bool mm_image_source_to_text(img_sink *sk, const char *src_type,
                                     const char *src_media, const char *src_data,
                                     buf *dst) {
-    if (!mm || !src_type || strcmp(src_type, "base64") != 0 ||
-        !src_media || !src_data || !ds4_mm_supported(mm, src_media))
-        return false;
+    if (!sk || !src_type || strcmp(src_type, "base64") != 0 || !src_media || !src_data) return false;
+    /* 原生视觉(2026-10-13): 字节攒到请求, 文本处放占位 token; 媒体类型不挑(stb_image 认不认在预处理时报) */
+    if (sk->e && sk->r && ds4_engine_v41_has_vision(sk->e)) {
+        uint8_t *raw = NULL; size_t raw_len = 0;
+        if (ds4_mm_b64_decode(src_data, strlen(src_data), &raw, &raw_len) != 0 || !raw_len) { free(raw); return false; }
+        request_push_image(sk->r, raw, raw_len);
+        ds4_buf_puts(dst, "<｜deepseek_image｜>");
+        return true;
+    }
+    ds4_mm *mm = sk->mm;
+    if (!mm || !ds4_mm_supported(mm, src_media)) return false;
     uint8_t *raw = NULL;
     size_t raw_len = 0;
     if (ds4_mm_b64_decode(src_data, strlen(src_data), &raw, &raw_len) != 0)
@@ -300,6 +308,18 @@ bool mm_image_source_to_text(ds4_mm *mm, const char *src_type,
     return true;
 }
 
+/* OpenAI image_url: 只收 data:<media>;base64,<data>(http(s) 不抓: 服务端不出网, 与 Anthropic url source 同一条规矩) */
+bool mm_image_data_url(img_sink *sk, const char *url, buf *dst) {
+    if (!url || strncmp(url, "data:", 5)) return false;
+    const char *semi = strchr(url + 5, ';'), *comma = strchr(url + 5, ',');
+    if (!semi || !comma || semi > comma || strncmp(semi, ";base64,", 8)) return false;
+    char media[64];
+    const size_t ml = (size_t)(semi - (url + 5));
+    if (ml == 0 || ml >= sizeof media) return false;
+    memcpy(media, url + 5, ml); media[ml] = 0;
+    return mm_image_source_to_text(sk, "base64", media, comma + 1, dst);
+}
+
 /* tool_result "content": a bare string, null, or an array of content blocks.
  * Real MCP tool results arrive as block arrays; text blocks concatenate exactly
  * like the legacy string path (rendered bytes stay stable, so existing disk-KV
@@ -307,7 +327,7 @@ bool mm_image_source_to_text(ds4_mm *mm, const char *src_type,
  * resolve through the modality registry into the same <image> sections user
  * messages get.  Fail closed only on pixels: an undeliverable image rejects the
  * request, while text-bearing blocks of other types keep their text as before. */
-bool json_tool_result_content(const char **p, ds4_mm *mm, char **out) {
+bool json_tool_result_content(const char **p, img_sink *sk, char **out) {
     json_ws(p);
     if (**p == '"') return json_string(p, out);
     if (json_lit(p, "null")) {
@@ -373,7 +393,7 @@ bool json_tool_result_content(const char **p, ds4_mm *mm, char **out) {
             if (ok) {
                 (*p)++;
                 if (type && !strcmp(type, "image"))
-                    ok = mm_image_source_to_text(mm, src_type, src_media,
+                    ok = mm_image_source_to_text(sk, src_type, src_media,
                                                  src_data, &b);
                 else if (text)
                     ds4_buf_puts(&b, text);

@@ -13,7 +13,7 @@
  * identical uploads hit the cache.  tool_result is_error surfaces as an
  * explicit [tool_error] marker inside the envelope. */
 static bool parse_anthropic_content_block(const char **p, const char *role, chat_msg *msg,
-                                          ds4_mm *mm) {
+                                          img_sink *sk) {
     (void)role;
     if (**p != '{') return false;
     (*p)++;
@@ -86,7 +86,7 @@ static bool parse_anthropic_content_block(const char **p, const char *role, chat
         } else if (!strcmp(key, "content")) {
             free(tool_result);
             tool_result = NULL;
-            if (!json_tool_result_content(p, mm, &tool_result)) {
+            if (!json_tool_result_content(p, sk, &tool_result)) {
                 free(key);
                 goto bad;
             }
@@ -137,7 +137,7 @@ static bool parse_anthropic_content_block(const char **p, const char *role, chat
          * domain encoder: UI geometry / palette / verbatim text). */
         buf b = {0};
         ds4_buf_puts(&b, msg->content ? msg->content : "");
-        if (!mm_image_source_to_text(mm, src_type, src_media, src_data, &b)) {
+        if (!mm_image_source_to_text(sk, src_type, src_media, src_data, &b)) {
             ds4_buf_free(&b);
             goto bad;
         }
@@ -185,7 +185,7 @@ bad:
     return false;
 }
 
-static bool parse_anthropic_content(const char **p, chat_msg *msg, ds4_mm *mm) {
+static bool parse_anthropic_content(const char **p, chat_msg *msg, img_sink *sk) {
     json_ws(p);
     if (**p == '"') return json_string(p, &msg->content);
     if (json_lit(p, "null")) {
@@ -206,7 +206,7 @@ static bool parse_anthropic_content(const char **p, chat_msg *msg, ds4_mm *mm) {
             msg->content = ds4_buf_take(&b);
             free(s);
         } else if (**p == '{') {
-            if (!parse_anthropic_content_block(p, msg->role ? msg->role : "", msg, mm)) return false;
+            if (!parse_anthropic_content_block(p, msg->role ? msg->role : "", msg, sk)) return false;
         } else if (!json_skip_value(p)) {
             return false;
         }
@@ -220,7 +220,7 @@ static bool parse_anthropic_content(const char **p, chat_msg *msg, ds4_mm *mm) {
     return true;
 }
 
-bool parse_anthropic_messages(const char **p, chat_msgs *msgs, ds4_mm *mm) {
+bool parse_anthropic_messages(const char **p, chat_msgs *msgs, img_sink *sk) {
     json_ws(p);
     if (**p != '[') return false;
     (*p)++;
@@ -249,7 +249,7 @@ bool parse_anthropic_messages(const char **p, chat_msgs *msgs, ds4_mm *mm) {
             } else if (!strcmp(key, "content")) {
                 free(msg.content);
                 msg.content = NULL;
-                if (!parse_anthropic_content(p, &msg, mm)) {
+                if (!parse_anthropic_content(p, &msg, sk)) {
                     free(key);
                     goto fail;
                 }

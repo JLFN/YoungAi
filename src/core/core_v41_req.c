@@ -130,12 +130,20 @@ void ds4_v41_req_close(struct ds4_v41_req *r) {
     free(r);
 }
 
+/* 图片(2026-10-13): 预填开始前挂上(调用方已用 ds4_v41_images_prepare 把提示展开, prompt 就是展开后的那份); 对象归调用方, 预填完就不再读 */
+int ds4_v41_req_set_images(struct ds4_v41_req *r, struct ds4_v41_images *imgs) {
+    if (!r || r->prefilled || r->c0 || r->forked) return 0;
+    r->st.vimg = imgs;
+    return 1;
+}
+
 int ds4_v41_req_prefill_step(struct ds4_v41_req *r) {
     if (!r) return -1;
     if (r->prefilled) return 1;
     if (r->forked) { fprintf(stderr, "ds4: V4.1 分身没有自己的预填(原请求没预填完或已关)\n"); return -1; }
     if (!v41_prefill_chunk(r->e, &r->st, r->prompt, r->np, &r->c0, r->cap)) return -1;
     if (r->c0 < r->np) return 0;
+    r->st.vimg = NULL;   /* 图片只在预填里用; 之后的解码/分身克隆不再碰它 */
     /* 最后一块: 末位 logits → 首个 token(设备 argmax / 采样核 / 主机惩罚路), 然后收缩成解码态(投机的验证批要 1+块长 行) */
     if (!v41_next_token(&r->st, r->am, r->st.last_logit_row, r->rowbuf, &r->rng, &r->hist, &r->next)) return -1;
     /* 分身的首个 token: 同一行 logits、同一组 pos/tok 槽, 只换采样面(种子) —— 与它自己预填到这一步再取逐字节同。

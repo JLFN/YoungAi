@@ -298,14 +298,9 @@ int ds4_gpu_v41_matmul_f32_tensor(ds4_gpu_tensor *out, const void *model_map, ui
 /* BF16 权重(官方原生精度) × f32 激活 → f32。clear.md C1 起路由 gate / compressor / indexer
  * 投影都存 BF16 —— 转换器不再把它们展开成 f32, 每 token 少读 0.20 GB, 而值是原件原样, 一位没动。
  * 预填(n > 8)直接把 mmap 上的 bf16 喂 cuBLAS, 连一次格式转换都不用。 */
-int ds4_gpu_v41_matmul_bf16_tensor(ds4_gpu_tensor *out, const void *model_map, uint64_t model_size,
-                                   uint64_t weight_offset, uint64_t in_dim, uint64_t out_dim,
-                                   const ds4_gpu_tensor *x, uint32_t n_tok) {
-    if (!out || !x || !g_cublas_ready || n_tok == 0) return 0;
-    const uint64_t wbytes = in_dim * out_dim * 2;
-    if (weight_offset > model_size || wbytes > model_size - weight_offset) return 0;
-    const __nv_bfloat16 *W = (const __nv_bfloat16 *)cuda_model_range_ptr(model_map, weight_offset, wbytes, "v41 bf16 w");
-    if (!W) return 0;
+/* 主体: W 已是设备可读指针(模型映射里的, 或视觉塔来图时读进的临时副本 —— 2026-10-13 拆出给 ds4_gpu_v41_matmul_bf16_dev_tensor 共用) */
+static int v41_bf16_matmul_ptr(const __nv_bfloat16 *W, uint64_t in_dim, uint64_t out_dim, const ds4_gpu_tensor *x, ds4_gpu_tensor *out, uint32_t n_tok) {
+    if (!out || !x || !W || !g_cublas_ready || n_tok == 0) return 0;
     if (n_tok <= V41_GEMV_MAX_TOK && (in_dim % 256u) == 0u)
         return v41_bf16_gemv(W, in_dim, out_dim, (const float *)x->ptr, (float *)out->ptr, n_tok, "v41 bf16 gemv", NULL);
     /* 预填: 激活转 bf16 一发 GEMM(激活本来就落在 bf16 格点上, 转过去不改值) */
@@ -320,6 +315,15 @@ int ds4_gpu_v41_matmul_bf16_tensor(ds4_gpu_tensor *out, const void *model_map, u
                                      W, CUDA_R_16BF, (int)in_dim, xb, CUDA_R_16BF, (int)in_dim, &beta,
                                      (float *)out->ptr, CUDA_R_32F, (int)out_dim, CUDA_R_32F, CUBLAS_GEMM_DEFAULT);
     return cublas_ok(st, "v41 bf16 gemm");
+}
+int ds4_gpu_v41_matmul_bf16_tensor(ds4_gpu_tensor *out, const void *model_map, uint64_t model_size,
+                                   uint64_t weight_offset, uint64_t in_dim, uint64_t out_dim,
+                                   const ds4_gpu_tensor *x, uint32_t n_tok) {
+    if (!out || !x || n_tok == 0) return 0;
+    const uint64_t wbytes = in_dim * out_dim * 2;
+    if (weight_offset > model_size || wbytes > model_size - weight_offset) return 0;
+    const __nv_bfloat16 *W = (const __nv_bfloat16 *)cuda_model_range_ptr(model_map, weight_offset, wbytes, "v41 bf16 w");
+    return v41_bf16_matmul_ptr(W, in_dim, out_dim, x, out, n_tok);
 }
 
 /* 同上的解码 GEMV, 多一个设备侧 skip 标志(markov 偏置缓存命中 ⇒ 整网格直接退; 见 ds4_gpu_v41.h)。只收解码小批(n ≤ 8), 预填不走这条。 */

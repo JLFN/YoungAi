@@ -413,7 +413,7 @@ void mon_metrics_json(server *s, buf *b, bool all_requests) {
     ds4_buf_puts(b, "{\"engine\":{");
     jkey(b, "model"); json_escape(b, s->engine ? ds4_engine_model_name(s->engine) : "");   /* 离线单测没有引擎 */
     ds4_buf_putc(b, ','); jkey(b, "max_context"); ds4_buf_printf(b, "%d", server_ctx_size(s));
-    ds4_buf_putc(b, ','); jkey(b, "images"); ds4_buf_puts(b, s->engine && ds4_engine_mm(s->engine) ? "true" : "false");
+    ds4_buf_putc(b, ','); jkey(b, "images"); ds4_buf_puts(b, s->engine && (ds4_engine_v41_has_vision(s->engine) || ds4_engine_mm(s->engine)) ? "true" : "false");   /* 原生视觉塔(2026-10-13)或 mm 文本编码器 */
     ds4_buf_putc(b, ','); jkey(b, "backend"); json_escape(b, s->backend_name ? s->backend_name : "");
     ds4_buf_putc(b, ','); jkey(b, "variant"); json_escape(b, ds4_engine_is_v41(s->engine) ? "v4.1" : "v4");
     ds4_buf_putc(b, ','); jkey(b, "spec"); ds4_buf_puts(b, ds4_engine_is_v41(s->engine) && ds4_engine_v41_dspark() ? "true" : "false");

@@ -32,7 +32,9 @@ bool is_rendered_chat_prompt(const char *prompt) {
 
 void build_prompt(ds4_engine *engine, const cli_generation_options *gen, ds4_tokens *out) {
     if (is_rendered_chat_prompt(gen->prompt)) {
-        ds4_tokenize_rendered_chat(engine, gen->prompt, out);
+        ds4_tokenize_rendered_chat(engine, gen->prompt, out);   /* 渲染好的提示里 <｜deepseek_image｜> 按特殊 token 切, 图由 --image 给 */
+    } else if (gen->n_images > 0) {
+        ds4_encode_chat_prompt_images(engine, gen->system, gen->prompt, gen->n_images, cli_effective_think_mode(gen), out);
     } else {
         ds4_encode_chat_prompt(engine, gen->system, gen->prompt,
                                cli_effective_think_mode(gen), out);

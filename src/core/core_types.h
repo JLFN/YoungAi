@@ -196,15 +196,14 @@ typedef struct {
     ds4_tensor *indexer_wk;
     ds4_tensor *indexer_k_norm;
     ds4_tensor *engram_wkv;
-    ds4_tensor *engram_q;
-    ds4_tensor *engram_k;
+    ds4_tensor *engram_q, *engram_k;
     ds4_tensor *hc_ffn_fn;
     ds4_tensor *hc_ffn_scale;
     ds4_tensor *hc_ffn_base;
     ds4_tensor *ffn_norm;
     ds4_tensor *ffn_gate_tid2eid;
     ds4_tensor *ffn_gate_inp;
-    ds4_tensor *ffn_exp_probs_b;
+    ds4_tensor *ffn_exp_probs_b, *ffn_exp_probs_b_vl;   /* 路由选择分的偏置: 文本位 / 图片位(官方 Gate.bias_vl; 无视觉塔的 GGUF 为 NULL) */
     ds4_tensor *ffn_gate_exps;
     ds4_tensor *ffn_up_exps;
     ds4_tensor *ffn_down_exps;
@@ -214,6 +213,7 @@ typedef struct {
 } ds4_layer_weights;
 
 #include "core_draft_tower_types.h"
+#include "core_vision_types.h"
 
 typedef struct {
     ds4_tensor *token_embd;
@@ -229,6 +229,7 @@ typedef struct {
     ds4_tensor *engram_offsets;       /* I64 [n_engram][(max_ngram-1)*heads] */
     ds4_layer_weights layer[DS4_MAX_LAYER];
     ds4_draft_tower_weights mtp;   /* DSpark 三塔(speed.md 段 6); 定义见 core_draft_tower_types.h */
+    ds4_vision_weights vis;        /* 视觉塔 + aligner(2026-10-13); 定义见 core_vision_types.h, 无视觉塔时全 NULL */
 } ds4_weights;
 
 typedef struct {
@@ -457,9 +458,9 @@ struct ds4_vocab {
     int user_id;
     int assistant_id;
     int system_id;        /* <｜System｜>: V4.1 的 tokenizer 才有(id 128799), 没有 = -1, 聊天渲染就不写它(V4 的模板本来没有) */
-    int think_start_id;
-    int think_end_id;
+    int think_start_id, think_end_id;
     int dsml_id;
+    int image_id;         /* <｜deepseek_image｜>(V4.1 129264): 图片占位, 渲染文本里出现就按特殊 token 切; 词表没有 = -1 */
     str_i32_table token_to_id;
     str_i32_table merge_rank;
 };

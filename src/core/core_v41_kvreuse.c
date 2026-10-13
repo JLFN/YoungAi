@@ -32,6 +32,7 @@ static struct {
     int valid;
     uint32_t n;                 /* 检查点位置 = 那条提示的 token 数 */
     int32_t *tok; uint32_t tok_cap;
+    uint64_t *sig;              /* [n] 每位所属图片的指纹(0 = 文本): 图片 span 的 token 全是同一个占位 id, 不比图片字节就会把别的图的 KV 接上(2026-10-13) */
     ds4_gpu_tensor *ckv[DS4_MAX_LAYER], *idk[DS4_MAX_LAYER], *win[DS4_MAX_LAYER], *cpk[DS4_MAX_LAYER], *cps[DS4_MAX_LAYER], *mainh;
     ds4_gpu_tensor *logits;     /* 提示末位的 logits 一行 [V] f32: 同提示复用时不预填, 第一个 token 从它采 */
     uint32_t ng_src[DS4_MAX_LAYER], cpend[DS4_MAX_LAYER], win_from[DS4_MAX_LAYER];
@@ -56,7 +57,7 @@ static bool cp(ds4_gpu_tensor *dst, const ds4_gpu_tensor *src, uint64_t bytes) {
 }
 
 /* 预填刚完(解码前)调: st 此刻正好停在提示末尾 */
-void v41_kvreuse_save(const ds4_v41_state *st, const int32_t *prompt, uint32_t np) {
+void v41_kvreuse_save(const ds4_v41_state *st, const int32_t *prompt, uint32_t np, const uint64_t *sig) {
     if (!g_ds4_v41_kv_reuse) return;
     K.valid = 0;
     const uint64_t rowb = (uint64_t)DS4_N_HEAD_DIM * 4;
@@ -86,16 +87,23 @@ void v41_kvreuse_save(const ds4_v41_state *st, const int32_t *prompt, uint32_t n
     total += vb;
     if (ok && !ds4_gpu_synchronize()) ok = false;
     if (!ok) { fprintf(stderr, "ds4: [v41] KV 检查点存不下(显存), 下一条请求整段预填\n"); return; }
-    if (K.tok_cap < np) { free(K.tok); K.tok_cap = np + np / 2; K.tok = xmalloc((size_t)K.tok_cap * 4); }
+    if (K.tok_cap < np) { free(K.tok); free(K.sig); K.tok_cap = np + np / 2; K.tok = xmalloc((size_t)K.tok_cap * 4); K.sig = xmalloc((size_t)K.tok_cap * 8); }
     memcpy(K.tok, prompt, (size_t)np * 4);
+    if (sig) memcpy(K.sig, sig, (size_t)np * 8); else memset(K.sig, 0, (size_t)np * 8);
     K.n = np; K.bytes = total; K.valid = 1;
+}
+
+/* 前 n 位的图片指纹要逐位相同(没图片 = 全 0) */
+static bool sig_match(const uint64_t *a, uint32_t n) {
+    if (!a) { for (uint32_t i = 0; i < n; i++) if (K.sig[i]) return false; return true; }
+    return memcmp(K.sig, a, (size_t)n * 8) == 0;
 }
 
 /* 新状态刚分配完(预填前)调: 能接上就把检查点拷进 st, 返回预填起点(= 检查点位置; = np 时一块都不用填, 末位 logits 已在第 0 行);
  * 接不上返回 0(整段预填) */
-uint32_t v41_kvreuse_restore(ds4_v41_state *st, const int32_t *prompt, uint32_t np) {
+uint32_t v41_kvreuse_restore(ds4_v41_state *st, const int32_t *prompt, uint32_t np, const uint64_t *sig) {
     g_last_reused = 0;
-    if (!g_ds4_v41_kv_reuse || !K.valid || K.n > np || K.n > st->ctx || memcmp(K.tok, prompt, (size_t)K.n * 4)) return 0;
+    if (!g_ds4_v41_kv_reuse || !K.valid || K.n > np || K.n > st->ctx || memcmp(K.tok, prompt, (size_t)K.n * 4) || !sig_match(sig, K.n)) return 0;
     const uint64_t rowb = (uint64_t)DS4_N_HEAD_DIM * 4;
     bool ok = true;
     for (uint32_t il = 0; il < DS4_N_LAYER && ok; il++) {
@@ -115,6 +123,7 @@ uint32_t v41_kvreuse_restore(ds4_v41_state *st, const int32_t *prompt, uint32_t 
     for (uint32_t il = 0; il < DS4_N_LAYER; il++) { st->ng_src[il] = K.ng_src[il]; st->cpend[il] = K.cpend[il]; st->win_from[il] = K.win_from[il]; }
     if (st->mainh) { st->mainh_end = K.mainh_end; st->mainh_n = K.mainh_n; }
     memcpy(st->hist, K.tok, (size_t)K.n * 4);   /* engram 哈希要回看前 3 个 token, 跨检查点边界 */
+    for (uint32_t i = 0; i < K.n; i++) st->himg[i] = K.sig[i] != 0;   /* 图片位同样要回看得到 */
     st->n_past = K.n;
     g_last_reused = (int)K.n;
     fprintf(stderr, "[v41] KV 复用 %u/%u token(检查点 %.1f MB), 只预填后 %u\n", K.n, np, (double)K.bytes / 1048576.0, np - K.n);

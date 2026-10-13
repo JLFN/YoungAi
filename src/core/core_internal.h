@@ -256,6 +256,11 @@ void ds4_select_shape_from_metadata(uint32_t n_layer, uint32_t n_embd, uint32_t 
         uint32_t n_swa, uint32_t n_indexer_head, uint32_t n_indexer_head_dim, uint32_t n_indexer_top_k, uint32_t n_hc,
         uint32_t n_hc_sinkhorn_iter);   /* core_shape_select.c */
 void weights_bind_v41(ds4_weights *w, const ds4_model *m);   /* core_bind_v41.c */
+void weights_bind_vision(ds4_weights *w, const ds4_model *m);   /* core_bind_vision.c: 视觉塔 + aligner(元数据 vis_layers>0 才绑) */
+/* 视觉塔所在的 GGUF(2026-10-13): --vision-gguf 侧车(g_vision_model)或主文件自带; 视觉张量的 abs_offset 都相对它的映射 */
+extern ds4_model *g_vision_model;
+const ds4_model *v41_vision_model(const ds4_engine *e);
+void v41_load_vision_metadata(const ds4_model *vm);   /* core_validate_v41.c: 读 deepseek4.vision.*(缺 block_count = 无视觉塔) */
 void cpu_decode_scratch_free(ds4_cpu_decode_scratch *scratch);
 void cpu_decode_scratch_init(ds4_cpu_decode_scratch *scratch, uint32_t ctx_size);
 ds4_cursor cursor_at(const ds4_model *m, uint64_t pos);

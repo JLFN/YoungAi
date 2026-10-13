@@ -55,7 +55,7 @@ static bool sched_prefill(server *s, v41_lane *P, int *nl, int n_dec, double *t_
     v41_gen *g = &P->g; job *j = P->j;
     if (P->phase == 1) {
         const long avail = mem_available_mb();
-        const uint64_t peak_mb = ds4_v41_req_prefill_bytes(g->prompt_tokens) >> 20;
+        const uint64_t peak_mb = (ds4_v41_req_prefill_bytes(g->prompt_tokens) + ds4_v41_images_bytes(j->req.images)) >> 20;
         if (avail >= 0 && (uint64_t)avail < 2u * peak_mb) {
             if (n_dec > 0) return false;   /* 等解码道退出腾内存 */
             server_log(DS4_LOG_DEFAULT, "ds4-server: %s ctx=%s 预填要 %llu MB 峰值(准入 2 倍), 余量只有 %ld MB, 装不下",
@@ -65,6 +65,7 @@ static bool sched_prefill(server *s, v41_lane *P, int *nl, int n_dec, double *t_
         }
         P->r = ds4_v41_req_open(s->engine, j->req.prompt.v, j->req.prompt.len, g->max_tokens, &g->sp);
         if (!P->r) { lane_finish(P, 1); (*nl)--; return true; }
+        if (j->req.images) (void)ds4_v41_req_set_images(P->r, j->req.images);   /* 图片 span 的视觉嵌入, 预填前挂上 */
         P->phase = 2;
         mon_prefill(s, j->mon, g->prompt_tokens, 0, g->max_tokens);   /* 监控: 这条道开始读提示(准入等待不算读) */
         server_log(DS4_LOG_PREFILL, "ds4-server: %s ctx=%s%s%s prompt start (V4.1 并发预填, decode_max=%d, 余量 %ld MB, 峰值 %llu MB, 同批解码 %d 路)",

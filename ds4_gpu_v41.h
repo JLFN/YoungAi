@@ -256,10 +256,44 @@ int ds4_gpu_v41_win_ring_snap_tensor(ds4_gpu_tensor *win, ds4_gpu_tensor *snap, 
                                      const ds4_gpu_tensor *posd);   /* posd 非 NULL: pos0 从设备槽读(存那一发进投机验证批的图) */
 
 /* 路由(官方 Gate, sqrtsoftplus): logits[n][E] f32 → probs=√softplus; (probs+bias) 选 topk;
- * weights = probs/Σ(+1e-20)·route_scale; selected[n][k] int32, weights[n][k] f32。 */
+ * weights = probs/Σ(+1e-20)·route_scale; selected[n][k] int32, weights[n][k] f32。
+ * ★图片位置用另一份偏置★(官方 Gate.bias_vl, 训练 noaux_tc_for_vl; 2026-10-13 视觉接入): bias_vl 与 vl_rows 都非 NULL 时, 第 t 行
+ * vl_rows[t] ≥ 0 就拿 bias_vl[E](设备 f32 张量; 住侧车文件, 不在主映射里, 所以按张量给)选专家(权重分照旧不动), 否则拿 bias_offset 的。
+ * 任一为 NULL = 全文本。传错不报错: 图片 token 用文本偏置选专家, 只表现为看图答非所问。 */
 int ds4_gpu_v41_router_tensor(ds4_gpu_tensor *selected, ds4_gpu_tensor *weights, const ds4_gpu_tensor *logits,
                               const void *model_map, uint64_t model_size, uint64_t bias_offset,
+                              const ds4_gpu_tensor *bias_vl, const ds4_gpu_tensor *vl_rows,
                               uint32_t n_tok, uint32_t n_expert, uint32_t topk, float route_scale);
+
+/* ---- 视觉塔(DeepSeek-ViT + aligner; 官方 inference/vision.py 逐式; 2026-10-13; CUDA 实现 src/cuda/cuda_v41_vision.inc.cu) ----
+ * 激活仍是 f32 行主序、值落 bf16 格点(官方整个 ViT 跑在 bf16, 每个 nn.Linear/RMSNorm/残差加都出 bf16)。
+ * 权重是 GGUF 里的 BF16 原件(转换器从原始 HF 搬, 一位不动), 矩阵乘走 ds4_gpu_v41_matmul_bf16_tensor, 这里只补它没有的几件。 */
+/* ★视觉塔的权重不走模型映射, 走设备暂存张量★(2026-10-13 下午, 用户: 多模态权重不常驻, 要到才从 SSD 读): 按映射偏移取权重的路会把映射段
+ * cudaHostRegister 钉在 RAM 里(1 GB 常驻); 视觉塔改成来图时按块把权重从 mmap(页缓存)拷进临时设备张量 W 再算, 跑完释放、页缓存丢掉。
+ * 下面三件是现成核的"权重来自设备张量"版: W 是 BF16 [out_dim][in_dim] 行主序; w/bias 是 f32 向量。 */
+int ds4_gpu_v41_matmul_bf16_dev_tensor(ds4_gpu_tensor *out, const ds4_gpu_tensor *W, uint64_t in_dim, uint64_t out_dim,
+                                       const ds4_gpu_tensor *x, uint32_t n_tok);
+int ds4_gpu_v41_rms_norm_dev_tensor(ds4_gpu_tensor *out, const ds4_gpu_tensor *x, const ds4_gpu_tensor *w, uint32_t dim, uint32_t n_tok, float eps);
+/* x[n][dim] = bf16(x + bias[dim])(官方 Linear 的 bias 在 bf16 舍入之前加) */
+int ds4_gpu_v41_bias_add_dev_tensor(ds4_gpu_tensor *x, const ds4_gpu_tensor *bias, uint32_t n_tok, uint32_t dim);
+/* 2D RoPE(官方 get_vision_cos_sin + apply_rotary): qkv[n][3·n_head·head_dim] 里 q、k 两段就地转, v 不动。
+ * patch t 在网格 (t / n_w, t % n_w); rope_dim = head_dim/2, 其前一半频率配行号、后一半配列号(inv_freq = theta^(-2i/rope_dim));
+ * 半分式旋转: x1 = 前 rope_dim 维, x2 = 后 rope_dim 维, out = [x1·cos − x2·sin, x2·cos + x1·sin], 结果舍 bf16。 */
+int ds4_gpu_v41_vision_rope_tensor(ds4_gpu_tensor *qkv, uint32_t n_tok, uint32_t n_w, uint32_t n_head, uint32_t head_dim, float theta);
+/* 稠密双向注意力(官方 F.scaled_dot_product_attention, 无掩码, scale = head_dim^-½): qkv[n][3·H·D] → o[n][H·D], 结果舍 bf16。
+ * 实现 = 逐头分批 cuBLAS(S = Q·Kᵀ f32 → 行 softmax → bf16 P → P·V), 查询按内存上限分块; 一张 1024 token 的图 n ≈ 8600 个 patch。 */
+int ds4_gpu_v41_dense_attn_tensor(ds4_gpu_tensor *o, const ds4_gpu_tensor *qkv, uint32_t n_tok, uint32_t n_head, uint32_t head_dim);
+/* 视觉 MLP 的 SwiGLU: gu[n][2·mid] 前半 gate 后半 up(官方 w1 输出 chunk(2)); h[n][mid] = bf16(silu(gate)·up), 不截断 */
+int ds4_gpu_v41_swiglu_pair_tensor(ds4_gpu_tensor *h, const ds4_gpu_tensor *gu, uint32_t n_tok, uint32_t mid);
+/* 就地 x[n] = bf16(gelu(x)), 精确 erf 版(官方 F.gelu 默认) */
+int ds4_gpu_v41_gelu_tensor(ds4_gpu_tensor *x, uint64_t n);
+/* aligner 的 r×r 像素重排(官方 F.pad(0 补齐到 r 的倍数) + F.unfold(r, stride=r) + transpose):
+ * x[n_h·n_w][dim](patch 网格行主序) → out[⌈n_h/r⌉·⌈n_w/r⌉][dim·r·r], 列序 c·r·r + kh·r + kw(unfold 的通道主序), 网格外为 0 */
+int ds4_gpu_v41_vision_unfold_tensor(ds4_gpu_tensor *out, const ds4_gpu_tensor *x, uint32_t n_h, uint32_t n_w, uint32_t dim, uint32_t r);
+/* 行替换: rows[i] ≥ 0 ⇒ x[i] = src[rows[i]](f32 整行拷贝), < 0 不动 —— 图片 span 的位置用视觉嵌入盖掉词嵌入(官方 merge_image_embeddings) */
+int ds4_gpu_v41_row_select_tensor(ds4_gpu_tensor *x, const ds4_gpu_tensor *src, const ds4_gpu_tensor *rows, uint32_t n_tok, uint32_t dim);
+/* 行清零: rows[i] ≥ 0 的行整行置 0 —— engram 对图片位置不出贡献(官方 engram_mask: 查到的行算了也不加) */
+int ds4_gpu_v41_rows_zero_tensor(ds4_gpu_tensor *x, const ds4_gpu_tensor *rows, uint32_t n_tok, uint32_t dim);
 
 /* SwiGLU(官方 Expert: up 双向截 ±limit, gate 只截上界; h = silu(gate)·up; 结果舍 bf16) */
 int ds4_gpu_v41_swiglu_tensor(ds4_gpu_tensor *h, const ds4_gpu_tensor *gate, const ds4_gpu_tensor *up,
