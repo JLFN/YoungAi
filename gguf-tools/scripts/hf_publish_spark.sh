@@ -68,9 +68,11 @@ stage() {
     for b in ds4 ds4-server; do
         h=$("$ROOT/$b" --help 2>&1)
         case "$h" in *--engram-dir*) ;; *) die "$ROOT/$b 不认 --engram-dir, 先 make cuda-spark";; esac
-        # install.sh 见到视觉侧车就传 --vision-gguf; 旧二进制不认 = 用户那边服务起不来
-        case "$h" in *--vision-gguf*) ;; *) die "$ROOT/$b 不认 --vision-gguf, 先 make cuda-spark";; esac
     done
+    # install.sh 见到视觉侧车就给 ds4-server 传 --vision-gguf; 旧二进制不认 = 用户那边服务起不来。
+    # 只查 ds4-server: ./ds4 也认这个参数, 但它的 --help 没列, 拿它查会误拒
+    h=$("$ROOT/ds4-server" --help 2>&1)
+    case "$h" in *--vision-gguf*) ;; *) die "$ROOT/ds4-server 不认 --vision-gguf, 先 make cuda-spark";; esac
     [ "$(sed -n 's/^VISION="\(.*\)"$/\1/p' "$ROOT/gguf-tools/scripts/hf_install.sh")" = "$VISION_NAME" ] || die "install.sh 的 VISION= 不是 $VISION_NAME"
     [ -s "$V41/$VISION_NAME" ] || die "缺视觉塔侧车 $V41/$VISION_NAME(gguf-tools/quantize/v41_to_gguf vision 出)"
     # install.sh 续传时按 parts_len(k) = k·PART_BASE + min(k, PART_EXTRA) 把合并文件截回整份边界; 常量写错 =
