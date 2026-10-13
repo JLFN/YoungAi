@@ -139,9 +139,11 @@ static char *web_result(const char *text, const char *url) {
     char name[64]; time_t t = time(NULL); strftime(name, sizeof name, "%Y%m%d-%H%M%S", localtime(&t));
     char p[ASST_PATH + 96]; snprintf(p, sizeof p, "%s/%s-%ld.md", d, name, (long)(n % 100000));
     ds4_buf b = {0};
-    ds4_buf_append(&b, text, WEB_HEAD);
-    if (asst_write_file(p, text, n, 0600)) ds4_buf_printf(&b, "\n\n[page truncated: showing %u of %zu bytes; full text of %s saved to %s — use read_file with start to read more]\n", WEB_HEAD, n, url, p + strlen(asst_ws) + 1);
-    else ds4_buf_printf(&b, "\n\n[page truncated: showing %u of %zu bytes]\n", WEB_HEAD, n);
+    size_t cut = WEB_HEAD;   /* 退到字符边界: 按字节切会把一个汉字切成半个, 消息文件里就留下非法 UTF-8(10-13 spark 会话里撞到) */
+    while (cut > 0 && ((unsigned char)text[cut] & 0xC0) == 0x80) cut--;
+    ds4_buf_append(&b, text, cut);
+    if (asst_write_file(p, text, n, 0600)) ds4_buf_printf(&b, "\n\n[page truncated: showing %zu of %zu bytes; full text of %s saved to %s — use read_file with start to read more]\n", cut, n, url, p + strlen(asst_ws) + 1);
+    else ds4_buf_printf(&b, "\n\n[page truncated: showing %zu of %zu bytes]\n", cut, n);
     return ds4_buf_take(&b);
 }
 
