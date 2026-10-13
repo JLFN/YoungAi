@@ -68,7 +68,8 @@ rsync -az --delete $DRYF \
 # make 就认为不用重编 —— 第二次 sync 报"完成", 二进制里却没有这次的改动(core_ptrain_teacher.c 那条分支就这样漏了一版)。
 # 两台机器时钟有偏差时同样会撞。只 touch 这次真传了的文件(">f" 行), 没传的不动。
 if [ -z "$DRYF" ]; then
-    TOUCHED=$(awk '$1 ~ /^>f/ {print $2}' /tmp/sync_spark_items.txt | grep -E '\.(c|h|cu|cuh|inc|m|metal|mk)$|Makefile' | tr '\n' ' ')
+    # 发出去的文件 itemize 首字符是 "<"(">" 是收进来的); 10-13 实查这里原来只认 ">f", 一个文件都没 touch 过
+    TOUCHED=$(awk '$1 ~ /^[<>]f/ {print $2}' /tmp/sync_spark_items.txt | grep -E '\.(c|h|cu|cuh|inc|m|metal|mk)$|Makefile' | tr '\n' ' ')
     [ -z "$TOUCHED" ] || ssh "$REMOTE" "cd $RDIR && touch $TOUCHED" || { echo "★对面 touch 失败★"; exit 1; }
 fi
 # 后训练料: Mac 写的块/出题提示/探针题推过去, spark 生成的 gen/qa 不动(不带 --delete)
