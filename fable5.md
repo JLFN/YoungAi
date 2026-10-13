@@ -11249,3 +11249,23 @@ A = 只在提示里找(Strata 默认索引范围), B = 提示 + 已生成都找;
 - 修(ca54839): app 外壳下 UI 骨架(无 href 的 a / button / summary / 列表行 / 菜单项等)`user-select: none`, 文字不可选就没词可查; 正文/消息/代码不动。
 - 门: 本机浏览器切 app 外壳, `.tabbar a` 及其 span 计算样式 none、body 仍 auto; 已同步 spark(页面现读盘, 不用重起)。小米真机待用户确认。
 - 事故: 同步前 `rm -rf .playwright-mcp/` 没先看内容, 连带删掉以前会话的一百多个界面截图/快照(gitignore 内, 仓库无引用, 不可恢复); spark 上那份 4 个文件也被同步删了。
+
+## 10-13 · 真眼睛: 接入 V4.1 自带的视觉塔(用户: "明明当前 ds 模型是支持多模态的, 为什么我拍照上传识别不了, 还要用 python 解决" → "先做真眼睛")
+- 真因(两层): ① GGUF 转换器 09-12 故意丢掉 vision/aligner/image_*/gate.bias_vl(`v41_to_gguf.c:16` 原话"不要"), 量化本身没漏(量化目录 model-common.safetensors 里 266 个视觉族张量全在); 引擎的"多模态"只是 token 级接缝(图 → 外部命令 mm-ui 抠文字 → 当文本), spark 上连 mm-ui 都没编。
+  ② 服务端 OpenAI `image_url` 分块被 `json_content` **静默跳过**(只取 text 键), 助理拍照只给模型一个 inbox/ 路径 + 工具箱里有 python3/magick ⇒ 模型只能去编 OCR。
+- 做法(全部 C, GPU 路; 官方 inference/{image_processor,vision}.py + model.py 逐式):
+  - **侧车而不是进主文件**(用户问"HF 上切的 40 片能不能增量"): GGUF 没有数据区起点字段, 头部一长 40 片每片字节都变 = 重传 115 GB; 改成 `v41_to_gguf vision <量化目录> <原始HF> <out>` 只出 `DeepSeek-V4.1-Flash.vision.gguf`(306 张量 0.971 GB, 原件 BF16, 与三塔同理不压; 转 0.6 s), 引擎 `--vision-gguf` 当第二个映射(g_vision_model; CUDA 走 aux map 注册), serve_pick.txt 第 3 行透传。主 GGUF 一字节不动。
+  - 引擎: `core_v41_image.c`(stb_image 解码 + **PIL 双三次/补边逐式转录**(22 位定点/四舍六入五成双/抗锯齿核) + 归一化舍 bf16 + 切 patch); `core_v41_vision.c`(ViT 32 块 + aligner, cuBLAS bf16 GEMM + `cuda_v41_vision.inc.cu` 七件: bias/2D RoPE/稠密注意力(逐头分批 QKᵀ→softmax→PV, 查询块按 192 MB 封)/SwiGLU 对/GELU/unfold/行替换); 预填块里图片位置用视觉嵌入盖词嵌入(官方 merge_image_embeddings), 路由图片位换 bias_vl(设备副本), engram 对图片位 DEAD + 行清零, KV 复用按每位图片指纹对账(同占位 token 不同图不许接)。
+  - 入口: `./ds4 --image 图 -p …`(占位放用户轮开头); 服务端 Anthropic image 块 / OpenAI image_url(data: URL)经 img_sink 进请求, 分词后 `request_expand_images` 展开成 span; 助理 `asst_image.c`: 图片附件与 pick_file 拍的照随消息/工具结果带 image_url 块。没视觉塔的 GGUF 照旧走 mm 文本编码器, 都没有 = 400 不假装。Metal 侧是诚实的桩(16G Mac 装不下真模型, 不写假实现)。
+- **门(spark 真机, gguf/v41/vision/gate_1013_1113; 金标 tools/vision_golden.py = 官方代码同图 aligner 输出)**:
+  - 面板 PNG: 尺寸账同(1204×672 / 48×86 / 16×29); **patch 0/2.4M 元素不同**(PIL 移植逐位同); 塔(金标 patch 进我们的塔)最小行 cos 0.990 / 最大差 0.0195。
+  - img.jpeg: 尺寸账同; patch 4% 元素差 ≤ 3.2 级(stb 与 libjpeg 的 IDCT/色度上采样差, 不是转录错); 塔最小行 cos 0.973(第 747 行) / 最大差 0.071; 端到端(我们的 patch)最小行 0.787。
+  - ★阈值依据★: 官方自己 bf16 对同一份代码 f32: img 最小行 0.926(第 746 行)/均值 0.99927, 面板 0.986/0.99979 —— 个别平坦行 bf16 本来就晃, 我们的偏差在官方自身噪声里。门改按"均值 ≥ 0.999 且最小行 ≥ 0.95"。
+  - 文本不变门: 带/不带 --vision-gguf 温 0 64 token **逐字节同**。
+  - 看图(温 0, 原始输出): 面板图 → "QTTerminal(A股交易系统)的'复盘分析'页面 … 大盘数据 · 涨跌家数真实判断 · 资金曲线模拟 · 自选股胜率统计 · 偏差…"(与图逐字对); YoungAi 头像 → "耳机左侧圆形耳罩上写着 Ai … 底部写着 YoungAi, Young 白色、Ai 浅蓝色; 没有数字"(全对)。ViT 一张 482 token 图 1.0 s、932 token 图 3.0 s。
+- 离线: ds4_test --server 104 / --engine-units / ds4_asst_test 31 / linecount 全绿。
+- 部署: serve_pick 第 3 行 `--vision-gguf …vision.gguf`, 生产子进程重起带侧车; ds4-train 重编(助理带图)。未提交; HF 侧车未传(只多 1 GB 文件, 等用户点头)。
+- 欠账: Metal 视觉原语; 侧车下载进工作台模型页(hub 清单); Responses API 的 input_image; 多图/历史图每轮重跑塔(有 KV 复用时只付第一次)。
+- **下午改(用户: "多模态的模型不是一直加载在内存里面, 而是要到的从 SSD 里面读")**: 侧车只 mmap 不再 cudaHostRegister(之前整段钉住 ~1 GB); 来图时按块把权重从映射拷进临时设备张量(`ds4_gpu_v41_{matmul_bf16,rms_norm,bias_add}_dev_tensor`), 一个请求几张图共用一遍读(块外循环图内循环), 跑完释放暂存 + 侧车 `fadvise/madvise(DONTNEED)` 丢页缓存; 文本请求不碰它。门与量化读数见下一条。
+- **改后复门(spark, gguf/v41/vision/gate_1013_1134, 二进制 11:34 编)**: 面板 patch 0/2,427,264 不同, 塔行 cos 均值 0.999804 / 最小 0.990(第 97 行); img.jpeg 塔行 cos 均值 0.999696 / 最小 0.973(第 747 行), 端到端最小 0.787(第 584 行, JPEG 解码差, 只报不判); 文本不变门逐字节同; 看图两张回答与 11:13 那趟逐字同。读数与改前一致 ⇒ 按块从映射拷权重没改数值。
+- 10-13 提交 + 推 HF: 本地 60 个改动文件与 spark 编生产二进制的源码逐个 md5 同; Mac `make test` 全绿。gate_1013_1148 是空目录(提交前对账命令写错, 门脚本被误触发, 第 18 行见生产在跑就拒了), 没删。
