@@ -165,8 +165,9 @@ int asst_api(const asst_req *rq, ds4_buf *out, const char **ctype) {
         else {
             if (sid && sid[0]) snprintf(id, sizeof id, "%s", sid);
             else { char t[64]; title_of(text, t, sizeof t); if (!asst_session_new(id, t, text, phone)) { free(text); free(sid); free(client); free(device); free(kind); return jerr(out, 500, "cannot create session"); } }
-            if (!asst_run_submit(id, text, device, client, caps, apps, files, err, sizeof err)) code = jerr(out, 409, err);
-            else ds4_buf_printf(out, "{\"session\":\"%s\"}", id);
+            bool ahead = false;
+            if (!asst_run_submit(id, text, device, client, caps, apps, files, &ahead, err, sizeof err)) code = jerr(out, 409, err);
+            else ds4_buf_printf(out, "{\"session\":\"%s\",\"queued\":%s}", id, ahead ? "true" : "false");
         }
         free(text); free(client); free(device); free(kind);
     } else if (!asst_id_ok(sid)) code = jerr(out, 400, "bad or missing session id");

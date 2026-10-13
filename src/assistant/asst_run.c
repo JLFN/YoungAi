@@ -192,12 +192,16 @@ void asst_run_start(int model_port) {
     pthread_t th; pthread_create(&th, NULL, worker, NULL); pthread_detach(th);
 }
 
-bool asst_run_submit(const char *sid, const char *text, const char *device, const char *client, const char *caps, const char *apps, const char *files, char *err, size_t errn) {
+bool asst_run_submit(const char *sid, const char *text, const char *device, const char *client, const char *caps, const char *apps, const char *files, bool *ahead, char *err, size_t errn) {
+    *ahead = false;
     if (!asst_id_ok(sid)) { snprintf(err, errn, "bad session id"); return false; }
     if (!text || !text[0]) { snprintf(err, errn, "empty message"); return false; }
     pthread_mutex_lock(&asst_mu);
     const bool busy = strcmp(asst_run_state(sid), "idle") != 0;
     if (!busy) {
+        /* 真排队只有一种: 别的会话正占着工人线程(或已在队里)。本会话忙在上面就拒了, 所以这里不会是自己。
+         * 页面靠这个决定显示"排队中"还是"思考中" —— 以前页面发完一律写"排队中", 而 user 事件常比 send 的回包先到, 被它盖回去后就一直挂着(10-13 用户实撞)。 */
+        *ahead = cur[0] || q_head;
         job *j = calloc(1, sizeof *j); snprintf(j->sid, sizeof j->sid, "%s", sid); j->text = strdup(text); j->device = device ? strdup(device) : NULL; j->caps = caps ? strdup(caps) : NULL;
         j->apps = apps ? strdup(apps) : NULL; j->files = files ? strdup(files) : NULL;
         snprintf(j->client, sizeof j->client, "%s", client ? client : "");

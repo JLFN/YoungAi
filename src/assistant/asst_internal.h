@@ -197,7 +197,7 @@ bool asst_sse_feed(ds4_buf *pending, const char *data, size_t n, const asst_llm_
 
 /* ---------------- 运行(asst_run.c): 一条工人线程, FIFO ---------------- */
 void asst_run_start(int model_port);
-bool asst_run_submit(const char *session, const char *text, const char *device, const char *client, const char *caps, const char *apps, const char *files, char *err, size_t errn);   /* device = 页面报的设备 JSON(可 NULL): 工人线程拼成事实行放在 user content 前(不进页面事件); client = 发消息的页面 id; caps/apps = 它报的能力表与 app 表; files = 附件(换行分隔) */
+bool asst_run_submit(const char *session, const char *text, const char *device, const char *client, const char *caps, const char *apps, const char *files, bool *ahead, char *err, size_t errn);   /* ahead = 前面有别的会话在跑/在排(页面据此显示排队中); device = 页面报的设备 JSON(可 NULL): 工人线程拼成事实行放在 user content 前(不进页面事件); client = 发消息的页面 id; caps/apps = 它报的能力表与 app 表; files = 附件(换行分隔) */
 void asst_run_stop(const char *session);
 bool asst_run_answer(const char *session, const char *call_id, const char *decision, char *err, size_t errn);
 const char *asst_run_state(const char *session);   /* idle / queued / running / waiting_approval / waiting_device(asst_mu 下读) */
