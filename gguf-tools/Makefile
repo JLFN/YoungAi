@@ -490,7 +490,7 @@ $(QZ)/v41_nc_alloc: $(QZ)/v41_nc_alloc.c ../src/common/ds4_st41.h ../src/common/
 # V4.1 量化目录(safetensors) → 单 GGUF 转换器(纯 C, 无 CUDA; 格式基元全走 ../src/common)
 .PHONY: v41_to_gguf
 v41_to_gguf: $(QZ)/v41_to_gguf
-$(QZ)/v41_to_gguf: $(QZ)/v41_to_gguf.c $(QZ)/v41_to_gguf_vq3.inc.c $(QZ)/v41_to_gguf_mtp.inc.c $(QZ)/v41_vq3_bits.c ../src/common/ds4_st41.h ../src/common/ds4_gguf_write.h ../src/common/ds4_quantfmt.c ../src/common/ds4_fp8.h ../src/common/ds4_float.h
+$(QZ)/v41_to_gguf: $(QZ)/v41_to_gguf.c $(QZ)/v41_to_gguf_vq3.inc.c $(QZ)/v41_to_gguf_mtp.inc.c $(QZ)/v41_to_gguf_tok.inc.c $(QZ)/v41_to_gguf_vision.inc.c $(QZ)/v41_cfg.h $(QZ)/v41_vq3_bits.c ../src/common/ds4_st41.h ../src/common/ds4_gguf_write.h ../src/common/ds4_quantfmt.c ../src/common/ds4_fp8.h ../src/common/ds4_float.h
 	$(CC) $(BARE) -std=c99 -Wall -D_POSIX_C_SOURCE=200809L -I.. -o $@ $(QZ)/v41_to_gguf.c ../src/common/ds4_quantfmt.c -lm
 
 # ---------------------------------------------------------------- 自测(11 项, 纯 C 无模型)

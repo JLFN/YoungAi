@@ -30,6 +30,10 @@ typedef struct {
     int dspark_block_size, dspark_noise_token_id, dspark_markov_rank, dspark_n_routed_experts, dspark_n_activated_experts;
     int dspark_target_layer_ids[V41_MAX_LIST], n_dspark_target;
     char score_func[32];
+    /* 视觉塔(2026-10-13): HF 顶层 config.json 的 vision_config 子对象 + image_token_id(官方 ModelArgs 的 vision_* 字段)。
+     * vis_layers == 0 = 这份权重没有视觉塔(转换器不写 v.* 张量, 引擎拒图片)。 */
+    int vis_layers, vis_dim, vis_heads, vis_inter, vis_patch, vis_ds, vis_max_tok, vis_min_px, image_token_id;
+    float vis_rope_theta;
 } v41_cfg;
 
 static const char *v41_cfg_find(const char *js, const char *key) {
@@ -96,6 +100,34 @@ static uint64_t v41_cfg_context_length(const char *qdir) {
     if (!(v >= 1.0)) { fprintf(stderr, "★%s 的 max_position_embeddings 不合法: %g★\n", hp, v); exit(1); }
     fprintf(stderr, "[配置] 上下文 %.0f(max_position_embeddings)\n", v);
     return (uint64_t)v;
+}
+/* 视觉塔超参在 HF 顶层 config.json 的 "vision_config": {…} 里(inference/config.json 没有); 子对象的键名(num_hidden_layers/hidden_size…)
+ * 与顶层不撞(顶层没有这几个键, 2026-10-13 核对过), 但保险起见只在子对象的花括号里找。没有 vision_config = 文本模型, vis_layers 留 0。 */
+static void v41_cfg_vision_load(v41_cfg *c, const char *qdir) {
+    char hp[4200]; snprintf(hp, sizeof hp, "%s/config.json", qdir);
+    char *js = v41_cfg_read_file(hp);
+    const char *v = strstr(js, "\"vision_config\"");
+    if (!v) { free(js); fprintf(stderr, "[配置] config.json 没有 vision_config: 文本模型, 不写视觉塔\n"); return; }
+    const char *o = strchr(v, '{'); if (!o) { fprintf(stderr, "★vision_config 不是对象★\n"); exit(1); }
+    const char *q = strchr(o, '}'); if (!q) { fprintf(stderr, "★vision_config 没闭合★\n"); exit(1); }
+    char *sub = (char *)malloc((size_t)(q - o) + 2); memcpy(sub, o, (size_t)(q - o) + 1); sub[q - o + 1] = 0;
+    c->vis_layers = (int)v41_cfg_num(sub, "num_hidden_layers");
+    c->vis_dim = (int)v41_cfg_num(sub, "hidden_size");
+    c->vis_heads = (int)v41_cfg_num(sub, "num_attention_heads");
+    c->vis_inter = (int)v41_cfg_num(sub, "intermediate_size");
+    c->vis_patch = (int)v41_cfg_num(sub, "patch_size");
+    c->vis_rope_theta = (float)v41_cfg_num(sub, "rope_theta");
+    c->vis_ds = (int)v41_cfg_num(sub, "downsample_ratio");
+    c->vis_max_tok = (int)v41_cfg_num(sub, "max_image_tokens");
+    c->vis_min_px = (int)v41_cfg_num(sub, "min_pixels");
+    free(sub);
+    c->image_token_id = (int)v41_cfg_num(js, "image_token_id");
+    free(js);
+    if (c->vis_layers <= 0 || c->vis_dim <= 0 || c->vis_heads <= 0 || c->vis_dim % c->vis_heads || c->vis_inter <= 0 || c->vis_patch <= 0 || c->vis_ds <= 0 || c->vis_max_tok <= 0 || c->image_token_id <= 0) {
+        fprintf(stderr, "★vision_config 不合法★\n"); exit(1);
+    }
+    fprintf(stderr, "[配置] 视觉塔 %d 块 dim %d 头 %d inter %d patch %d 下采样 %d 每图 ≤%d token min_px %d theta %g 占位 id %d\n",
+            c->vis_layers, c->vis_dim, c->vis_heads, c->vis_inter, c->vis_patch, c->vis_ds, c->vis_max_tok, c->vis_min_px, (double)c->vis_rope_theta, c->image_token_id);
 }
 static void v41_cfg_load(v41_cfg *c, const char *path) {
     char *js = v41_cfg_read_file(path);

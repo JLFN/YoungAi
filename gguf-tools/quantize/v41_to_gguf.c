@@ -43,6 +43,7 @@ static v41_st S; static v41_cfg C; static ds4gw W;
  * ★只有 mtp.* 走这个源★: 主干是有意量化的, 那是产品本身。 */
 static v41_st S2; static int g_has_s2 = 0, g_plan_s2 = 0;
 static uint64_t g_out_bytes;
+static const char *g_out;   /* 输出路径(写出循环打日志用; 两种模式共用) */
 
 static void die(const char *m) { fprintf(stderr, "★%s★\n", m); exit(1); }
 static const v41_st_ent *need_in(const char *name, int s2) {
@@ -315,31 +316,11 @@ static uint64_t gen_vqblob(const job_t *j) {
 #include "v41_to_gguf_vq3.inc.c"   /* DQVL v3 的登记与字节生成(要 buf()/add_job/need_in, 所以在它们之后) */
 
 
-/* tokenizer 常量(v41_tokenizer_consts.py 产物 TOKC) → tokenizer.ggml.tokens / merges 两个字串数组 +
- * model/pre/bos/eos。引擎 vocab_load 只吃这几个键; pre="joyai-llm" 是 core_bpe.c 写死的切分规则名。 */
-static void emit_tokenizer(const char *path) {
-    FILE *f = fopen(path, "rb"); if (!f) die("打不开 tokenizer_consts.bin");
-    uint32_t h[4]; if (fread(h, 4, 4, f) != 4 || h[0] != 0x434B4F54u || h[1] != 1) die("tokenizer_consts.bin 魔数/版本不对(TOKC v1)");
-    uint32_t nt = h[2], nm = h[3];
-    if ((int)nt != C.vocab_size) { fprintf(stderr, "★tokenizer token 数 %u != vocab_size %d★\n", nt, C.vocab_size); exit(1); }
-    char **tok = (char **)malloc(sizeof(char *) * nt), **mg = (char **)malloc(sizeof(char *) * nm);
-    for (uint32_t i = 0; i < nt + nm; i++) {
-        uint32_t L; if (fread(&L, 4, 1, f) != 1 || L > 4096) die("tokenizer_consts.bin 读坏");
-        char *s = (char *)malloc(L + 1); if (fread(s, 1, L, f) != L) die("tokenizer_consts.bin 读不满"); s[L] = 0;
-        if (i < nt) tok[i] = s; else mg[i - nt] = s;
-    }
-    fclose(f);
-    ds4gw_kv_str(&W, "tokenizer.ggml.model", "gpt2");
-    ds4gw_kv_str(&W, "tokenizer.ggml.pre", "joyai-llm");
-    ds4gw_kv_arr_str(&W, "tokenizer.ggml.tokens", (const char *const *)tok, nt);
-    ds4gw_kv_arr_str(&W, "tokenizer.ggml.merges", (const char *const *)mg, nm);
-    ds4gw_kv_u32(&W, "tokenizer.ggml.bos_token_id", 0);
-    ds4gw_kv_u32(&W, "tokenizer.ggml.eos_token_id", 1);
-    fprintf(stderr, "[tokenizer] %u token / %u merges 进 KV\n", nt, nm);
-    for (uint32_t i = 0; i < nt; i++) free(tok[i]); for (uint32_t i = 0; i < nm; i++) free(mg[i]); free(tok); free(mg);
-}
+#include "v41_to_gguf_tok.inc.c"      /* tokenizer 常量 → KV(拆出去只为守 500 行) */
+#include "v41_to_gguf_vision.inc.c"   /* 视觉塔 + aligner 登记与元数据(2026-10-13; 取原始 HF, 要 plan_bf16/plan_small/g_plan_s2) */
 
 int main(int argc, char **argv) {
+    if (argc >= 5 && !strcmp(argv[1], "vision")) return main_vision(argv[2], argv[3], argv[4]);   /* 视觉侧车模式(v41_to_gguf_vision.inc.c) */
     if (argc < 5) {
         fprintf(stderr, "用法: v41_to_gguf <量化目录> <engram_consts.bin> <tokenizer_consts.bin> <out.gguf> [原始HF目录]\n"
                         "  第 5 个参数 = 原始 HF 目录, **带 DSpark 三塔时必给**: 三塔在原件里是 FP8/BF16,\n"
@@ -347,7 +328,7 @@ int main(int argc, char **argv) {
         return 2;
     }
     const char *qdir = argv[1], *egp = argv[2], *tkp = argv[3], *out = argv[4];
-    g_qdir = qdir;
+    g_qdir = qdir; g_out = out;
     const char *hfdir = argc > 5 ? argv[5] : NULL;
     if (v41_st_open(&S, qdir)) return 1;
     if (hfdir) {
@@ -356,6 +337,7 @@ int main(int argc, char **argv) {
         fprintf(stderr, "[源] 主干 ← %s; ★三塔 ← %s(原生精度)★\n", qdir, hfdir);
     }
     char cfgp[4200]; snprintf(cfgp, sizeof cfgp, "%s/inference/config.json", qdir); v41_cfg_load(&C, cfgp);
+    v41_cfg_vision_load(&C, qdir);   /* 视觉塔超参在顶层 config.json 的 vision_config(2026-10-13) */
     fprintf(stderr, "[配置] %d 层 dim %d 专家 %d top-%d 路由 %s ×%.2f; 压缩比 %d 项; kv源 %d 索引源 %d engram %d 层\n",
             C.n_layers, C.dim, C.n_routed_experts, C.n_activated_experts, C.score_func, C.route_scale, C.n_compress_ratios, C.n_kv_source, C.n_index_source, C.n_engram);
     /* engram 常量 */
@@ -377,6 +359,7 @@ int main(int argc, char **argv) {
     { char rc[128]; recipe_str(rc, sizeof rc); ds4gw_kv_str(&W, "deepseek4.recipe", rc); fprintf(stderr, "[配方] %s\n", rc); }
     emit_tokenizer(tkp);
     ds4gw_kv_u32(&W, "deepseek4.block_count", (uint32_t)C.n_layers);
+    emit_vision_kv();   /* deepseek4.vision.* + image_token_id(没视觉塔不写) */
     ds4gw_kv_u64(&W, "deepseek4.context_length", v41_cfg_context_length(qdir));   /* 模型自己声明的, 见 v41_cfg.h */
     ds4gw_kv_u32(&W, "deepseek4.embedding_length", (uint32_t)C.dim);
     ds4gw_kv_u32(&W, "deepseek4.vocab_size", (uint32_t)C.vocab_size);
@@ -458,6 +441,7 @@ int main(int argc, char **argv) {
     plan_fp4("token_embd.weight", "embed.weight");
     for (int L = 0; L < C.n_layers; L++) plan_layer(L);
     for (int T = 0; T < C.n_mtp_layers; T++) plan_mtp(T);   /* DSpark 三塔(段 6 S1) */
+    plan_vision();   /* 视觉塔 + aligner + 各层 bias_vl(2026-10-13, 原件 BF16) */
     plan_small("output_norm.weight", "norm.weight");
     plan_fp4("output.weight", "head.weight");
     { uint64_t ne[3];
@@ -467,7 +451,13 @@ int main(int argc, char **argv) {
       ne[0] = (uint64_t)(eng - 1) * enh; ne[1] = enl; add_job(J_RAW, "engram.offsets", 27, 2, ne, n_off * 8, NULL, -1, offs); }
     fprintf(stderr, "[登记] %d 张量, 数据区 %.3f GB\n", W.nt, (double)W.total / 1e9);
     if (ds4gw_header(&W)) return 1;
-    /* ---- 逐张量生成+写 ---- */
+    const int rc = write_jobs();
+    v41_st_close(&S);
+    return rc;
+}
+
+/* ---- 逐张量生成+写(主文件与视觉侧车两种模式共用) ---- */
+static int write_jobs(void) {
     int last_layer = -1;
     for (int i = 0; i < g_nj; i++) {
         const job_t *j = &g_jobs[i]; uint64_t n = 0; const void *d = g_buf;
@@ -494,7 +484,6 @@ int main(int argc, char **argv) {
         if (j->layer >= 0 && j->layer != last_layer) { last_layer = j->layer; v41_st_release_idle(&S); }
     }
     if (ds4gw_end(&W)) return 1;
-    fprintf(stderr, "[完成] %s: %d 张量, %.3f GB 数据(十进制)\n", out, W.nt, (double)g_out_bytes / 1e9);
-    v41_st_close(&S);
+    fprintf(stderr, "[完成] %s: %d 张量, %.3f GB 数据(十进制)\n", g_out, W.nt, (double)g_out_bytes / 1e9);
     return 0;
 }
