@@ -1820,7 +1820,11 @@ $("btn-attach").title = t("attach_title");
 const CHROME_SHARE_EXT = /\.(avif|bmp|css|csv|ehtml|flac|gif|htm|html|ico|jfif|jpeg|jpg|m4a|m4v|mp3|mp4|mpeg|mpg|oga|ogg|ogm|ogv|opus|pdf|pja|pjpeg|png|shtm|shtml|svg|svgz|text|tif|tiff|txt|wav|weba|webm|webp|xbm)$/i;
 const TEXT_EXT = /\.(md|markdown|json|jsonl|log|yaml|yml|xml|tsv|ini|toml|py|js|c|h|sh)$/i;
 function shareable(f) {
-  if (!navigator.userAgentData || CHROME_SHARE_EXT.test(f.name)) return f;
+  if (!navigator.userAgentData) return f;
+  /* 扩展名过了还不够, MIME 也得在表里(10-13 实撞: mp4 在扩展名表里, 但 FILE_TYPES 没有 mp4 ⇒ fileBlob 给 application/octet-stream ⇒ 分享视频照样 "Permission denied")。
+     所以按扩展名重贴一次类型, 不依赖取文件那一步贴对; FILE_TYPES 必须覆盖 CHROME_SHARE_EXT 的每个扩展名 */
+  const ext = (f.name.split(".").pop() || "").toLowerCase();
+  if (CHROME_SHARE_EXT.test(f.name)) return f.type === FILE_TYPES[ext] ? f : new File([f], f.name, { type: FILE_TYPES[ext] });
   if (TEXT_EXT.test(f.name)) return new File([f], f.name.replace(/\.[^.]+$/, "") + ".txt", { type: "text/plain" });
   throw new Error(t("share_type_blocked", f.name.split(".").pop()));
 }
@@ -1899,7 +1903,12 @@ function deliverPath(it) {
   let p = (argsOf(it) || {}).path || ""; if (asstWs && p.startsWith(asstWs + "/")) p = p.slice(asstWs.length + 1);
   return p && !/^[~\/]/.test(p) && !/(^|\/)\./.test(p) ? p : null;
 }
-const FILE_TYPES = { md: "text/markdown", txt: "text/plain", csv: "text/csv", html: "text/html", json: "application/json", pdf: "application/pdf", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg" };
+/* 后面这些扩展名 = CHROME_SHARE_EXT 全集, 值都取 Chromium kPermittedMimeTypes 里的写法(分享时按它重贴类型, 见 shareable) */
+const FILE_TYPES = { md: "text/markdown", json: "application/json",
+  txt: "text/plain", text: "text/plain", csv: "text/csv", css: "text/css", html: "text/html", htm: "text/html", shtml: "text/html", shtm: "text/html", ehtml: "text/html", pdf: "application/pdf",
+  png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", jfif: "image/jpeg", pjpeg: "image/jpeg", pja: "image/jpeg", gif: "image/gif", webp: "image/webp", avif: "image/avif", bmp: "image/bmp", ico: "image/x-icon", svg: "image/svg+xml", svgz: "image/svg+xml", tif: "image/tiff", tiff: "image/tiff", xbm: "image/x-xbitmap",
+  mp4: "video/mp4", m4v: "video/mp4", mpeg: "video/mpeg", mpg: "video/mpeg", webm: "video/webm", ogv: "video/ogg", ogm: "video/ogg",
+  mp3: "audio/mpeg", m4a: "audio/x-m4a", wav: "audio/wav", flac: "audio/flac", ogg: "audio/ogg", oga: "audio/ogg", opus: "audio/ogg", weba: "audio/webm" };
 async function fileBlob(path) {
   const r = await fetch(`/api/assistant/file?session=${view.sid}&path=${encodeURIComponent(path)}`, { headers: aHeaders(false), cache: "no-store" });
   if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || "HTTP " + r.status); }

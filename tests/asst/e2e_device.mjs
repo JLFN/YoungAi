@@ -11,7 +11,7 @@
  * 为什么不等页面进 serving 态: macOS 上主进程不扫进程表, 认不出外来的假模型; 这里直接调页面的 send()(发消息那条路照样走设备信息与能力表), serving 门是 train_model 的事, 另有单测。
  * 跑完: 杀两个进程; 测试建的会话挪进 ~/.ds4/assistant/trash/sessions/(与页面删除同路), 报告文件与 inbox 删掉; 本来没有登录文件的话把测试设的那份删掉。 */
 import { spawn, execSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, renameSync, rmSync, mkdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, renameSync, rmSync, mkdirSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { createServer } from "node:net";
 import path from "node:path";
@@ -41,7 +41,14 @@ async function openPhone(url, geo) {
   const ctx = await browser.newContext({ ...devices["iPhone 13"], geolocation: geo, permissions: ["geolocation", "clipboard-read", "clipboard-write"], locale: "zh-CN" });
   await ctx.addInitScript(() => {
     window.__shares = [];
-    navigator.share = async d => { window.__shares.push({ text: d.text, title: d.title, files: (d.files || []).map(f => ({ name: f.name, type: f.type, size: f.size })) }); };
+    /* 照 Chromium share_service_impl.cc 的两张表拒(扩展名 + MIME 都要在表里, 否则 NotAllowedError "Permission denied")——
+       原来的假 share 什么都收, 10-13 视频分享真机被拒(mp4 被贴成 application/octet-stream)这里看不见 */
+    const EXT = /\.(avif|bmp|css|csv|ehtml|flac|gif|htm|html|ico|jfif|jpeg|jpg|m4a|m4v|mp3|mp4|mpeg|mpg|oga|ogg|ogm|ogv|opus|pdf|pja|pjpeg|png|shtm|shtml|svg|svgz|text|tif|tiff|txt|wav|weba|webm|webp|xbm)$/i;
+    const MIME = new Set(["application/pdf", "audio/flac", "audio/mp3", "audio/mpeg", "audio/ogg", "audio/wav", "audio/webm", "audio/x-m4a", "image/avif", "image/bmp", "image/gif", "image/jpeg", "image/png", "image/svg+xml", "image/tiff", "image/webp", "image/x-icon", "image/x-ms-bmp", "image/x-xbitmap", "text/comma-separated-values", "text/css", "text/csv", "text/html", "text/plain", "text/x-csv", "video/mp4", "video/mpeg", "video/ogg", "video/webm"]);
+    navigator.share = async d => {
+      for (const f of d.files || []) if (!EXT.test(f.name) || !MIME.has(f.type)) throw new DOMException("Permission denied", "NotAllowedError");
+      window.__shares.push({ text: d.text, title: d.title, files: (d.files || []).map(f => ({ name: f.name, type: f.type, size: f.size })) });
+    };
     navigator.canShare = () => true;
   });
   const page = await ctx.newPage();
@@ -115,6 +122,12 @@ await page.locator(".tool.dev button", { hasText: "分享" }).click(); await sle
 const shares = await page.evaluate(() => window.__shares);
 /* Chromium(有 userAgentData)分享白名单不收 .md: shareable() 改名 .txt + text/plain, 内容一字不改(字节数 = 盘上 md 的大小) */
 ok(shares.length === 1 && shares[0].text === "附近美食: 龙井草堂" && shares[0].files[0].name === "附近美食报告.txt" && shares[0].files[0].type === "text/plain" && shares[0].files[0].size === readFileSync(report).length, "share 动作带文字 + 文件(Chromium 下 md 改名 txt, 字节不变): " + JSON.stringify(shares[0]));
+/* 视频走同一条取文件 → shareable → share 的路(make_video 出的 mp4); 取文件那步贴的类型不对时假 share 按 Chromium 规则拒 */
+const vid = path.join(ASST, "workspace", "e2e_share.mp4"); writeFileSync(vid, Buffer.from("0000ftypisom-fake-mp4"));
+const vshare = await page.evaluate(async () => { try { await navigator.share({ files: [shareable(await fileBlob("e2e_share.mp4"))] }); return window.__shares.at(-1).files[0]; } catch (e) { return { error: e.name + ": " + e.message }; } });
+rmSync(vid, { force: true });
+ok(vshare && vshare.name === "e2e_share.mp4" && vshare.type === "video/mp4" && vshare.size === 21, "mp4 分享贴 video/mp4, 过 Chromium 白名单: " + JSON.stringify(vshare));
+ok(await page.evaluate(() => Object.keys(FILE_TYPES).length && "avif bmp css csv ehtml flac gif htm html ico jfif jpeg jpg m4a m4v mp3 mp4 mpeg mpg oga ogg ogm ogv opus pdf pja pjpeg png shtm shtml svg svgz text tif tiff txt wav weba webm webp xbm".split(" ").every(e => CHROME_SHARE_EXT.test("a." + e) && FILE_TYPES[e])), "FILE_TYPES 覆盖 Chromium 分享扩展名表的每一项");
 ok(await page.evaluate(() => { const ds = [...document.querySelectorAll("details.think")]; return ds.length > 0 && ds.every(d => !d.open && d.querySelector("summary").textContent === "思考过程"); }), "思考过程边想边展开, 正文出来后自动收起");
 /* 第二条消息: 附件按钮上传 → 事实行带上次定位 + 附件行 */
 await page.locator("#attach-in").setInputFiles({ name: "合同.docx", mimeType: "application/octet-stream", buffer: Buffer.from("DOCX-bytes") });
