@@ -2169,8 +2169,9 @@ document.querySelectorAll("#v-api .snip .copy").forEach(b => b.onclick = () => c
 let mdata = null, dlPrev = null, dlSpeed = 0, egTouched = false;
 const GB = b => (b / 1e9).toFixed(1) + " GB";   /* 十进制 GB: 与 Finder / HF 页面显示的数一致 */
 const modelName = p => (p || "").split("/").pop().replace(/\.gguf$/, "");
-/* 侧车目录名里认领域的子串 → 领域键(= hf 清单 sidecars[].domain 的取值); 显示名 = t("dom_<键>") */
-const DOMAIN = [[/fin/, "finance"], [/code/, "code"], [/law/, "law"], [/med/, "medicine"], [/sci/, "science"]];
+/* 侧车目录名里认领域的子串 → 领域键(= hf 清单 sidecars[].domain 的取值); 显示名 = t("dom_<键>")。
+ * 数组顺序 = 助理页领域下拉的顺序: 编程排第一(10-13 用户定) */
+const DOMAIN = [[/code/, "code"], [/fin/, "finance"], [/law/, "law"], [/med/, "medicine"], [/sci/, "science"]];
 const domLabel = k => I18N.zh["dom_" + k] ? t("dom_" + k) : k;
 function sidecarLabel(gguf, sc) {   /* 侧车目录名去掉模型名前缀; 认得出领域就在前面标领域名 */
   const tail = sc.split("/").pop().slice(modelName(gguf).length + 1), d = DOMAIN.find(x => x[0].test(tail));
