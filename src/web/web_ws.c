@@ -276,7 +276,7 @@ char *web_ws_read_message(cdp_ws *ws, char *err, size_t err_len) {
         unsigned char mask[4] = {0};
         if (masked && web_read_exact(ws->fd, mask, 4, DS4_WEB_CDP_TIMEOUT_MS) != 0)
             goto fail;
-        if (len > DS4_WEB_MAX_RESULT_BYTES * 4ULL) {
+        if (len > DS4_WEB_MAX_WS_FRAME) {
             web_set_err(err, err_len, "websocket message too large");
             free(msg.ptr);
             return NULL;

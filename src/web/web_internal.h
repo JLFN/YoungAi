@@ -13,6 +13,8 @@
 #define DS4_WEB_CONNECT_TIMEOUT_MS 3000
 #define DS4_WEB_CDP_TIMEOUT_MS 20000
 #define DS4_WEB_MAX_RESULT_BYTES (1024*1024)
+/* 单个 WebSocket 帧上限: 助理 make_video 逐帧截图, 1080p 噪点多的画面 PNG 的 base64 能到 11 MB(原来 4 MB 的上限会把火狐当坏连接杀掉) */
+#define DS4_WEB_MAX_WS_FRAME (32ULL << 20)
 
 typedef struct {
     char *ptr;

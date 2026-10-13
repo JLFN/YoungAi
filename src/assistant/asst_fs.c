@@ -202,3 +202,5 @@ char *asst_fs_search(void *ap) {
     ds4_buf_append(&h, b.ptr ? b.ptr : "", b.len); ds4_buf_free(&b);
     return ds4_buf_take(&h);
 }
+
+void asst_fs_trash(const char *trash, const char *path) { trash_copy(trash, path); }

@@ -11,6 +11,7 @@ typedef struct job { char sid[ASST_ID_LEN + 1]; char *text, *device, *caps, *app
 static job *q_head, *q_tail;
 static char cur[ASST_ID_LEN + 1], cur_client[40], cur_caps[256], cur_apps[256];
 static bool cur_stop, appr_wait, appr_once_only;
+static char cur_call[64];   /* 正在执行的工具调用 id: 长工具发进度事件时挂到这张卡上 */
 static char appr_id[64], appr_dec[16];
 static int g_port;
 
@@ -77,9 +78,20 @@ static char *run_call(const char *sid, const char *call_id, const char *tool, co
         if (*ok) { char *post = asst_tool_post(sid, tool, r); if (post) { free(r); r = post; } }   /* locate: 反查地址 + 记进会话, 之后的事实行带着它 */
         return r;
     }
+    snprintf(cur_call, sizeof cur_call, "%s", call_id);
     char *r = asst_tool_exec(sid, tool, args, &g, ok);
+    cur_call[0] = 0;
     if (*ok) asst_guard_mark(sid, g.cls, g.path);
     return r;
+}
+
+/* 长工具(make_video 逐帧渲染几十秒到几分钟)的进度: 页面工具卡显示这一句, 不让人对着"进行中"干等。只在工人线程里调 */
+void asst_run_progress(const char *text) {
+    if (!cur[0] || !cur_call[0]) return;
+    ds4_buf b = {0};
+    ds4_buf_puts(&b, "{\"ev\":\"tool_progress\",\"id\":"); ds4_json_escape(&b, cur_call);
+    ds4_buf_puts(&b, ",\"text\":"); ds4_json_escape(&b, text); ds4_buf_putc(&b, '}');
+    asst_ev(cur, b.ptr); ds4_buf_free(&b);
 }
 
 static void audit_call(const char *sid, const char *tool, const char *args, const char *decision, int ok, double ms, const char *result) {

@@ -1527,7 +1527,7 @@ function msgEl(m, streaming) {
   return w;
 }
 
-/* ---- 事件 → 页面模型: user / text / think / tool / approval / tool_end / usage / error / end(运行线程写的就这几种, 见 src/assistant/asst_run.c) ---- */
+/* ---- 事件 → 页面模型: user / text / think / tool / approval / device / tool_progress / tool_end / usage / error / end(运行线程写的就这几种, 见 src/assistant/asst_run.c) ---- */
 function newView(sid) { return { sid, items: [], next: 0, state: "idle" }; }
 function lastAsst(v) { const it = v.items[v.items.length - 1]; if (it && it.kind === "asst") return it; const a = { kind: "asst", content: "", reasoning: "" }; v.items.push(a); return a; }
 function findTool(v, id) { for (let i = v.items.length - 1; i >= 0; i--) if (v.items[i].kind === "tool" && v.items[i].id === id) return v.items[i]; return null; }
@@ -1538,6 +1538,7 @@ function applyEv(v, e) {
   else if (e.ev === "tool") v.items.push({ kind: "tool", id: e.id, name: e.name, args: e.args });
   else if (e.ev === "approval") { const tl = findTool(v, e.id); if (tl) { tl.approval = e; tl.dirty = true; } v.state = "waiting_approval"; }
   else if (e.ev === "device") { const tl = findTool(v, e.id); if (tl) { tl.device = e; tl.dirty = true; } if (e.wait) v.state = "waiting_device"; }
+  else if (e.ev === "tool_progress") { const tl = findTool(v, e.id); if (tl && !tl.done) { tl.progress = e.text; tl.dirty = true; } }   /* 长工具(make_video 逐帧渲染)的进度: 卡上状态显示"rendered 120/900 frames" */
   else if (e.ev === "tool_end") { const tl = findTool(v, e.id); if (tl) Object.assign(tl, { done: true, ok: e.ok, decision: e.decision, ms: e.ms, result: e.result, bytes: e.bytes, approval: null, device: tl.device && !tl.device.wait ? tl.device : null, dirty: true }); if (v.state === "waiting_approval" || v.state === "waiting_device") v.state = "running"; }
   else if (e.ev === "usage") v.usage = e;
   else if (e.ev === "error") v.items.push({ kind: "error", msg: e.msg });
@@ -1552,7 +1553,7 @@ function toolEl(it) {
   const ap = it.approval, dv = it.device, w = node("div", "tool" + (ap ? " ask" + (ap.warn ? " warn" : "") : "") + (dv ? " dev" : "") + (it.done && !it.ok ? " fail" : ""));
   const head = node("div", "thead");
   head.appendChild(node("span", "tname", it.name)); head.appendChild(node("span", "targ", toolSummary(it)));
-  const stTxt = ap ? t(ap.answered ? "a_running" : "a_need") : dv && dv.wait && !it.done ? t("s_waiting_device") : !it.done ? t("a_running") : t("dec_" + it.decision) + (it.ms != null ? " · " + fmtMs(it.ms) : "");
+  const stTxt = ap ? t(ap.answered ? "a_running" : "a_need") : dv && dv.wait && !it.done ? t("s_waiting_device") : !it.done ? (it.progress || t("a_running")) : t("dec_" + it.decision) + (it.ms != null ? " · " + fmtMs(it.ms) : "");
   head.appendChild(node("span", "tst " + (ap && !ap.answered ? "need" : it.done ? (it.ok ? "ok" : "bad") : ""), stTxt));
   w.appendChild(head);
   if (dv && (!it.done || !dv.wait)) w.appendChild(deviceBox(it));

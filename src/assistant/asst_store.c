@@ -12,7 +12,8 @@
 #include <time.h>
 #include <unistd.h>
 
-char asst_root[ASST_PATH], asst_ws[ASST_PATH], asst_home[ASST_PATH], asst_token[65];
+char asst_root[ASST_PATH], asst_ws[ASST_PATH], asst_home[ASST_PATH], asst_token[65], asst_repo[ASST_PATH];
+void asst_set_repo(const char *root) { char real[4096]; if (root && realpath(root, real) && strlen(real) < ASST_PATH) snprintf(asst_repo, sizeof asst_repo, "%s", real); }
 pthread_mutex_t asst_mu = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t asst_cv = PTHREAD_COND_INITIALIZER;
 static pthread_mutex_t fmu = PTHREAD_MUTEX_INITIALIZER;
@@ -51,6 +52,7 @@ bool asst_init(const char *root, char *err, size_t errn) {
     struct passwd *pw = getpwuid(getuid());
     if (!pw || !pw->pw_dir) { snprintf(err, errn, "no home directory for uid %d", (int)getuid()); return false; }
     snprintf(asst_home, sizeof asst_home, "%s", pw->pw_dir);
+    if (!asst_repo[0]) asst_set_repo(".");   /* 单测与源码树里直接起: 当前目录就是仓库根 */
     if (root) snprintf(asst_root, sizeof asst_root, "%s", root);
     else { char d[ASST_PATH + 8]; snprintf(d, sizeof d, "%s/.ds4", asst_home); mkdir(d, 0755); snprintf(asst_root, sizeof asst_root, "%.1000s/.ds4/assistant", asst_home); }
     mkdir(asst_root, 0700);

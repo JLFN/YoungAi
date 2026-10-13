@@ -52,6 +52,29 @@ static bool build_open_app(const asst_tctx *c, ds4_buf *b) {
     return k > 0;
 }
 
+/* make_video: 旁白那半句按本机有没有语音引擎拼(一台机器稳定, 和 run 的工具箱同一套做法) */
+static bool build_make_video(const asst_tctx *c, ds4_buf *b) {
+    (void)c;
+    const char *tts = asst_tts_kind();
+    ds4_buf d = {0};
+    ds4_buf_puts(&d, "Make an MP4 video by writing the animation yourself as one self-contained HTML page: CSS animations, the Web Animations API, SVG, or a <canvas> drawn from a global function render(t) with t in seconds. "
+                     "The page is rendered frame by frame at 1920x1080 (portrait: 1080x1920), 30 fps, for `seconds` seconds, on a virtual clock: Date, performance.now, requestAnimationFrame, setTimeout, setInterval and every CSS or Web animation are stepped to each frame's time, so drive everything from time and never wait on real time. "
+                     "The viewport is exactly the video size (100vw x 100vh). Workspace images and fonts are referenced by relative path; there is no network, so external URLs fail. System fonts are available, Chinese included. Keep text inside a 5% margin and at least 40 px tall so it reads on a phone. ");
+    if (tts[0]) ds4_buf_puts(&d, "`narration` is a list of {at, text}: each text is spoken with the voice on this machine starting at `at` seconds (Chinese or English picked from the text). "
+                                 "Narrate everything that appears on screen, scene by scene through the last one, each line starting when its scene appears, and say the words that are on screen at that moment. "
+                                 "You cannot know how long a line takes before it is spoken: the result reports when each line actually ended, the measured speaking rate, gaps where nothing is said and the seconds at the end with no speech; move or add lines from that and call again until the speech covers the picture. ");
+    else ds4_buf_puts(&d, "Narration is not available on this machine (no speech engine), so do not pass `narration`. ");
+    ds4_buf_puts(&d, "`music` is a .wav file in the workspace mixed under everything. Output is H.264 + AAC in MP4 that plays in WeChat, DingTalk and phone galleries. "
+                     "Result: path, size, duration, three saved frames (start, middle, end), what was spoken, and the page's console errors if any; fix them and call again. "
+                     "This renders animation you write; it does not generate camera footage from a prompt. Hand the file to the user with share afterwards.");
+    ds4_buf_puts(b, "{\"type\":\"function\",\"function\":{\"name\":\"make_video\",\"description\":"); ds4_json_escape(b, d.ptr); ds4_buf_free(&d);
+    ds4_buf_puts(b, ",\"parameters\":{\"type\":\"object\",\"properties\":{" S("path", "File path ending in .mp4 (relative = inside the workspace)") "," S("html", "The whole animated page: HTML with inline CSS and JS") ","
+                    N("seconds", "Video length in seconds, at most 300") "," B("portrait", "true for a vertical 1080x1920 video (phone full screen); default horizontal 1920x1080") ",");
+    if (tts[0]) ds4_buf_puts(b, "\"narration\":{\"type\":\"array\",\"description\":\"Spoken lines, e.g. [{\\\"at\\\": 0.5, \\\"text\\\": \\\"…\\\"}]\",\"items\":{\"type\":\"object\",\"properties\":{\"at\":{\"type\":\"number\",\"description\":\"Start time in seconds\"},\"text\":{\"type\":\"string\",\"description\":\"What to say\"}},\"required\":[\"at\",\"text\"]}},");
+    ds4_buf_puts(b, S("music", "Optional background music: a .wav file in the workspace") "},\"required\":[\"path\",\"html\",\"seconds\"]}}}");
+    return true;
+}
+
 static const asst_tool TOOLS[] = {
     { "remember", TOOL("remember", "Save one fact or preference the user explicitly told you, for future conversations. One fact per call. Never store passwords, codes or other people's private details.", S("text", "The fact, as a short sentence"), "\"text\""), MEM, 0, NULL, false, NULL },
     { "forget", TOOL("forget", "Delete remembered lines that contain the given text.", S("text", "Text contained in the lines to delete"), "\"text\""), MEM, 0, NULL, false, NULL },
@@ -64,6 +87,7 @@ static const asst_tool TOOLS[] = {
                       S("path", "File path ending in .docx, .pdf or .pptx (relative = inside the workspace)") "," S("markdown", "The whole document as Markdown (omit when using source)") "," S("source", "Path of an existing Markdown or text file to convert instead of sending markdown, e.g. report.md") "," S("also", "Optional second format for the same content: \\\"pdf\\\" for a .docx path, \\\"docx\\\" for a .pdf path"), "\"path\""), SBX, 0, NULL, false, NULL },
     { "write_xlsx", TOOL("write_xlsx", "Create an Excel workbook (.xlsx); the path must end with .xlsx. sheets is an array like [{\\\"name\\\":\\\"Sales\\\",\\\"columns\\\":[\\\"Month\\\",\\\"Revenue\\\"],\\\"rows\\\":[[\\\"Jan\\\",120],[\\\"Total\\\",\\\"=SUM(B2:B2)\\\"]]}]. Numbers stay numbers; strings starting with = are formulas: SUM, AVERAGE, MIN, MAX, COUNT, + - * / ^, cell references (B2) and ranges (B2:B9) are computed here so phone previews show values; any other function is left for Excel to compute on open and is listed in the result. The header row (columns) is bold and frozen, columns are sized to content. Result: path, size, formula count.",
                       S("path", "File path ending in .xlsx (relative = inside the workspace)") "," "\"sheets\":{\"type\":\"array\",\"description\":\"One object per sheet: name, columns (header strings), rows (arrays of numbers / strings / formulas)\",\"items\":{\"type\":\"object\"}}", "\"path\",\"sheets\""), SBX, 0, NULL, false, NULL },
+    { "make_video", NULL, SBX, 0, NULL, true, build_make_video },
     { "edit_file", TOOL("edit_file", "Replace an exact piece of text in a file. old_string must appear exactly once unless replace_all is true.", S("path", "File path") "," S("old_string", "Exact text to replace") "," S("new_string", "Replacement text") "," B("replace_all", "Replace every occurrence"), "\"path\",\"old_string\",\"new_string\""), SBX, 0, NULL, false, NULL },
     { "run", NULL, SBX, 0, NULL, false, build_run },
     { "web_search", TOOL("web_search", "Search the web (Bing) and get result titles and links.", S("query", "Search query"), "\"query\""), NET, 0, NULL, true, NULL },
@@ -155,6 +179,7 @@ char *asst_tool_exec(const char *sid, const char *tool, const char *args, const 
     asst_sbx_spec sp; asst_guard_spec(g, exec, &sp);
     char trash[ASST_PATH + 16]; snprintf(trash, sizeof trash, "%s/.trash", asst_ws);
     if (asst_office_tool(tool)) return asst_office_exec(tool, args, g, trash, ok);
+    if (!strcmp(tool, "make_video")) return asst_video_exec(args, g, trash, ok);   /* 主进程驱动火狐渲染, 编码在沙盒子进程(asst_video.c) */
     char *out = NULL; asst_sbx_rc rc;
     if (!strcmp(tool, "read_file")) {
         asst_read_args a = { g->path, 1, 0 }; asst_jint(args, "start", &a.start); asst_jint(args, "lines", &a.lines);

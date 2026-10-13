@@ -32,9 +32,14 @@ typedef struct {
     char rw[ASST_SBX_MAX_ROOTS][ASST_PATH]; int nrw;   /* 读写根 */
     bool exec;        /* 允许 exec(bash 才开): 开了会自动加系统只读根(/usr /bin /lib /etc …), 不加用户家目录 */
     int timeout_s;    /* 墙钟超时: 到点整个进程组 SIGKILL */
+    int keep_fd;      /* > 2: 这个 fd 留给子进程(make_video 的编码器从它读帧); 0 = 没有。其余继承的 fd 照样全关 */
+    bool tts;         /* 要念旁白(make_video): macOS 再放行 say 用到的几个系统语音服务(asst_sbx_mac.c); Linux 用 exec 模式的系统只读根就够 */
 } asst_sbx_spec;
 
-/* 子进程里跑的函数: 已上锁, 返回 malloc 的结果文本(NULL = 空)。只许做工具自己的事, 不碰父进程的任何共享状态(那是 fork 出来的副本) */
+/* 子进程里跑的函数: 已上锁, 返回 malloc 的结果文本(NULL = 空)。只许做工具自己的事, 不碰父进程的任何共享状态(那是 fork 出来的副本)。
+ * ★ud 指到的东西必须在堆上, 不能在别的线程的栈上★(10-13 spark 实撞): 子进程里 glibc 把"其他线程"(fork 后都不存在了)的栈回收进栈缓存,
+ * 子进程一开线程(旁白小模型的卷积多线程)就复用那块栈, 把父进程工人线程栈上的局部变量盖掉 —— make_video 的 aud 就这么被写花, 读到垃圾指针段错误;
+ * 单测里同一变量在主线程栈上(主线程栈不进缓存)永远复现不了。 */
 typedef char *(*asst_sbx_fn)(void *ud);
 
 typedef enum { ASST_SBX_OK = 0, ASST_SBX_LOCK_FAILED = -1, ASST_SBX_TIMEOUT = -2, ASST_SBX_CRASHED = -3, ASST_SBX_SPAWN_FAILED = -4 } asst_sbx_rc;
@@ -144,6 +149,40 @@ char *asst_web_visit(const char *url, char *err, size_t errn);
 char *asst_web_text(const char *url, char *err, size_t errn);   /* 页面正文原文(document.body.innerText): 给 JSON 接口用, 不走正文抽取 */
 const char *asst_browser_kind(void);   /* "firefox" / "" (本机没有) */
 void asst_browser_shutdown(void);
+/* 渲染原语(make_video 用): 独立标签, w×h 视口, 预载脚本只挂这个标签 */
+bool asst_ff_tab_open(int w, int h, const char *preload_fn, char *ctx, size_t ctxn, char *script, size_t sn, char *err, size_t errn);
+char *asst_ff_call(const char *method, const char *params, char *err, size_t errn);   /* BiDi 命令 → result 原文(malloc); 失败 NULL, 读超时会杀掉火狐 */
+void asst_ff_tab_close(const char *ctx, const char *script);
+
+/* ---------------- 视频(asst_video.c + asst_video_srv.c, 方案稿 docs/assistant_video.md) ---------------- */
+char *asst_video_exec(const char *args, const asst_gres *g, const char *trash, int *ok);   /* 已过守门(g->path = .mp4 绝对路径) */
+typedef struct asst_vsrv asst_vsrv;   /* 渲染期间的本机只读 HTTP 源: 页面从内存给, 别的只给工作区文件 */
+asst_vsrv *asst_vsrv_start(const char *page, size_t n, char *url, size_t urln, char *err, size_t errn);   /* url = 页面地址 */
+void asst_vsrv_stop(asst_vsrv *s);
+void asst_run_progress(const char *text);   /* asst_run.c: 给正在执行的那张工具卡发一条进度(tool_progress 事件) */
+void asst_fs_trash(const char *trash, const char *path);   /* 旧版复制进 .trash(覆盖前保全) */
+/* asst_video_audio.c: make_video 的旁白 + 背景乐 → AAC 音轨 */
+typedef struct { double at; char *text; } asst_vline;
+typedef struct { asst_vline *lines; int n; char music[ASST_PATH]; } asst_vaudio;
+typedef struct { ds4_buf frames; size_t *off, nf; long samples; int bitrate; } asst_aac_track;   /* 第 i 帧 = frames[off[i] .. off[i+1]) */
+bool asst_vaudio_parse(const char *args, asst_vaudio *a, char *err, size_t errn);   /* 父进程: narration / music 参数 → 结构; music 必须是工作区里的 .wav */
+void asst_vaudio_free(asst_vaudio *a);
+bool asst_vaudio_build(const asst_vaudio *a, double seconds, const char *tmpdir, asst_aac_track *t, ds4_buf *note, char *err, size_t errn);   /* 子进程: 合成 + 编码; note 收给模型看的说明 */
+void asst_aac_track_free(asst_aac_track *t);
+/* asst_tts.c: 旁白(只在沙盒子进程里调) */
+extern char asst_repo[ASST_PATH];   /* 仓库根(发布包 = 解压目录): 随包走的资源(gguf/tts 旁白小模型)从这里找; ds4-train 起时 asst_set_repo(tr_root), 没设 = 当前目录 */
+void asst_set_repo(const char *root);
+/* 旁白小模型(Piper VITS 转的 GGUF, 各 63 MB): 中文 huayan / 英文 lessac。找两处: 源码树的 gguf/tts/<名>, 以及工作台"模型"页用 install.sh
+ * 下到 gguf/hub/model/tts/<名>(HF 发布仓里就放在 tts/ 下, install.sh 的"除分片外全下"顺手带回来)。都没有就退回 espeak 共振峰出声。 */
+#define ASST_TTS_ZH_MODEL "zh-huayan.gguf"
+#define ASST_TTS_EN_MODEL "en-lessac.gguf"
+const char *asst_tts_model(const char *name);   /* ASST_TTS_*_MODEL → 本机全路径; 没有 → "" */
+const char *asst_tts_kind(void);   /* "say" / "espeak-ng" / "vits+espeak-ng"(Linux 有小模型) / "" = 本机念不了 */
+int16_t *asst_tts(const char *text, const char *tmpdir, size_t *n, char *voice, size_t vn, char *err, size_t errn);   /* 22050 Hz 单声道 16 位(malloc) */
+#ifndef __APPLE__
+char *asst_tts_phonemes(const char *text);   /* 单测用: espeak 实际念出的 IPA 音标(malloc), 查"念的是不是这门语言" */
+char *asst_tts_ids(const char *text);        /* 单测用(Linux 小模型路): 送进模型的音素流(malloc), 句间 " | "; 查标点/分句有没有进模型 */
+#endif
 
 /* ---------------- 设备(asst_device.c): 设备事实行 + 设备工具通道(总纲 §3) ---------------- */
 char *asst_device_line(const char *device_json, const char *caps, bool zh, const char *sid);   /* "[设备: 手机 · 时间 · 时区 · 可用: … · 上次定位: …]"; 只放事实; sid 可 NULL(不查上次定位) */

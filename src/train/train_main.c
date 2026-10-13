@@ -66,6 +66,7 @@ int main(int argc, char **argv) {
     snprintf(p, sizeof p, "%.900s/web/studio.html", tr_root);
     if (stat(p, &st)) { fprintf(stderr, "ds4-train: %s 不存在 —— 要在仓库根起, 或给 --root\n", p); return 1; }
     char aerr[512] = "";
+    asst_set_repo(tr_root);   /* 随包资源(gguf/tts 旁白小模型)按仓库根找, 不按 cwd */
     if (asst_init(NULL, aerr, sizeof aerr)) {
         asst_run_start(TR_MODEL_PORT(g_port));
         fprintf(stderr, "ds4-train: 助理 %s (沙盒 %s, 浏览器 %s); 别的设备访问要口令: %s/token\n", asst_root, asst_sbx_kind(), asst_browser_kind()[0] ? asst_browser_kind() : "无", asst_root);

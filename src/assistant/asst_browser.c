@@ -274,5 +274,40 @@ char *asst_web_search(const char *query, char *err, size_t errn) {
     return r;
 }
 
+/* ---------------- 渲染原语(asst_video.c): 独立标签页, 不碰网页工具的 ff_ctx ----------------
+ * 视口按像素给(devicePixelRatio 1: 截图就是 w×h); 预载脚本只挂在这个标签上(contexts), 网页工具开的标签不受影响。
+ * 渲完先摘预载脚本再关标签; 网页工具的标签一直开着, 所以关这个不会把火狐窗口关掉。 */
+char *asst_ff_call(const char *method, const char *params, char *err, size_t errn) { return bidi(method, params, err, errn); }
+
+bool asst_ff_tab_open(int w, int h, const char *preload, char *ctx, size_t ctxn, char *script, size_t sn, char *err, size_t errn) {
+    ctx[0] = script[0] = 0;
+    if (!ff_start(err, errn)) return false;
+    char *r = bidi("browsingContext.create", "{\"type\":\"tab\"}", err, errn), *id = NULL;
+    if (!r || !asst_jstr(r, "context", &id)) { free(r); if (!err[0]) snprintf(err, errn, "cannot open a browser tab"); return false; }
+    free(r); snprintf(ctx, ctxn, "%s", id); free(id);
+    ds4_buf p = {0};
+    ds4_buf_puts(&p, "{\"context\":"); ds4_json_escape(&p, ctx); ds4_buf_printf(&p, ",\"viewport\":{\"width\":%d,\"height\":%d},\"devicePixelRatio\":1}", w, h);
+    r = bidi("browsingContext.setViewport", p.ptr, err, errn);
+    const bool vp = r != NULL; free(r);
+    if (vp) {
+        p.len = 0; ds4_buf_puts(&p, "{\"functionDeclaration\":"); ds4_json_escape(&p, preload);
+        ds4_buf_puts(&p, ",\"contexts\":["); ds4_json_escape(&p, ctx); ds4_buf_puts(&p, "]}");
+        r = bidi("script.addPreloadScript", p.ptr, err, errn);
+        char *s = NULL; if (r && asst_jstr(r, "script", &s)) snprintf(script, sn, "%s", s);
+        free(s); free(r);
+    }
+    ds4_buf_free(&p);
+    if (!script[0]) { asst_ff_tab_close(ctx, ""); ctx[0] = 0; if (!err[0]) snprintf(err, errn, "cannot prepare the render tab"); return false; }
+    return true;
+}
+
+void asst_ff_tab_close(const char *ctx, const char *script) {
+    char e[256] = ""; ds4_buf p = {0};
+    if (ff_ws.fd < 0) return;   /* 连接已断(脚本卡死被杀): 标签随火狐一起没了 */
+    if (script && script[0]) { ds4_buf_puts(&p, "{\"script\":"); ds4_json_escape(&p, script); ds4_buf_putc(&p, '}'); free(bidi("script.removePreloadScript", p.ptr, e, sizeof e)); }
+    if (ctx && ctx[0] && ff_ws.fd >= 0) { p.len = 0; ds4_buf_puts(&p, "{\"context\":"); ds4_json_escape(&p, ctx); ds4_buf_putc(&p, '}'); free(bidi("browsingContext.close", p.ptr, e, sizeof e)); }
+    ds4_buf_free(&p);
+}
+
 char *asst_web_visit(const char *url, char *err, size_t errn) { return run_js(url, ds4_web_extract_page_js(), err, errn); }
 char *asst_web_text(const char *url, char *err, size_t errn) { return run_js(url, "document.body ? document.body.innerText : ''", err, errn); }

@@ -88,7 +88,7 @@ void asst_guard(const char *sid, const char *tool, const char *args, asst_gres *
     if (!strcmp(tool, "nearby")) { snprintf(r->cls, sizeof r->cls, "geo"); set(r, ASST_ALLOW, "places near the user"); return; }   /* 出门的只有查询词与坐标, key 由 C 填; 不置污点 */
     if (asst_device_tool(tool)) { snprintf(r->cls, sizeof r->cls, "dev"); set(r, ASST_ALLOW, "device"); return; }   /* 在用户自己的设备上、由用户的浏览器执行(剪贴板读取 iOS 还要用户点一下): 放行, 不进沙盒 */
     if (!strcmp(tool, "read_file") || !strcmp(tool, "list_dir") || !strcmp(tool, "search_files")) { guard_file(sid, false, tool, args, r); return; }
-    if (!strcmp(tool, "write_file") || !strcmp(tool, "edit_file") || asst_office_tool(tool)) { guard_file(sid, true, tool, args, r); return; }   /* 产出工具 = 写一个文件, 守门口径与 write_file 同 */
+    if (!strcmp(tool, "write_file") || !strcmp(tool, "edit_file") || asst_office_tool(tool) || !strcmp(tool, "make_video")) { guard_file(sid, true, tool, args, r); return; }   /* 产出工具 = 写一个文件, 守门口径与 write_file 同 */
     if (!strcmp(tool, "run")) {   /* 沙盒里跑, 不审批(10-12 用户: "确保在沙箱当中, 暂时不要审批"): 安全靠沙盒不靠审批 —— 没网络就没有外送通道, 只能写工作区且 .trash 留旧版; 污点态也不降级。
                                    * 硬警告词只标红进审计(它在沙盒里本来就碰不到工作区以外); 像密文的仍拒: 密码不该出现在审计流水里 */
         snprintf(r->cls, sizeof r->cls, "exec"); snprintf(r->path, sizeof r->path, "%s", asst_ws); snprintf(r->target, sizeof r->target, "run");

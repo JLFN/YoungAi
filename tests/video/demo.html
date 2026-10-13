@@ -1,0 +1,47 @@
+<!doctype html>
+<!-- demo.html — make_video 的体积/速度夹具: 按模型常写的样子做的 30 秒介绍片(不进门, 手动量: ./ds4_asst_test --video tests/video/demo.html 30 /tmp/demo.mp4)。
+     四个场景各 7.5 秒: 整帧缓慢变色的渐变底(最费码: P 帧每个宏块都有残差) + 标题飞入 + 柱状图生长 + canvas 粒子 + 数字滚动。 -->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; width: 100vw; height: 100vh; overflow: hidden; font-family: "PingFang SC", "Noto Sans CJK SC", "Droid Sans Fallback", sans-serif; }
+  #bg { position: absolute; inset: 0; background: linear-gradient(135deg, #0f2027, #203a43, #2c5364); }
+  #fx { position: absolute; inset: 0; }
+  .scene { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #fff; opacity: 0; }
+  h1 { font-size: 120px; margin: 0; letter-spacing: 6px; }
+  h2 { font-size: 56px; margin: 30px 0 0; font-weight: 400; color: #cfe8ff; }
+  .bars { display: flex; align-items: flex-end; gap: 60px; height: 600px; }
+  .bar { width: 140px; background: linear-gradient(#ffd166, #ef476f); border-radius: 12px 12px 0 0; height: 0; position: relative; }
+  .bar span { position: absolute; top: -70px; width: 100%; text-align: center; font-size: 48px; }
+  .num { font-size: 220px; font-weight: 700; color: #ffd166; }
+</style>
+</head>
+<body>
+<div id="bg"></div>
+<canvas id="fx" width="1920" height="1080"></canvas>
+<div class="scene" id="s0"><h1>本地部署的大模型</h1><h2>一台机器，全部能力</h2></div>
+<div class="scene" id="s1"><div class="bars"><div class="bar" data-v="45"><span>45</span></div><div class="bar" data-v="62"><span>62</span></div><div class="bar" data-v="80"><span>80</span></div><div class="bar" data-v="95"><span>95</span></div></div><h2>解码速度 tokens/s</h2></div>
+<div class="scene" id="s2"><div class="num" id="n">0</div><h2>上下文长度（token）</h2></div>
+<div class="scene" id="s3"><h1>谢谢观看</h1><h2>YoungAi · DeepSeek V4.1</h2></div>
+<script>
+  const cv = document.getElementById("fx"), g = cv.getContext("2d");
+  const P = Array.from({ length: 120 }, (_, i) => ({ x: (i * 977) % 1920, y: (i * 613) % 1080, r: 2 + (i % 5), vx: ((i % 7) - 3) * 18, vy: ((i % 5) - 2) * 14 }));
+  const ease = x => x < 0 ? 0 : x > 1 ? 1 : 1 - Math.pow(1 - x, 3);
+  function render(t) {
+    const hue = 200 + 40 * Math.sin(t / 6);
+    document.getElementById("bg").style.background = `linear-gradient(135deg, hsl(${hue},45%,12%), hsl(${hue + 30},40%,24%), hsl(${hue + 60},35%,32%))`;
+    g.clearRect(0, 0, 1920, 1080); g.fillStyle = "rgba(255,255,255,0.35)";
+    for (const p of P) { const x = ((p.x + p.vx * t) % 1920 + 1920) % 1920, y = ((p.y + p.vy * t) % 1080 + 1080) % 1080; g.beginPath(); g.arc(x, y, p.r, 0, 7); g.fill(); }
+    const k = Math.min(3, Math.floor(t / 7.5)), lt = t - k * 7.5;
+    for (let i = 0; i < 4; i++) {
+      const s = document.getElementById("s" + i);
+      const on = i === k ? ease(lt / 0.8) * (1 - ease((lt - 6.7) / 0.8)) : 0;
+      s.style.opacity = on; s.style.transform = `translateY(${(1 - ease(lt / 0.8)) * 80}px)`;
+    }
+    if (k === 1) document.querySelectorAll(".bar").forEach((b, i) => { b.style.height = ease((lt - 0.6 - i * 0.3) / 1.5) * b.dataset.v * 6 + "px"; });
+    if (k === 2) document.getElementById("n").textContent = Math.round(ease((lt - 0.5) / 3) * 1048576).toLocaleString();
+  }
+</script>
+</body>
+</html>

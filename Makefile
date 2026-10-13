@@ -259,8 +259,8 @@ src/train/train_auth.o src/train/train_keys.o: src/common/ds4_sha256.h
 # 设置弹窗(云服务器 / frp 穿透 / HTTPS 证书, 只有主进程): 外部命令 ssh curl tar unzip openssl 都是 fork+exec, 不链任何库
 TRAIN_NET_OBJS := src/train/train_net.o src/train/train_exec.o src/train/train_frp.o src/train/train_frps.o src/train/train_sshtun.o src/train/train_tunnel.o src/train/train_cert.o
 src/train/train_frp.o: src/common/ds4_sha256.h
-ds4-train: src/train/train_main.o src/train/train_http.o src/train/train_proxy.o $(TRAIN_API_OBJS) $(TRAIN_AUTH_OBJS) $(TRAIN_NET_OBJS) $(ASST_OBJS) $(OFFICE_OBJS) $(WEB_OBJS) src/common/ds4_json.o
-	$(CC) $(CFLAGS) -o $@ src/train/train_main.o src/train/train_http.o src/train/train_proxy.o $(TRAIN_API_OBJS) $(TRAIN_AUTH_OBJS) $(TRAIN_NET_OBJS) $(ASST_OBJS) $(OFFICE_OBJS) $(WEB_OBJS) src/common/ds4_json.o $(LDLIBS)
+ds4-train: src/train/train_main.o src/train/train_http.o src/train/train_proxy.o $(TRAIN_API_OBJS) $(TRAIN_AUTH_OBJS) $(TRAIN_NET_OBJS) $(ASST_OBJS) $(OFFICE_OBJS) $(VIDEO_OBJS) $(TTS_LINK) $(WEB_OBJS) src/common/ds4_json.o
+	$(CC) $(CFLAGS) -o $@ src/train/train_main.o src/train/train_http.o src/train/train_proxy.o $(TRAIN_API_OBJS) $(TRAIN_AUTH_OBJS) $(TRAIN_NET_OBJS) $(ASST_OBJS) $(OFFICE_OBJS) $(VIDEO_OBJS) $(TTS_LINK) $(WEB_OBJS) src/common/ds4_json.o $(LDLIBS)
 src/office/%.o: src/office/%.c src/office/ds4_office.h src/office/office_internal.h src/office/office_pdf.h src/common/ds4_json.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 # 格式基元单测: 金标逐字节 + flate 往返 + 公式 + 解析器; 有 unzip/xmllint/textutil 的机器再用它们复验(没有就 SKIP)
@@ -285,7 +285,7 @@ endif
 # 个人助理(src/assistant/, 方案 docs/assistant.md): 住 ds4-train 主进程; 每次工具调用 fork 子进程先上内核沙盒
 # (Linux = Landlock+seccomp, macOS = Seatbelt; 两个平台文件在对方平台上编成空对象)。纯主机 C, 不链引擎。
 src/train/train_main.o: src/assistant/asst_internal.h
-src/assistant/%.o: src/assistant/%.c src/assistant/asst_internal.h src/common/ds4_json.h src/office/ds4_office.h
+src/assistant/%.o: src/assistant/%.c src/assistant/asst_internal.h src/common/ds4_json.h src/office/ds4_office.h src/video/ds4_video.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 # 助理页面端到端门(方案稿 docs/assistant.md §13.5): 假模型(叫 ds4-server 才能被主进程认领)+ 系统 Chrome 的 Playwright 脚本; 不进 make test(要浏览器)
 tests/asst/fake/ds4-server: tests/asst/fake_model.c
@@ -293,8 +293,8 @@ tests/asst/fake/ds4-server: tests/asst/fake_model.c
 asst-e2e: ds4-train tests/asst/fake/ds4-server
 	node tests/asst/e2e_device.mjs
 # 沙盒逃逸单测 + 纯逻辑单测 + 工作台登录单测(不要模型, 秒级; make test 里跑)
-ds4_asst_test: tests/asst/t_asst_sbx.c tests/asst/t_asst_logic.c tests/asst/t_studio_auth.c tests/asst/t_studio_net.c tests/asst/t_studio_models.c $(ASST_OBJS) $(OFFICE_OBJS) $(WEB_OBJS) $(TRAIN_API_OBJS) $(TRAIN_AUTH_OBJS) $(TRAIN_NET_OBJS) src/common/ds4_json.o
-	$(CC) $(CFLAGS) -o $@ tests/asst/t_asst_sbx.c tests/asst/t_asst_logic.c tests/asst/t_studio_auth.c tests/asst/t_studio_net.c tests/asst/t_studio_models.c $(ASST_OBJS) $(OFFICE_OBJS) $(WEB_OBJS) $(TRAIN_API_OBJS) $(TRAIN_AUTH_OBJS) $(TRAIN_NET_OBJS) src/common/ds4_json.o $(LDLIBS)
+ds4_asst_test: tests/asst/t_asst_sbx.c tests/asst/t_asst_logic.c tests/asst/t_asst_video.c tests/asst/t_studio_auth.c tests/asst/t_studio_net.c tests/asst/t_studio_models.c $(ASST_OBJS) $(OFFICE_OBJS) $(VIDEO_OBJS) $(TTS_LINK) $(WEB_OBJS) $(TRAIN_API_OBJS) $(TRAIN_AUTH_OBJS) $(TRAIN_NET_OBJS) src/common/ds4_json.o
+	$(CC) $(CFLAGS) -o $@ tests/asst/t_asst_sbx.c tests/asst/t_asst_logic.c tests/asst/t_asst_video.c tests/asst/t_studio_auth.c tests/asst/t_studio_net.c tests/asst/t_studio_models.c $(ASST_OBJS) $(OFFICE_OBJS) $(VIDEO_OBJS) $(TTS_LINK) $(WEB_OBJS) $(TRAIN_API_OBJS) $(TRAIN_AUTH_OBJS) $(TRAIN_NET_OBJS) src/common/ds4_json.o $(LDLIBS)
 
 
 # Standalone capability modules (self-contained, no engine coupling): z 隐变量

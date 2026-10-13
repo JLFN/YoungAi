@@ -166,9 +166,43 @@ static int visit_mode(int n, char **urls, int cap) {
     return 0;
 }
 
+/* ./ds4_asst_test --tts 句子…: 不经沙盒直接念; --tts-sbx 句子…: 在 make_video 同样的沙盒规格(exec + tts + 只读放行模型)里念, 不要火狐。
+ * 10-13 spark 实撞: 真请求的 8 句旁白让沙盒子进程 SIGSEGV, 沙盒外同 8 句全正常 ⇒ 要分开复现 */
+typedef struct { int n; char **lines; } tts_job;
+static char *tts_lines(void *ud) {
+    tts_job *j = ud; ds4_buf b = {0};
+    for (int i = 0; i < j->n; i++) {
+        size_t ns = 0; char voice[128] = "", err[512] = "";
+        int16_t *p = asst_tts(j->lines[i], "/tmp", &ns, voice, sizeof voice, err, sizeof err);
+        ds4_buf_printf(&b, "%d: %zu samples (%.2f s) voice=%s %s | %s\n", i, ns, ns / 22050.0, voice, p ? "" : err, j->lines[i]);
+        free(p);
+    }
+    return ds4_buf_take(&b);
+}
+static int tts_mode(int n, char **lines, bool sandboxed) {
+    char err[512] = "";
+    if (!asst_init(NULL, err, sizeof err)) { printf("init: %s\n", err); return 1; }
+    tts_job j = { n, lines };
+    if (!sandboxed) { char *o = tts_lines(&j); printf("%s", o); free(o); return 0; }
+    asst_sbx_spec sp; memset(&sp, 0, sizeof sp); sp.exec = true; sp.tts = true; sp.timeout_s = 600;
+    if (asst_tts_model(ASST_TTS_ZH_MODEL)[0]) asst_sbx_add(&sp, false, asst_tts_model(ASST_TTS_ZH_MODEL));
+    if (asst_tts_model(ASST_TTS_EN_MODEL)[0]) asst_sbx_add(&sp, false, asst_tts_model(ASST_TTS_EN_MODEL));
+    char *o = NULL; const asst_sbx_rc rc = asst_sbx_run(&sp, tts_lines, &j, &o);
+    printf("sandbox rc=%d\n%s\n", (int)rc, o ? o : "(null)"); free(o);
+    return rc == ASST_SBX_OK ? 0 : 1;
+}
+
 int main(int argc, char **argv) {
+    if (argc > 2 && !strcmp(argv[1], "--tts")) return tts_mode(argc - 2, argv + 2, false);
+    if (argc > 2 && !strcmp(argv[1], "--tts-sbx")) return tts_mode(argc - 2, argv + 2, true);
     if (argc > 2 && !strcmp(argv[1], "--visit")) return visit_mode(argc - 2, argv + 2, 600);
     if (argc > 2 && !strcmp(argv[1], "--visit-all")) return visit_mode(argc - 2, argv + 2, INT_MAX);
+    if (argc > 4 && !strcmp(argv[1], "--video")) {
+        extern int asst_video_mode(const char *, const char *, const char *, bool, const char *);
+        bool portrait = false; const char *narr = NULL;
+        for (int i = 5; i < argc; i++) { if (!strcmp(argv[i], "portrait")) portrait = true; else narr = argv[i]; }
+        return asst_video_mode(argv[2], argv[3], argv[4], portrait, narr);
+    }
     char raw[512]; snprintf(raw, sizeof raw, "/tmp/ds4_asst_test_%ld", (long)getpid());
     mkdir(raw, 0755);
     if (!realpath(raw, base)) { perror("realpath"); return 1; }   /* 工具拿到的路径都由守门先 realpath(Mac 的 /tmp 是软链, 经过它要读链本身) */
@@ -181,6 +215,7 @@ int main(int argc, char **argv) {
     printf("sandbox: %s\n", asst_sbx_kind());
     test_files(); test_net_signal(); test_bash(); test_fs_tools();
     g_fail += asst_test_logic(base);
+    { extern int asst_test_video(const char *base); g_fail += asst_test_video(base); }   /* 要火狐; 没有就 SKIP。在 logic 之后: 它建好了助理根目录 */
     { extern int studio_auth_test(const char *base); g_fail += studio_auth_test(base); }
     { extern int studio_net_test(const char *base); g_fail += studio_net_test(base); }
     { extern int studio_models_test(const char *base); g_fail += studio_models_test(base); }

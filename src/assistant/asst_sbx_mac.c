@@ -42,6 +42,9 @@ bool asst_sbx_lock(const asst_sbx_spec *sp, char *err, size_t errn) {
         ds4_buf_puts(&b, "(allow file-read* (literal \"/\"))\n");
         ds4_buf_puts(&b, "(allow file-read-metadata (literal \"/\") (literal \"/private\") (literal \"/private/var\") (literal \"/var\") (literal \"/etc\") (literal \"/tmp\") (literal \"/Library\"))\n");
     }
+    if (sp->tts)   /* say 在 deny default 里要的系统语音服务: 10-13 用 tests/video/say_sbx_probe.sh 逐个剔除得出, 少任何一个都只吐空文件 */
+        ds4_buf_puts(&b, "(allow mach-lookup (global-name \"com.apple.pluginkit.pkd\") (global-name \"com.apple.runningboard\") (global-name \"com.apple.accessibility.voices\")"
+                         " (global-name \"com.apple.audio.AudioComponentRegistrar\") (global-name-regex #\"^com\\.apple\\.ax\\.MauiTTSSupport\\.\"))\n");
     ds4_buf_putc(&b, 0);
     char *e = NULL;
     const int r = sandbox_init(b.ptr, 0, &e);

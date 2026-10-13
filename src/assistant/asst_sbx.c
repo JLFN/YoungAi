@@ -54,7 +54,7 @@ static long user_nproc(void) {
 }
 
 /* 父进程开着的 fd(模型子进程的 socket、日志、浏览器连接)一个都不许带进沙盒: 带进去就是一条绕过文件规则的现成通道 */
-static void close_inherited(int keep) {
+static void close_inherited(int keep, int keep2) {
 #ifdef __APPLE__
     const char *fddir = "/dev/fd";
 #else
@@ -64,11 +64,11 @@ static void close_inherited(int keep) {
     DIR *d = opendir(fddir);
     if (d) {
         struct dirent *e;
-        while ((e = readdir(d)) && n < 4096) { int fd = atoi(e->d_name); if (e->d_name[0] >= '0' && e->d_name[0] <= '9' && fd > 2 && fd != keep) fds[n++] = fd; }
+        while ((e = readdir(d)) && n < 4096) { int fd = atoi(e->d_name); if (e->d_name[0] >= '0' && e->d_name[0] <= '9' && fd > 2 && fd != keep && fd != keep2) fds[n++] = fd; }
         closedir(d);
         for (int i = 0; i < n; i++) close(fds[i]);   /* 先收集再关: 边读目录边关会把 opendir 自己的 fd 关掉 */
     } else {
-        for (int fd = 3; fd < 65536; fd++) if (fd != keep) close(fd);
+        for (int fd = 3; fd < 65536; fd++) if (fd != keep && fd != keep2) close(fd);
     }
 }
 
@@ -104,7 +104,7 @@ asst_sbx_rc asst_sbx_run(const asst_sbx_spec *sp, asst_sbx_fn fn, void *ud, char
         signal(SIGPIPE, SIG_DFL);
         const int nul = open("/dev/null", O_RDWR);
         if (nul >= 0) { dup2(nul, 0); dup2(nul, 1); if (nul > 2) close(nul); }   /* stderr 留着: 上锁失败的诊断进 ds4-train 日志 */
-        close_inherited(pf[1]);
+        close_inherited(pf[1], sp->keep_fd > 2 ? sp->keep_fd : -1);
         fcntl(pf[1], F_SETFD, FD_CLOEXEC);   /* bash exec 出去的进程拿不到结果管道, 不然后台进程挂着它父进程永远等不到 EOF */
         set_limits(sp, nproc);
         char err[512] = "";
