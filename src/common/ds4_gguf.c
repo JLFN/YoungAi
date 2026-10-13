@@ -71,6 +71,7 @@ int ds4_gguf_open(ds4_gguf *g, const char *path, char *err, size_t errlen) {
     uint64_t n_t = gg_u64(&c), n_kv = gg_u64(&c);
     if (c.fail || !(magic == 0x46554747u && ver == 3))
         GG_FAIL("非 GGUF v3(magic=%08x ver=%u)", magic, ver);
+    g->kv0 = (uint64_t)(c.p - g->map); g->nkv = n_kv;
     for (uint64_t i = 0; i < n_kv && !c.fail; i++) { gg_skipstr(&c); gg_skipval(&c, gg_u32(&c)); }
     if (c.fail) GG_FAIL("GGUF KV 段截断/类型不认识");
 
@@ -103,6 +104,21 @@ void ds4_gguf_close(ds4_gguf *g) {
     }
     if (g->map) munmap((void *)g->map, g->msz);
     memset(g, 0, sizeof(*g));
+}
+
+const uint8_t *ds4_gguf_kv(const ds4_gguf *g, const char *key, uint32_t *type) {
+    gg_cur c = { g->map + g->kv0, g->map + g->msz, 0 };
+    const size_t kl = strlen(key);
+    for (uint64_t i = 0; i < g->nkv && !c.fail; i++) {
+        uint64_t n = gg_u64(&c);
+        if (c.fail || (uint64_t)(c.end - c.p) < n) return NULL;
+        const uint8_t *k = c.p; c.p += n;
+        uint32_t t = gg_u32(&c);
+        if (c.fail) return NULL;
+        if (n == kl && !memcmp(k, key, kl)) { *type = t; return c.p; }
+        gg_skipval(&c, t);
+    }
+    return NULL;
 }
 
 const ds4_gguf_tensor *ds4_gguf_find(const ds4_gguf *g, const char *name) {

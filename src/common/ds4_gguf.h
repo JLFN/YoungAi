@@ -27,7 +27,12 @@ typedef struct {
     ds4_gguf_tensor *t;
     int nt;
     uint64_t data0;       /* 数据区起点(alignment=32 对齐后) */
+    uint64_t kv0, nkv;    /* KV 段起点(=24)与条数: ds4_gguf_kv 按需重走, 打开时不解值 */
 } ds4_gguf;
+
+/* 按键找 KV 值: 返回值字节起点(类型码之后), *type = GGUF 类型码(8 字串: u64 长+字节; 9 数组: u32 元素类型+u64 个数+逐项);
+ * 没有返回 NULL。调用方按类型自己读 —— 2026-10-13 旁白小模型读音素表首用。 */
+const uint8_t *ds4_gguf_kv(const ds4_gguf *g, const char *key, uint32_t *type);
 
 /* 打开并解析目录。成功 0; 失败 -1 且 err(可 NULL)带一句人话。 */
 int ds4_gguf_open(ds4_gguf *g, const char *path, char *err, size_t errlen);
