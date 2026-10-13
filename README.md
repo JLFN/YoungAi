@@ -103,6 +103,10 @@ curl -fsSLO https://huggingface.co/wenzhouwu/YoungAi-DeepSeek-V4.1-Flash/resolve
 bash install.sh                      # --domain law for another domain (default: code); --endpoint https://hf-mirror.com for a mirror
 ```
 
+This also fetches the model's own vision tower (`DeepSeek-V4.1-Flash.vision.gguf`, 0.97 GB) and starts the server
+with it: send pictures as OpenAI `image_url` or Anthropic `image` blocks with `data:` URLs. The tower is read from
+disk only when an image arrives; text requests never touch it.
+
 **On a Mac**, `make` builds the Metal version; 126 GPU kernel tests pass on a real Apple GPU. The full model has not
 run on a Mac yet (ours has 16 GB).
 

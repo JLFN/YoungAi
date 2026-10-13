@@ -74,6 +74,9 @@ curl -fsSLO https://huggingface.co/wenzhouwu/YoungAi-DeepSeek-V4.1-Flash/resolve
 bash install.sh                      # 默认编程侧车，--domain law 换领域；--endpoint https://hf-mirror.com 走镜像
 ```
 
+它会顺带下载模型自带的视觉塔（`DeepSeek-V4.1-Flash.vision.gguf`，0.97 GB）并带着它起服务：图片用 OpenAI 的
+`image_url` 或 Anthropic 的 `image` 块传，内容是 `data:` URL。视觉塔只在来图时从硬盘读，纯文本请求不碰它。
+
 **Mac**：`make` 编出 Metal 版，126 项 GPU 核测试在真 Apple GPU 上全过；整模型还没在 Mac 上跑过（手上的 Mac 只有 16 GB）。
 
 ## 局限
