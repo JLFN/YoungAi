@@ -13,24 +13,28 @@
 #                                        清单只认 install.sh 的 sidecar_of 表(用户按 --domain 选), 这里不另抄一份
 #   posttrain-experimental-20260924/     ③ 09-24 大盘研判那一条请求上解的候选(只放 gr_L39.bin + base.fnv;
 #                                        predict.txt 带请求的行号与 token id, 不发)
+#   DeepSeek-V4.1-Flash.vision.gguf      视觉塔侧车 0.97 GB(v41_to_gguf vision 出, 原件 BF16)。单独一个文件而不进主 GGUF:
+#                                        塞进主文件头部会变长, 40 个分块每块字节都变 = 重传 115 GB
 #   bin/ds4, bin/ds4-server              spark(aarch64, CUDA 13)上 make cuda-spark 的产物
 #
-# 用法: hf_publish_spark.sh split|stage|small|big|verify <用户名/仓库名> [--keep-bin]
+# 用法: hf_publish_spark.sh split|stage|small|vision|big|verify <用户名/仓库名> [--keep-bin]
 #   split   备份原件(真复制+哈希核对+只读) → 切 40 份 → SHA256SUMS → 拼回核对与原件逐字节同
 #   stage   在 gguf/hf_upload/<仓库名>/ 摆好发布目录。大文件用硬链接(同一文件系统, 不多占一个字节);
 #           放在 gguf/ 下是因为 sync_spark.sh 的 --delete 排除了 gguf/, 同步不会把它删掉
 #   small   上传分块以外的全部(几十 MB), 仓库不存在就建成公开仓库 —— 先让页面立起来
 #           --keep-bin: 不传 bin/, 线上二进制保持原样(09-28 用户令: 加侧车的那次发布只传侧车 + README + install.sh;
 #           spark 上的二进制随开发重编, 不带这个开关就会顺手把线上的换掉)
+#   vision  单传视觉塔侧车(small 排除了 *.gguf); 远端已有且大小对就跳过
 #   big     逐份上传 40 个分块, 走 LFS 通道; 远端已有且大小对的份跳过, 所以断了重跑同一条就是续传
 #   verify  列出仓库里的文件和大小, 与本地逐个比对, 对不上退 1
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"; cd "$ROOT" || exit 1   # 脚本在 gguf-tools/scripts/, 仓库根在上两级
 HF="$HOME/v41env/bin/hf"          # 非交互 ssh 的 PATH 里没有 hf, 只认 venv 里这一份
-CMD="${1:?用法: $0 split|stage|small|big|verify <用户名/仓库名>}"
+CMD="${1:?用法: $0 split|stage|small|vision|big|verify <用户名/仓库名>}"
 REPO="${2:?缺仓库名, 例: wenzhouwu/YoungAi-DeepSeek-V4.1-Flash}"
 V41="$ROOT/gguf/v41"
 GGUF_NAME="DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative.gguf"
+VISION_NAME="DeepSeek-V4.1-Flash.vision.gguf"   # 文件名与 install.sh 的 VISION= 同一个, 改一边另一边就找不到
 # 发布哪些侧车 = install.sh 能选哪些领域: 两边各写一份迟早对不上(用户选得到却没发布 = 启动时报缺目录), 所以从它的表里读
 AMP_NAMES=$(sed -n 's/^ *[a-z]*) *echo "\(DeepSeek-[^"]*-engine\)";;$/\1/p' "$ROOT/gguf-tools/scripts/hf_install.sh")
 PT_SRC="$V41/night/review_iter_20260924_0729/r1_pt/cand_g1_t6_r10_l1_k1e+09_n0"
@@ -64,7 +68,11 @@ stage() {
     for b in ds4 ds4-server; do
         h=$("$ROOT/$b" --help 2>&1)
         case "$h" in *--engram-dir*) ;; *) die "$ROOT/$b 不认 --engram-dir, 先 make cuda-spark";; esac
+        # install.sh 见到视觉侧车就传 --vision-gguf; 旧二进制不认 = 用户那边服务起不来
+        case "$h" in *--vision-gguf*) ;; *) die "$ROOT/$b 不认 --vision-gguf, 先 make cuda-spark";; esac
     done
+    [ "$(sed -n 's/^VISION="\(.*\)"$/\1/p' "$ROOT/gguf-tools/scripts/hf_install.sh")" = "$VISION_NAME" ] || die "install.sh 的 VISION= 不是 $VISION_NAME"
+    [ -s "$V41/$VISION_NAME" ] || die "缺视觉塔侧车 $V41/$VISION_NAME(gguf-tools/quantize/v41_to_gguf vision 出)"
     # install.sh 续传时按 parts_len(k) = k·PART_BASE + min(k, PART_EXTRA) 把合并文件截回整份边界; 常量写错 =
     # 用户那边拼出一个错位的模型。这里拿 40 份的真实大小逐份核一遍(09-25 实撞: 第一版按"每份一样大"写, 25 份起全错)
     local ib ie k want
@@ -89,6 +97,7 @@ stage() {
     ln -f "$PARTS_DIR/SHA256SUMS" "$PARTS_DIR/$GGUF_NAME".part*-of-$NPART "$STAGE/"
     for a in $AMP_NAMES; do mkdir -p "$STAGE/$a" && ln -f "$V41/$a"/* "$STAGE/$a/"; done
     ln -f "$PT_SRC/gr_L39.bin" "$PT_SRC/base.fnv" "$STAGE/$PT_NAME/"
+    ln -f "$V41/$VISION_NAME" "$STAGE/"
     LOG "发布目录 $STAGE:"
     (cd "$STAGE" && find . -type f -not -path './.cache/*' | sort | xargs ls -l | awk '{printf "  %14d  %s\n", $5, $9}')
 }
@@ -185,6 +194,21 @@ case "$CMD" in
         tail -c 600 "$PLOG" | tr '\r' '\n' | grep -v '^\s*$' | tail -5; die "小文件上传失败(完整输出 $PLOG)"
     fi
     LOG "SMALL_DONE https://huggingface.co/$REPO";;
+  vision)
+    # 1 GB 一个文件: 与 big 同一条线路同一个病(Xet 被掐), 走 LFS + 卡死检测; LFS 不能跨进程续传, 断了整份重传(1 GB 可接受)
+    need_login; [ -s "$STAGE/$VISION_NAME" ] || die "先跑 stage"
+    remote=$(remote_sizes) || die "取远端清单失败"
+    lsz=$(stat -c %s "$STAGE/$VISION_NAME")
+    if [ "$(printf '%s\n' "$remote" | awk -v x="$VISION_NAME" '$1==x {print $2}')" = "$lsz" ]; then LOG "远端已有 $VISION_NAME($lsz B), 跳过"; exit 0; fi
+    for tries in 1 2 3 4 5; do
+        t0=$(date +%s); LOG "$VISION_NAME ($lsz B) 第 $tries 次"
+        if run_with_stall_guard "$STALL_S" "$PLOG" env HF_HUB_DISABLE_XET=1 "$HF" upload "$REPO" "$STAGE/$VISION_NAME" "$VISION_NAME" \
+            --repo-type model --commit-message "Vision tower sidecar (DeepSeek-ViT + aligner, BF16), loaded with --vision-gguf"; then
+            dt=$(( $(date +%s) - t0 )); LOG "VISION_DONE ${dt}s, $(( lsz / 1048576 / (dt > 0 ? dt : 1) )) MB/s"; exit 0
+        fi
+        LOG "★第 $tries 次失败★ 最后输出: $(tail -c 300 "$PLOG" | tr '\r' '\n' | grep -v '^\s*$' | tail -1)"; sleep 30
+    done
+    die "视觉侧车连传 5 次失败(完整输出 $PLOG)";;
   big)
     need_login; [ -s "$STAGE/$(part_name "$NPART")" ] || die "先跑 stage"
     # ★走 LFS, 不走 Xet★(2026-09-25 定位): 这条出网线路(机场的所有节点都一样)会在 10~20 s 内掐断发往

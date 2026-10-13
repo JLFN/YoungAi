@@ -2,8 +2,11 @@
 # install.sh — download, install and start YoungAi-DeepSeek-V4.1-Flash on an NVIDIA DGX Spark, in one command.
 # (Source of the install.sh published at huggingface.co/wenzhouwu/YoungAi-DeepSeek-V4.1-Flash.)
 #
-#   bash install.sh                  check the machine, download ~317 GB (resumable), start the server on
+#   bash install.sh                  check the machine, download ~318 GB (resumable), start the server on
 #                                    127.0.0.1:8000 and run a one-line smoke test
+#                                    Images (OpenAI image_url / Anthropic image blocks, as data: URLs) go through the
+#                                    model's own vision tower, DeepSeek-V4.1-Flash.vision.gguf (0.97 GB, downloaded
+#                                    with the rest; read from disk only when an image arrives, not kept in memory)
 #   bash install.sh --domain law     the same, serving with the law sidecar instead of the coding one
 #                                    (domains: finance, code, law, medicine, science)
 #   bash install.sh --no-start       everything except starting the server
@@ -37,6 +40,9 @@ REPO="wenzhouwu/YoungAi-DeepSeek-V4.1-Flash"
 BASE_REPO="deepseek-ai/DeepSeek-V4.1-Flash"
 GGUF="DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative.gguf"
 GGUF_BYTES=113556639424
+# The vision tower ships as its own file so the 40 base parts stay byte-identical. An install made before it was
+# published simply has no such file: the server then starts without it and rejects image requests (HTTP 400).
+VISION="DeepSeek-V4.1-Flash.vision.gguf"
 # The base is published as 40 parts (…gguf.part01-of-40 … part40-of-40) because a single 113.6 GB upload could not
 # survive our own uplink. `split -n 40` gives the first PART_EXTRA parts one byte more than the rest:
 # parts 1–24 are 2,838,915,986 bytes, parts 25–40 are 2,838,915,985. SHA256SUMS holds every hash.
@@ -234,14 +240,19 @@ start() {
     # pipefail would then report a perfectly good binary as old.)
     local help; help=$("$MODEL/bin/ds4-server" --help 2>&1)
     case "$help" in *--engram-dir*) ;; *) die "bin/ds4-server is older than this install.sh: run 'bash install.sh --no-start' to update it";; esac
+    local vis=()
+    if [ -s "$MODEL/$VISION" ]; then
+        case "$help" in *--vision-gguf*) ;; *) die "bin/ds4-server predates the vision tower: run 'bash install.sh --no-start' to update it";; esac
+        vis=(--vision-gguf "$MODEL/$VISION")
+    fi
     local a; a=$(avail_mb)
     [ "$a" -ge "$START_FLOOR_MB" ] || die "only $a MB of memory available, need $START_FLOOR_MB: close other programs first"
     mkdir -p "$LOGS"
     local zc=() pt=()
     [ -n "$SIDECAR" ] && zc=(--zchain "$MODEL/$SIDECAR")
     [ "$WITH_PT" = 1 ] && pt=(--posttrain "$MODEL/$POSTTRAIN")
-    say "starting ds4-server on $HOST:$PORT, domain $DOMAIN (loading takes ~2 minutes; log: $LOGS/server.log)"
-    nohup "$MODEL/bin/ds4-server" --cuda -m "$MODEL/$GGUF" "${zc[@]}" --engram-dir "$ENGRAM" "${pt[@]}" \
+    say "starting ds4-server on $HOST:$PORT, domain $DOMAIN${vis:+, images on} (loading takes ~2 minutes; log: $LOGS/server.log)"
+    nohup "$MODEL/bin/ds4-server" --cuda -m "$MODEL/$GGUF" "${zc[@]}" --engram-dir "$ENGRAM" "${pt[@]}" "${vis[@]}" \
         --mem-budget-mb "$BUDGET_MB" --host "$HOST" --port "$PORT" >"$LOGS/server.log" 2>&1 </dev/null &
     echo $! >"$PIDF"; echo "domain $DOMAIN on $HOST:$PORT" >"$INFOF"
     export -f watchdog
