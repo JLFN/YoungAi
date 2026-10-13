@@ -1,6 +1,7 @@
 /* t_asst_logic.c — 助理的纯逻辑单测: JSON 取值、路径解析、守门决策序(每条一例)、密文识别、SSE 增量解析、鉴权、存储与记忆。
  * 由 t_asst_sbx.c 的 main 调用(它先建好临时目录), 返回失败条数。助理根目录用临时目录, 不碰真的 ~/.ds4/assistant。 */
 #include "../../src/assistant/asst_internal.h"
+#include "../../src/office/ds4_office.h"
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -223,6 +224,60 @@ static void test_device_line(void) {
 }
 
 /* 高德: 凭证存取(0600, 值不回传, 空值删) + 两个解析器喂真实形状的夹具(空字段是 [] 不是 "") */
+/* 官方产出工具: 守门口径同 write_file; 注册表里有; 在沙盒里真写出 docx / xlsx 并回"created … share" */
+static void test_office(void) {
+    char sid[ASST_ID_LEN + 1]; asst_session_new(sid, "o", "x", false);
+    asst_gres r = G(sid, "write_document", "{\"path\":\"out/r.docx\",\"markdown\":\"# Hi\\n\\nhello **world**\"}");
+    char p[ASST_PATH + 32]; snprintf(p, sizeof p, "%s/out/r.docx", asst_ws);
+    CHECKL(r.dec == ASST_ALLOW && !strcmp(r.cls, "write") && !strcmp(r.path, p), "write_document in ws: %s %s %s", dec_name(r.dec), r.cls, r.path);
+    char a[600]; snprintf(a, sizeof a, "{\"path\":\"%s/token\",\"markdown\":\"x\"}", asst_root);
+    r = G(sid, "write_document", a); CHECKL(r.dec == ASST_DENY, "write_document into control folder: %s", dec_name(r.dec));
+    char *tj = asst_tools_json(NULL);
+    CHECKL(strstr(tj, "\"name\":\"write_document\"") && strstr(tj, "\"name\":\"write_xlsx\"") && strstr(tj, "\\\"columns\\\""), "registry has write_document / write_xlsx (xlsx example escaped into the description)");
+    const char *np = strstr(tj, "\"name\":\"write_xlsx\""); const char *q = np ? strstr(np, "\"parameters\"") : NULL; char *pj = q ? strdup(q) : NULL;
+    if (pj) { char *e = strstr(pj, "}}}"); if (e) e[1] = 0; }
+    CHECKL(pj && strstr(pj, "\"type\":\"array\""), "sheets param is an array schema"); free(pj); free(tj);
+    int ok = 0; char *o;
+    r = G(sid, "write_document", "{\"path\":\"out/r.docx\",\"markdown\":\"# Hi\\n\\nhello **world**\\n\\n| a | b |\\n|---|---|\\n| 1 | 2 |\"}");
+    o = asst_tool_exec(sid, "write_document", "{\"path\":\"out/r.docx\",\"markdown\":\"# Hi\\n\\nhello **world**\\n\\n| a | b |\\n|---|---|\\n| 1 | 2 |\"}", &r, &ok);
+    struct stat st;
+    CHECKL(ok && o && !strncmp(o, "created out/r.docx", 18) && strstr(o, "1 headings, 1 paragraphs, 1 tables") && strstr(o, "share") && !stat(p, &st) && st.st_size > 1000, "write_document exec: %s", o ? o : "(null)"); free(o);
+    o = asst_tool_exec(sid, "write_document", "{\"path\":\"out/r.docx\",\"markdown\":\"# Again\"}", &r, &ok);
+    CHECKL(ok && o && !strncmp(o, "replaced out/r.docx", 19) && strstr(o, ".trash"), "write_document replace keeps old in .trash: %s", o ? o : "(null)"); free(o);
+    r = G(sid, "write_document", "{\"path\":\"out/r.txt\",\"markdown\":\"x\"}");
+    o = asst_tool_exec(sid, "write_document", "{\"path\":\"out/r.txt\",\"markdown\":\"x\"}", &r, &ok); CHECKL(!ok && o && strstr(o, ".docx, .pdf or .pptx"), "wrong extension refused: %s", o ? o : "(null)"); free(o);
+    /* pdf + also docx: 两个文件都出, 一句结果里都提到; pptx 按 --- 分页; pptx 不许 also */
+    const char *pa = "{\"path\":\"out/p.pdf\",\"also\":\"docx\",\"markdown\":\"# 报告\\n\\n正文 **粗** 一句。\\n\\n| a | b |\\n|---|---|\\n| 1 | 2 |\"}";
+    r = G(sid, "write_document", pa); o = asst_tool_exec(sid, "write_document", pa, &r, &ok);
+    snprintf(p, sizeof p, "%s/out/p.pdf", asst_ws); struct stat st2; const bool pdf_ok = !stat(p, &st) && st.st_size > 2000;
+    snprintf(p, sizeof p, "%s/out/p.docx", asst_ws); const bool docx_ok = !stat(p, &st2) && st2.st_size > 2000;
+    CHECKL(ok && o && !strncmp(o, "created out/p.pdf", 17) && strstr(o, "also created out/p.docx") && pdf_ok && docx_ok, "pdf + also docx: %s", o ? o : "(null)");
+    /* 10-13 spark 实撞: 字体在沙盒里找, 永远读不到 /usr/share/fonts → 有字体的机器也走了非内嵌。本机有字体时结果里不许有 not embedded */
+    if (office_ttf_find()) CHECKL(o && !strstr(o, "not embedded"), "pdf embeds the machine's CJK font from inside the sandbox: %s", o ? o : "(null)");
+    free(o);
+    /* source: 工作区里现成的 .md 一次短调用转成 pdf + docx, 不用把正文重发一遍 */
+    snprintf(p, sizeof p, "%s/out/src.md", asst_ws); { FILE *f = fopen(p, "w"); fputs("# 源文件\n\n第一段。\n\n- 甲\n- 乙\n", f); fclose(f); }
+    const char *ps = "{\"path\":\"out/src.pdf\",\"source\":\"out/src.md\",\"also\":\"docx\"}";
+    r = G(sid, "write_document", ps); o = asst_tool_exec(sid, "write_document", ps, &r, &ok);
+    snprintf(p, sizeof p, "%s/out/src.docx", asst_ws);
+    CHECKL(ok && o && !strncmp(o, "created out/src.pdf", 19) && strstr(o, "1 headings, 1 paragraphs, 0 tables, 1 lists") && strstr(o, "also created out/src.docx") && !stat(p, &st), "source .md -> pdf + docx: %s", o ? o : "(null)"); free(o);
+    const char *pb = "{\"path\":\"out/x.pdf\",\"source\":\"out/src.md\",\"markdown\":\"# x\"}";
+    r = G(sid, "write_document", pb); o = asst_tool_exec(sid, "write_document", pb, &r, &ok); CHECKL(!ok && o && strstr(o, "not both"), "markdown + source refused: %s", o ? o : "(null)"); free(o);
+    const char *pn = "{\"path\":\"out/x.pdf\",\"source\":\"out/nope.md\"}";
+    r = G(sid, "write_document", pn); o = asst_tool_exec(sid, "write_document", pn, &r, &ok); CHECKL(!ok && o && strstr(o, "cannot read source"), "missing source: %s", o ? o : "(null)"); free(o);
+    const char *pp = "{\"path\":\"out/s.pptx\",\"markdown\":\"# 封面\\n\\n副标题\\n\\n---\\n\\n## 第二页\\n\\n- 要点\\n\\n<!-- 讲稿 -->\\n\\n---\\n\\n# 谢谢\"}";
+    r = G(sid, "write_document", pp); o = asst_tool_exec(sid, "write_document", pp, &r, &ok);
+    CHECKL(ok && o && !strncmp(o, "created out/s.pptx", 18) && strstr(o, "3 slides"), "pptx: %s", o ? o : "(null)"); free(o);
+    const char *px = "{\"path\":\"out/s.pptx\",\"also\":\"pdf\",\"markdown\":\"# x\"}";
+    r = G(sid, "write_document", px); o = asst_tool_exec(sid, "write_document", px, &r, &ok); CHECKL(!ok && o && strstr(o, "also must be"), "pptx also refused: %s", o ? o : "(null)"); free(o);
+    const char *xa = "{\"path\":\"out/s.xlsx\",\"sheets\":[{\"name\":\"S\",\"columns\":[\"a\",\"b\"],\"rows\":[[1,2],[\"t\",\"=SUM(A2:B2)\"]]}]}";
+    r = G(sid, "write_xlsx", xa); o = asst_tool_exec(sid, "write_xlsx", xa, &r, &ok);
+    snprintf(p, sizeof p, "%s/out/s.xlsx", asst_ws);
+    CHECKL(ok && o && !strncmp(o, "created out/s.xlsx", 18) && strstr(o, "1 formulas, all computed") && !stat(p, &st), "write_xlsx exec: %s", o ? o : "(null)"); free(o);
+    const char *xb = "{\"path\":\"out/s.xlsx\",\"sheets\":{\"bad\":1}}";
+    r = G(sid, "write_xlsx", xb); o = asst_tool_exec(sid, "write_xlsx", xb, &r, &ok); CHECKL(!ok && o && strstr(o, "error: sheets:"), "write_xlsx bad json: %s", o ? o : "(null)"); free(o);
+}
+
 static void test_geo(void) {
     char err[256] = "", v[257];
     CHECKL(!asst_secret_set("Bad Name", "x", err, sizeof err), "secret name rule: %s", err);
@@ -312,7 +367,7 @@ int asst_test_logic(const char *base) {
     if (!asst_init(root, err, sizeof err)) { printf("FAIL asst_init: %s\n", err); return fails + 1; }
     char link[4600], tgt[4600]; snprintf(link, sizeof link, "%s/link_to_secret", asst_ws); snprintf(tgt, sizeof tgt, "%s/outside/secret.txt", base);
     if (symlink(tgt, link)) perror("symlink");
-    test_lang(); test_secret(); test_auth(); test_store_memory(); test_guard(base); test_sse(); test_device_line(); test_device_channel(); test_file(); test_geo();
+    test_lang(); test_secret(); test_auth(); test_store_memory(); test_guard(base); test_sse(); test_device_line(); test_device_channel(); test_file(); test_geo(); test_office();
     printf("asst logic: %d passed, %d failed\n", passes, fails);
     return fails;
 }

@@ -67,6 +67,7 @@ char *asst_fs_edit(void *a);     /* asst_edit_args: old 必须恰好出现一次
 char *asst_fs_search(void *a);   /* asst_search_args: 递归找含 pattern(子串)的行 */
 typedef struct { const char *command; const char *cwd; int timeout_s; } asst_bash_args;
 char *asst_bash_exec(void *a);   /* 干净环境(PATH/HOME=工作区/TMPDIR/LANG), stdin=/dev/null, 输出头 64 KB */
+char *asst_fs_put_bytes(const char *path, const void *data, size_t n, const char *trash);   /* 二进制产物: 旧版进 .trash + 原子写; 成功 NULL */
 bool asst_jarr_at(const char *arr, int i, char **out);   /* 数组第 i 个元素原文(malloc); 越界 false */
 
 /* ---------------- 根目录与存储(asst_store.c): 全是你能打开的纯文本 ---------------- */
@@ -113,6 +114,10 @@ char *asst_policy_json(void);          /* policy.json 原文(没有给缺省) */
 bool asst_policy_op(const char *body, char *err, size_t errn);   /* 页面改 policy / 撤销永久授权 */
 void asst_approvals_json(ds4_buf *b);
 bool asst_secret_like(const char *s);  /* 卡号(15~19 位且过 Luhn)/ 私钥头 / password= / 本机口令原文 */
+
+/* ---------------- 官方产出工具(asst_office.c, 方案稿 docs/assistant_office.md): write_document / write_xlsx, 在沙盒子进程里跑 src/office 的写出器 ---------------- */
+bool asst_office_tool(const char *name);
+char *asst_office_exec(const char *tool, const char *args, const asst_gres *g, const char *trash, int *ok);   /* 已过守门(g->path = 产物绝对路径) */
 
 /* ---------------- 记忆(asst_memory.c) ---------------- */
 char *asst_system_prompt(const char *first_msg, bool phone);   /* 身份段(+手机段) + 规矩 + 关于你 + 现在 + 语言句; 中/英按第一条消息选; 会话创建时拍快照 */

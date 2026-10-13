@@ -127,6 +127,12 @@ char *asst_fs_write(void *ap) {
     return ds4_buf_take(&b);
 }
 
+/* 二进制产物落盘(docx/xlsx 这类): 与 write_file 同一套保全(旧版进 .trash)+ 原子写; 成功 NULL, 失败一句原因 */
+char *asst_fs_put_bytes(const char *path, const void *data, size_t n, const char *trash) {
+    struct stat st; if (!stat(path, &st)) trash_copy(trash, path);
+    return atomic_write(path, data, n) ? NULL : errf("write", path);
+}
+
 char *asst_fs_edit(void *ap) {
     const asst_edit_args *a = ap;
     if (!a->old_s || !a->old_s[0]) return strdup("error: old_string is empty; use write_file to create or replace a whole file\n");

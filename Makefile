@@ -47,6 +47,9 @@ EVAL_CPU_OBJS := $(EVAL_SRCS:.c=_cpu.o)
 # 个人助理模块(src/assistant/, 见下方 ds4-train 段): 变量要在用到它的规则之前定义, make 解析规则时就展开前置
 ASST_SRCS := $(sort $(wildcard src/assistant/*.c))
 ASST_OBJS := $(ASST_SRCS:.c=.o)
+# 官方产出工具的格式基元(src/office/: zip/deflate/Markdown/docx/xlsx, 方案稿 docs/assistant_office.md); 纯主机 C, 零依赖
+OFFICE_SRCS := $(sort $(wildcard src/office/*.c))
+OFFICE_OBJS := $(OFFICE_SRCS:.c=.o)
 # WEB 模块(重构阶段3: ds4_web.c 拆分为 src/web/*.c; 纯主机 C)
 WEB_SRCS := $(wildcard src/web/*.c)
 WEB_OBJS := $(WEB_SRCS:.c=.o)
@@ -249,13 +252,18 @@ src/train/train_auth.o src/train/train_keys.o: src/common/ds4_sha256.h
 # 设置弹窗(云服务器 / frp 穿透 / HTTPS 证书, 只有主进程): 外部命令 ssh curl tar unzip openssl 都是 fork+exec, 不链任何库
 TRAIN_NET_OBJS := src/train/train_net.o src/train/train_exec.o src/train/train_frp.o src/train/train_frps.o src/train/train_sshtun.o src/train/train_tunnel.o src/train/train_cert.o
 src/train/train_frp.o: src/common/ds4_sha256.h
-ds4-train: src/train/train_main.o src/train/train_http.o src/train/train_proxy.o $(TRAIN_API_OBJS) $(TRAIN_AUTH_OBJS) $(TRAIN_NET_OBJS) $(ASST_OBJS) $(WEB_OBJS) src/common/ds4_json.o
-	$(CC) $(CFLAGS) -o $@ src/train/train_main.o src/train/train_http.o src/train/train_proxy.o $(TRAIN_API_OBJS) $(TRAIN_AUTH_OBJS) $(TRAIN_NET_OBJS) $(ASST_OBJS) $(WEB_OBJS) src/common/ds4_json.o $(LDLIBS)
+ds4-train: src/train/train_main.o src/train/train_http.o src/train/train_proxy.o $(TRAIN_API_OBJS) $(TRAIN_AUTH_OBJS) $(TRAIN_NET_OBJS) $(ASST_OBJS) $(OFFICE_OBJS) $(WEB_OBJS) src/common/ds4_json.o
+	$(CC) $(CFLAGS) -o $@ src/train/train_main.o src/train/train_http.o src/train/train_proxy.o $(TRAIN_API_OBJS) $(TRAIN_AUTH_OBJS) $(TRAIN_NET_OBJS) $(ASST_OBJS) $(OFFICE_OBJS) $(WEB_OBJS) src/common/ds4_json.o $(LDLIBS)
+src/office/%.o: src/office/%.c src/office/ds4_office.h src/office/office_internal.h src/office/office_pdf.h src/common/ds4_json.h
+	$(CC) $(CFLAGS) -c -o $@ $<
+# 格式基元单测: 金标逐字节 + flate 往返 + 公式 + 解析器; 有 unzip/xmllint/textutil 的机器再用它们复验(没有就 SKIP)
+ds4_office_test: tests/office/t_office.c $(OFFICE_OBJS) src/common/ds4_json.o
+	$(CC) $(CFLAGS) -o $@ tests/office/t_office.c $(OFFICE_OBJS) src/common/ds4_json.o $(LDLIBS)
 
 # 个人助理(src/assistant/, 方案 docs/assistant.md): 住 ds4-train 主进程; 每次工具调用 fork 子进程先上内核沙盒
 # (Linux = Landlock+seccomp, macOS = Seatbelt; 两个平台文件在对方平台上编成空对象)。纯主机 C, 不链引擎。
 src/train/train_main.o: src/assistant/asst_internal.h
-src/assistant/%.o: src/assistant/%.c src/assistant/asst_internal.h src/common/ds4_json.h
+src/assistant/%.o: src/assistant/%.c src/assistant/asst_internal.h src/common/ds4_json.h src/office/ds4_office.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 # 助理页面端到端门(方案稿 docs/assistant.md §13.5): 假模型(叫 ds4-server 才能被主进程认领)+ 系统 Chrome 的 Playwright 脚本; 不进 make test(要浏览器)
 tests/asst/fake/ds4-server: tests/asst/fake_model.c
@@ -263,8 +271,8 @@ tests/asst/fake/ds4-server: tests/asst/fake_model.c
 asst-e2e: ds4-train tests/asst/fake/ds4-server
 	node tests/asst/e2e_device.mjs
 # 沙盒逃逸单测 + 纯逻辑单测 + 工作台登录单测(不要模型, 秒级; make test 里跑)
-ds4_asst_test: tests/asst/t_asst_sbx.c tests/asst/t_asst_logic.c tests/asst/t_studio_auth.c tests/asst/t_studio_net.c tests/asst/t_studio_models.c $(ASST_OBJS) $(WEB_OBJS) $(TRAIN_API_OBJS) $(TRAIN_AUTH_OBJS) $(TRAIN_NET_OBJS) src/common/ds4_json.o
-	$(CC) $(CFLAGS) -o $@ tests/asst/t_asst_sbx.c tests/asst/t_asst_logic.c tests/asst/t_studio_auth.c tests/asst/t_studio_net.c tests/asst/t_studio_models.c $(ASST_OBJS) $(WEB_OBJS) $(TRAIN_API_OBJS) $(TRAIN_AUTH_OBJS) $(TRAIN_NET_OBJS) src/common/ds4_json.o $(LDLIBS)
+ds4_asst_test: tests/asst/t_asst_sbx.c tests/asst/t_asst_logic.c tests/asst/t_studio_auth.c tests/asst/t_studio_net.c tests/asst/t_studio_models.c $(ASST_OBJS) $(OFFICE_OBJS) $(WEB_OBJS) $(TRAIN_API_OBJS) $(TRAIN_AUTH_OBJS) $(TRAIN_NET_OBJS) src/common/ds4_json.o
+	$(CC) $(CFLAGS) -o $@ tests/asst/t_asst_sbx.c tests/asst/t_asst_logic.c tests/asst/t_studio_auth.c tests/asst/t_studio_net.c tests/asst/t_studio_models.c $(ASST_OBJS) $(OFFICE_OBJS) $(WEB_OBJS) $(TRAIN_API_OBJS) $(TRAIN_AUTH_OBJS) $(TRAIN_NET_OBJS) src/common/ds4_json.o $(LDLIBS)
 
 
 # Standalone capability modules (self-contained, no engine coupling): z 隐变量
@@ -429,8 +437,9 @@ ds4_unit: tests/unit/test_common.c tests/unit/test_zmod.c tests/unit/t_zfinetune
 	$(CC) $(CFLAGS) -Isrc/common -I. -o $@ tests/unit/test_common.c tests/unit/test_zmod.c tests/unit/t_zfinetune.c tests/unit/t_sha256.c \
 	    src/common/ds4_sha256.c src/common/ds4_quantfmt.c src/common/ds4_gguf.c ds4_z.c ds4_zchain.c ds4_zfinetune.c ds4_loss.c $(LDLIBS)
 
-test: ds4_test ds4-eval ds4_unit ds4_asst_test linecount
+test: ds4_test ds4-eval ds4_unit ds4_asst_test ds4_office_test linecount
 	./ds4_unit
+	./ds4_office_test
 	./ds4_asst_test
 	./ds4-eval --self-test-extractors
 	./ds4_test
@@ -447,7 +456,7 @@ linecount:
 	if [ -n "$$viol" ]; then echo "linecount: 以下文件超 500 行(豁免走 .linecount-exempt, 要带理由):"; echo "$$viol"; exit 1; \
 	else echo "linecount: ok (≤500 行, 豁免清单外零超标)"; fi
 clean:
-	rm -f ds4 ds4-server ds4-bench ds4-eval ds4-agent ds4_cpu ds4_native ds4_server_test ds4_test ds4_unit ds4_asst_test e0-pingpong mm-ui mm-ocr *.o src/assistant/*.o src/cli/*.o src/bench/*.o src/kv/*.o src/web/*.o src/eval/*.o src/agent/*.o src/dist/*.o src/server/*.o src/core/*.o src/common/*.o src/metal/*.o tests/server_tests_*.o tests/t_*.o tests/cuda_long_context_smoke tests/cuda_long_context_smoke.o
+	rm -f ds4 ds4-server ds4-bench ds4-eval ds4-agent ds4_cpu ds4_native ds4_server_test ds4_test ds4_unit ds4_asst_test ds4_office_test e0-pingpong mm-ui mm-ocr *.o src/assistant/*.o src/office/*.o src/cli/*.o src/bench/*.o src/kv/*.o src/web/*.o src/eval/*.o src/agent/*.o src/dist/*.o src/server/*.o src/core/*.o src/common/*.o src/metal/*.o tests/server_tests_*.o tests/t_*.o tests/cuda_long_context_smoke tests/cuda_long_context_smoke.o
 
 # Task 04 / E0: standalone thunderbolt ping-pong latency gate (no core deps, no
 # model). Defined after the default targets so it never becomes the default goal.
