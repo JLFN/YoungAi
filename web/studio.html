@@ -387,6 +387,9 @@
   [data-shell=app] .desk-only { display: none !important; }
   [data-shell=app] .app-only { display: revert; }
   [data-shell=app] { -webkit-tap-highlight-color: transparent; }
+  /* 安卓 Chrome 的"轻触搜索": 点到不是真链接/按钮的文字就当成要查词, 底部弹 Google 搜那个字。底栏这些 <a> 没 href, 靠 onclick 跳,
+     浏览器不认它可点 ⇒ 点"模型""训练"就弹搜索。文字不可选它就无词可查——所以 UI 骨架一律禁选, 正文/消息/代码不在此列, 照常能长按复制 */
+  [data-shell=app] :is(a:not([href]), button, summary, .sitem, .mrow, .setbtn, .tb-sub, #pick .pi, .tool .thead, .drop, .switch, tr.click) { -webkit-user-select: none; user-select: none; }
   /* 高度跟着可视区走(--app-h 由脚本按 visualViewport 写): iOS 弹键盘时布局视口不缩, 不这么做输入框会被键盘盖住 */
   [data-shell=app] body { flex-direction: column; height: var(--app-h, 100dvh); font-size: 15px; overscroll-behavior: none; }
   [data-shell=app] .main { min-height: 0; }   /* 竖排 flex 的子项默认不肯比内容矮: 不写这句, 长对话把输入框和底栏挤到屏幕外 */
