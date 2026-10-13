@@ -17,7 +17,7 @@
 #                                        塞进主文件头部会变长, 40 个分块每块字节都变 = 重传 115 GB
 #   bin/ds4, bin/ds4-server              spark(aarch64, CUDA 13)上 make cuda-spark 的产物
 #
-# 用法: hf_publish_spark.sh split|stage|small|vision|big|verify <用户名/仓库名> [--keep-bin]
+# 用法: hf_publish_spark.sh split|stage|small|vision|tts|big|verify <用户名/仓库名> [--keep-bin]
 #   split   备份原件(真复制+哈希核对+只读) → 切 40 份 → SHA256SUMS → 拼回核对与原件逐字节同
 #   stage   在 gguf/hf_upload/<仓库名>/ 摆好发布目录。大文件用硬链接(同一文件系统, 不多占一个字节);
 #           放在 gguf/ 下是因为 sync_spark.sh 的 --delete 排除了 gguf/, 同步不会把它删掉
@@ -25,12 +25,16 @@
 #           --keep-bin: 不传 bin/, 线上二进制保持原样(09-28 用户令: 加侧车的那次发布只传侧车 + README + install.sh;
 #           spark 上的二进制随开发重编, 不带这个开关就会顺手把线上的换掉)
 #   vision  单传视觉塔侧车(small 排除了 *.gguf); 远端已有且大小对就跳过
+#   tts     单传旁白小模型 gguf/tts/{zh-huayan,en-lessac}.gguf → 仓库 tts/(各 63 MB, install.sh "除分片外全下"顺手带回),
+#           连同 install.sh(头注释提到它们); 远端已有且大小对的跳过
 #   big     逐份上传 40 个分块, 走 LFS 通道; 远端已有且大小对的份跳过, 所以断了重跑同一条就是续传
 #   verify  列出仓库里的文件和大小, 与本地逐个比对, 对不上退 1
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"; cd "$ROOT" || exit 1   # 脚本在 gguf-tools/scripts/, 仓库根在上两级
 HF="$HOME/v41env/bin/hf"          # 非交互 ssh 的 PATH 里没有 hf, 只认 venv 里这一份
-CMD="${1:?用法: $0 split|stage|small|vision|big|verify <用户名/仓库名>}"
+[ -x "$HF" ] || HF="$HOME/hfenv/bin/hf"   # Mac 上是 ~/hfenv(10-11 起文档类小文件与 tts 语音从 Mac 直传, spark 出网只有 5 MB/s 且常掉登录)
+fsize(){ stat -c %s "$1" 2>/dev/null || stat -f %z "$1"; }   # GNU 与 BSD/macOS 的 stat 旗不同
+CMD="${1:?用法: $0 split|stage|small|vision|tts|big|verify <用户名/仓库名>}"
 REPO="${2:?缺仓库名, 例: wenzhouwu/YoungAi-DeepSeek-V4.1-Flash}"
 V41="$ROOT/gguf/v41"
 GGUF_NAME="DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative.gguf"
@@ -116,7 +120,7 @@ run_with_stall_guard() {   # run_with_stall_guard <秒> <输出文件> 命令...
     local pid=$! last=-1 cur lastt; lastt=$(date +%s)
     while kill -0 "$pid" 2>/dev/null; do
         sleep 10
-        cur=$(stat -c %s "$log")
+        cur=$(fsize "$log")
         if [ "$cur" != "$last" ]; then last=$cur; lastt=$(date +%s)
         elif [ $(( $(date +%s) - lastt )) -ge "$lim" ]; then
             LOG "★进度输出 ${lim}s 没有变化, 判卡死, 杀掉(pid $pid)★"
@@ -128,7 +132,7 @@ run_with_stall_guard() {   # run_with_stall_guard <秒> <输出文件> 命令...
 }
 
 remote_sizes() {   # 远端清单(只读元数据, 不参与数值): 每行 "路径 字节数"
-    "$HOME/v41env/bin/python" -c "
+    "$(dirname "$HF")/python" -c "
 import sys
 from huggingface_hub import HfApi
 for f in HfApi().list_repo_tree(sys.argv[1], recursive=True):
@@ -211,6 +215,22 @@ case "$CMD" in
         LOG "★第 $tries 次失败★ 最后输出: $(tail -c 300 "$PLOG" | tr '\r' '\n' | grep -v '^\s*$' | tail -1)"; sleep 30
     done
     die "视觉侧车连传 5 次失败(完整输出 $PLOG)";;
+  tts)
+    need_login
+    remote=$(remote_sizes) || die "取远端清单失败"
+    for name in zh-huayan.gguf en-lessac.gguf; do
+        f="$ROOT/gguf/tts/$name"; [ -s "$f" ] || die "缺 $f(gguf-tools/tts/onnx_to_gguf 从 Piper 的 .onnx 转)"
+        lsz=$(fsize "$f")
+        if [ "$(printf '%s\n' "$remote" | awk -v x="tts/$name" '$1==x {print $2}')" = "$lsz" ]; then LOG "远端已有 tts/$name($lsz B), 跳过"; continue; fi
+        t0=$(date +%s); LOG "tts/$name ($lsz B)"
+        run_with_stall_guard "$STALL_S" "$PLOG" env HF_HUB_DISABLE_XET=1 "$HF" upload "$REPO" "$f" "tts/$name" \
+            --repo-type model --commit-message "Narration voice $name (Piper VITS converted to GGUF, used by the workbench's make_video)" \
+            || die "tts/$name 上传失败(完整输出 $PLOG)"
+        LOG "TTS_DONE tts/$name $(( $(date +%s) - t0 ))s"
+    done
+    run_with_stall_guard "$STALL_S" "$PLOG" env HF_HUB_DISABLE_XET=1 "$HF" upload "$REPO" "$ROOT/gguf-tools/scripts/hf_install.sh" install.sh \
+        --repo-type model --commit-message "install.sh: mention the narration voices under tts/" || die "install.sh 上传失败(完整输出 $PLOG)"
+    LOG "TTS_DONE install.sh";;
   big)
     need_login; [ -s "$STAGE/$(part_name "$NPART")" ] || die "先跑 stage"
     # ★走 LFS, 不走 Xet★(2026-09-25 定位): 这条出网线路(机场的所有节点都一样)会在 10~20 s 内掐断发往

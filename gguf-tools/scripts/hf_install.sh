@@ -7,6 +7,9 @@
 #                                    Images (OpenAI image_url / Anthropic image blocks, as data: URLs) go through the
 #                                    model's own vision tower, DeepSeek-V4.1-Flash.vision.gguf (0.97 GB, downloaded
 #                                    with the rest; read from disk only when an image arrives, not kept in memory)
+#                                    tts/zh-huayan.gguf and tts/en-lessac.gguf (63 MB each) are the workbench's narration
+#                                    voices for make_video (Chinese / English, Piper VITS converted to GGUF); the
+#                                    workbench loads one only while it speaks a line and frees it right after
 #   bash install.sh --domain law     the same, serving with the law sidecar instead of the coding one
 #                                    (domains: finance, code, law, medicine, science)
 #   bash install.sh --no-start       everything except starting the server
@@ -43,6 +46,8 @@ GGUF_BYTES=113556639424
 # The vision tower ships as its own file so the 40 base parts stay byte-identical. An install made before it was
 # published simply has no such file: the server then starts without it and rejects image requests (HTTP 400).
 VISION="DeepSeek-V4.1-Flash.vision.gguf"
+# Narration voices live under tts/ in the repository and ride along with the "everything except the parts" download;
+# nothing here reads them — the workbench (ds4-train) looks for <dir>/model/tts/<name>.gguf itself (src/assistant/asst_tts.c).
 # The base is published as 40 parts (…gguf.part01-of-40 … part40-of-40) because a single 113.6 GB upload could not
 # survive our own uplink. `split -n 40` gives the first PART_EXTRA parts one byte more than the rest:
 # parts 1–24 are 2,838,915,986 bytes, parts 25–40 are 2,838,915,985. SHA256SUMS holds every hash.
