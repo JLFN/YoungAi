@@ -40,6 +40,8 @@ rsync -az --delete $DRYF \
     --exclude 'ds4-agent' --exclude 'ds4-train' --exclude 'ds4_test' --exclude 'ds4_unit' --exclude 'zsolve' \
     `# 10-12 实撞: 助理单测与假模型二进制没排除, Mac 的 Mach-O 传过去把 spark 刚编的盖掉, 跑出"可执行文件格式错误"` \
     --exclude 'ds4_asst_test' --exclude 'ds4_office_test' --exclude 'tests/asst/fake' \
+    `# 视频单测与 AVFoundation 判官(vidcheck 只有 Mac 能编)同理, 各机器自己 make` \
+    --exclude 'ds4_video_test' --exclude 'tests/video/vidcheck' \
     `# ★工具二进制一律不同步★(2026-09-17 实撞): Mac 上编过一次的 gguf-tools 产物会被推到 Linux,` \
     `# 覆盖那边的原生版本。症状是跑起来报 "Syntax error: ( unexpected"(内核认不出 Mach-O,` \
     `# 退给 /bin/sh 当脚本读) —— 一眼看不出是二进制串了台。ELF/Mach-O 只按扩展名认不出来,` \

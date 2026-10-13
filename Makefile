@@ -50,6 +50,9 @@ ASST_OBJS := $(ASST_SRCS:.c=.o)
 # 官方产出工具的格式基元(src/office/: zip/deflate/Markdown/docx/xlsx, 方案稿 docs/assistant_office.md); 纯主机 C, 零依赖
 OFFICE_SRCS := $(sort $(wildcard src/office/*.c))
 OFFICE_OBJS := $(OFFICE_SRCS:.c=.o)
+# 视频格式基元(src/video/: H.264 Baseline 编码 + MP4 封装, 方案稿 docs/assistant_video.md); 纯主机 C, 零依赖(不用 ffmpeg)
+VIDEO_SRCS := $(sort $(wildcard src/video/*.c))
+VIDEO_OBJS := $(VIDEO_SRCS:.c=.o)
 # WEB 模块(重构阶段3: ds4_web.c 拆分为 src/web/*.c; 纯主机 C)
 WEB_SRCS := $(wildcard src/web/*.c)
 WEB_OBJS := $(WEB_SRCS:.c=.o)
@@ -259,6 +262,16 @@ src/office/%.o: src/office/%.c src/office/ds4_office.h src/office/office_interna
 # 格式基元单测: 金标逐字节 + flate 往返 + 公式 + 解析器; 有 unzip/xmllint/textutil 的机器再用它们复验(没有就 SKIP)
 ds4_office_test: tests/office/t_office.c $(OFFICE_OBJS) src/common/ds4_json.o
 	$(CC) $(CFLAGS) -o $@ tests/office/t_office.c $(OFFICE_OBJS) src/common/ds4_json.o $(LDLIBS)
+src/video/%.o: src/video/%.c src/video/ds4_video.h src/video/video_internal.h src/video/video_aac.h src/common/ds4_json.h
+	$(CC) $(CFLAGS) -c -o $@ $<
+# 视频单测: 规范向量逐位 + 码表无前缀冲突 + 合成 1080p 编两遍逐字节同; macOS 上再让系统解码器(vidcheck)解回来与重建逐字节比
+ds4_video_test: tests/video/t_video.c $(VIDEO_OBJS) src/common/ds4_json.o
+	$(CC) $(CFLAGS) -o $@ tests/video/t_video.c $(VIDEO_OBJS) src/common/ds4_json.o $(LDLIBS)
+tests/video/vidcheck: tests/video/vidcheck.m
+	$(CC) -O2 -fobjc-arc -Wall -o $@ $< -framework Foundation -framework AVFoundation -framework CoreMedia -framework CoreVideo
+ifeq ($(UNAME_S),Darwin)
+ds4_video_test: tests/video/vidcheck
+endif
 
 # 个人助理(src/assistant/, 方案 docs/assistant.md): 住 ds4-train 主进程; 每次工具调用 fork 子进程先上内核沙盒
 # (Linux = Landlock+seccomp, macOS = Seatbelt; 两个平台文件在对方平台上编成空对象)。纯主机 C, 不链引擎。
@@ -437,9 +450,10 @@ ds4_unit: tests/unit/test_common.c tests/unit/test_zmod.c tests/unit/t_zfinetune
 	$(CC) $(CFLAGS) -Isrc/common -I. -o $@ tests/unit/test_common.c tests/unit/test_zmod.c tests/unit/t_zfinetune.c tests/unit/t_sha256.c \
 	    src/common/ds4_sha256.c src/common/ds4_quantfmt.c src/common/ds4_gguf.c ds4_z.c ds4_zchain.c ds4_zfinetune.c ds4_loss.c $(LDLIBS)
 
-test: ds4_test ds4-eval ds4_unit ds4_asst_test ds4_office_test linecount
+test: ds4_test ds4-eval ds4_unit ds4_asst_test ds4_office_test ds4_video_test linecount
 	./ds4_unit
 	./ds4_office_test
+	./ds4_video_test
 	./ds4_asst_test
 	./ds4-eval --self-test-extractors
 	./ds4_test
@@ -456,7 +470,7 @@ linecount:
 	if [ -n "$$viol" ]; then echo "linecount: 以下文件超 500 行(豁免走 .linecount-exempt, 要带理由):"; echo "$$viol"; exit 1; \
 	else echo "linecount: ok (≤500 行, 豁免清单外零超标)"; fi
 clean:
-	rm -f ds4 ds4-server ds4-bench ds4-eval ds4-agent ds4_cpu ds4_native ds4_server_test ds4_test ds4_unit ds4_asst_test ds4_office_test e0-pingpong mm-ui mm-ocr *.o src/assistant/*.o src/office/*.o src/cli/*.o src/bench/*.o src/kv/*.o src/web/*.o src/eval/*.o src/agent/*.o src/dist/*.o src/server/*.o src/core/*.o src/common/*.o src/metal/*.o tests/server_tests_*.o tests/t_*.o tests/cuda_long_context_smoke tests/cuda_long_context_smoke.o
+	rm -f ds4 ds4-server ds4-bench ds4-eval ds4-agent ds4_cpu ds4_native ds4_server_test ds4_test ds4_unit ds4_asst_test ds4_office_test ds4_video_test tests/video/vidcheck e0-pingpong mm-ui mm-ocr *.o src/assistant/*.o src/office/*.o src/video/*.o src/cli/*.o src/bench/*.o src/kv/*.o src/web/*.o src/eval/*.o src/agent/*.o src/dist/*.o src/server/*.o src/core/*.o src/common/*.o src/metal/*.o tests/server_tests_*.o tests/t_*.o tests/cuda_long_context_smoke tests/cuda_long_context_smoke.o
 
 # Task 04 / E0: standalone thunderbolt ping-pong latency gate (no core deps, no
 # model). Defined after the default targets so it never becomes the default goal.

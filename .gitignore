@@ -41,6 +41,8 @@ tools/tp_rtt_probe
 /ds4_unit
 /ds4_asst_test
 /ds4_office_test
+/ds4_video_test
+/tests/video/vidcheck
 
 # gguf-tools 顶层编译产物(Makefile 输出; 2026-08-27 git add -A 误提交过一次)
 gguf-tools/amp_solve
