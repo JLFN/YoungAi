@@ -27,7 +27,7 @@ spark 上开思考一轮 20~60 s（总纲 §3.2 的实测），四轮就是几�
 |---|---|---|
 | ① docx + xlsx（`src/office/` 10 个文件 + `asst_office.c`） | **已落地**（10-13，Mac） | `ds4_office_test` 72 项（金标逐字节、flate 往返、unzip/xmllint/textutil 复验）；`ds4_asst_test` 174 项含沙盒里真写出；本机 soffice：docx→pdf 退出 0 且渲染对，xlsx→csv 逐格与 C 算的缓存值一致。原文在 fable5 10-13 |
 | ② pdf + pptx + `also`（`office_ttf.c` / `office_pdf*.c` / `office_pptx*.c`） | **已落地**（10-13，Mac，零外挂） | `ds4_office_test` 96 项：非内嵌 PDF 金标逐字节、内嵌路子集化/ToUnicode/xref、macOS `mdimport` 从我们的 PDF 抽出 496 字（文本层对）、pptx 金标 + 分页/备注/图/表；`ds4_asst_test` 176 项含 pdf+also docx / pptx 3 页 / pptx 拒 also；本机 LibreOffice 把 pptx 转 PDF 退出 0，六页版式看过；PDF 用 Read 看过两页。原文在 fable5 10-13 |
-| ③ 视频 | **已叫停并回滚**（10-13 用户："不要装 ffmpeg 这样重的工具就为了一个小小的功能"） | 曾落地过一版（火狐逐帧 + ffmpeg 编码 + say 旁白，1080p ≈15 ms/帧，细节在 fable5 10-13），因为编码靠 ffmpeg 违反零外挂原则，代码已删。§1.3/§3.6 留作方案记录；若再做，编码器/封装器必须自己写（H.264 Baseline + AAC-LC + MP4 muxer，约 2.5k 行 C） |
+| ③ 视频 | ffmpeg 版 10-13 叫停回滚；**新方案 = 自写编码器，见 `docs/assistant_video.md`**（以它为准，本稿 §1.3/§3.6 里的 ffmpeg 写法作废） | 曾落地过一版（火狐逐帧 + ffmpeg 编码 + say 旁白，1080p ≈15 ms/帧，细节在 fable5 10-13），编码靠 ffmpeg 违反零外挂原则，代码已删；渲染侧按那版重做 |
 
 **原则（10-13 用户定）：任何工具不得为了一个功能引入 ffmpeg 这类重外挂。** 现存的外部程序只有两类：火狐（网页工具，10-11 用户定）和 `run` 工具箱里"装了才有"的程序（我们自己的功能不依赖它们）。
 
