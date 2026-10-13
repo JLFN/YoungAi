@@ -6,6 +6,7 @@
 #include "asst_internal.h"
 #include <dirent.h>
 #include <errno.h>
+#include <execinfo.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <poll.h>
@@ -90,6 +91,15 @@ static void write_all_fd(int fd, const char *p, size_t n) {
 
 static double now_s(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return (double)t.tv_sec + t.tv_nsec * 1e-9; }
 
+/* 子进程崩了把栈写回结果管道再按默认动作死: 沙盒里 RLIMIT_CORE=0 拿不到 core, 父进程只看到"killed by signal 11"(10-13 spark 实撞: 真请求的 make_video
+ * 子进程段错误, 沙盒外同样输入全正常, 没有栈无从下手)。只用 async-signal-safe 的东西: backtrace_symbols_fd 直接写 fd, 地址用 addr2line -e 二进制 解。 */
+static int crash_fd = -1;
+static void on_crash(int sig) {
+    char head[64]; const int n = snprintf(head, sizeof head, "\n[crash: signal %d, stack:]\n", sig);
+    if (crash_fd >= 0) { write_all_fd(crash_fd, head, (size_t)n); void *bt[48]; const int k = backtrace(bt, 48); backtrace_symbols_fd(bt, k, crash_fd); }
+    signal(sig, SIG_DFL); raise(sig);
+}
+
 asst_sbx_rc asst_sbx_run(const asst_sbx_spec *sp, asst_sbx_fn fn, void *ud, char **out) {
     *out = NULL;
     int pf[2];
@@ -113,6 +123,7 @@ asst_sbx_rc asst_sbx_run(const asst_sbx_spec *sp, asst_sbx_fn fn, void *ud, char
             _exit(97);
         }
         write_all_fd(pf[1], "O", 1);
+        crash_fd = pf[1]; signal(SIGSEGV, on_crash); signal(SIGBUS, on_crash); signal(SIGFPE, on_crash); signal(SIGABRT, on_crash); signal(SIGILL, on_crash);
         char *r = fn(ud);
         if (r) { size_t n = strlen(r); if (n > ASST_SBX_OUT_MAX) n = ASST_SBX_OUT_MAX; write_all_fd(pf[1], r, n); }
         _exit(0);
