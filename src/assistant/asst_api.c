@@ -177,7 +177,13 @@ int asst_api(const asst_req *rq, ds4_buf *out, const char **ctype) {
         if (!asst_device_answer(sid, id ? id : "", ok, data ? data : "", data ? strlen(data) : 0, err, sizeof err)) code = jerr(out, 409, err); else ds4_buf_puts(out, "{\"ok\":true}");
         free(id); free(data);
     }
-    else if (!strcmp(r, "stop")) { asst_run_stop(sid); ds4_buf_puts(out, "{\"ok\":true}"); }
+    else if (!strcmp(r, "stop")) {
+        /* 谁按的停止也记进事件流(10-13 spark 实撞: 手机上刚发出去就"已停止", 盘上只有 end=stopped, 查不出停止请求从哪来) */
+        char *client = NULL, *how = NULL; asst_jstr(rq->body, "client", &client); asst_jstr(rq->body, "how", &how);
+        if (asst_id_ok(sid)) { ds4_buf e = {0}; ds4_buf_puts(&e, "{\"ev\":\"stop_request\",\"client\":"); ds4_json_escape(&e, client ? client : ""); ds4_buf_puts(&e, ",\"how\":"); ds4_json_escape(&e, how ? how : ""); ds4_buf_putc(&e, '}'); asst_ev(sid, e.ptr); ds4_buf_free(&e); }
+        free(client); free(how);
+        asst_run_stop(sid); ds4_buf_puts(out, "{\"ok\":true}");
+    }
     else if (!strcmp(r, "approve")) {
         char *id = NULL, *dec = NULL; asst_jstr(rq->body, "id", &id); asst_jstr(rq->body, "decision", &dec);
         if (!asst_run_answer(sid, id ? id : "", dec ? dec : "", err, sizeof err)) code = jerr(out, 409, err); else ds4_buf_puts(out, "{\"ok\":true}");

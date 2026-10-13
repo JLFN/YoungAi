@@ -1691,8 +1691,12 @@ function renderChatGate() {
 }
 function autosize() { inputEl.style.height = "auto"; inputEl.style.height = Math.min(220, inputEl.scrollHeight) + "px"; inputEl.style.overflowY = inputEl.scrollHeight > 220 ? "auto" : "hidden"; }
 inputEl.oninput = autosize;
-inputEl.onkeydown = e => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } };
-sendBtn.onclick = () => busy() ? stopRun() : send();
+/* 回车发送只在电脑上: 手机软键盘的回车是换行(微信也这样), 发送只走按钮。
+   不这么做会怎样(10-13 spark 手机实撞): 回车已经把消息发了出去, 用户不知道, 再点按钮 —— 这时按钮已经是"停止"(发送键兼停止键), 刚起跑的任务被停掉,
+   页面看到的就是"直接发了就显示已停止"(usage 0/0, 盘上 end=stopped)。 */
+const touchKeyboard = () => isApp() || matchMedia("(pointer: coarse)").matches;
+inputEl.onkeydown = e => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing && !touchKeyboard()) { e.preventDefault(); send(); } };
+sendBtn.onclick = () => busy() ? stopRun("button") : send();
 /* 键盘弹着时按输入条上的按钮(发送/停止/附件/侧车/后训练开关), 不许把焦点从输入框抢走(10-12 用户: "第一次点发送没有反应, 非要把键盘关掉才可以点")。
    抢走会怎样: 按下那一刻输入框失焦 → 底栏的 body:has(textarea:focus) 不再成立、底栏冒回来, 键盘也开始收 → 输入条被往上顶,
    手指抬起时按钮已不在指尖下, click 落到别处; 第二次点时键盘已收、布局不动, 才点得中。焦点的转移是 pointerdown/mousedown 的默认动作, 拦住它布局就不动,
@@ -1700,8 +1704,8 @@ sendBtn.onclick = () => busy() ? stopRun() : send();
 for (const ev of ["pointerdown", "mousedown"]) $("v-chat").querySelector(".composer .tools").addEventListener(ev, e => {
   if (document.activeElement === inputEl && e.target.closest("button, label.switch")) e.preventDefault();
 });
-async function stopRun() {
-  const r = await aFetch("stop", { session: curSid }); if (r.error) toast(t("fail", r.error), true);
+async function stopRun(how) {
+  const r = await aFetch("stop", { session: curSid, client: clientId, how: how || "" }); if (r.error) toast(t("fail", r.error), true);   /* client/how 进事件流: 事后能看清是谁、怎么停的 */
   openStream(curSid, true);   /* 停止后换条连接接着读: 页面要是因为旧连接死了才一直显示"进行中", 这一下就把漏掉的 end 读回来 */
 }
 let sending = false;
