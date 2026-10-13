@@ -86,7 +86,7 @@ ok(u0 && /^\[设备: 手机 · \d{4}-\d\d-\d\d \d\d:\d\d \S+ · [\w\/+-]+ · 可
 const clipRes = msgs.find(m => m.role === "tool" && m.tool_call_id === "call_clip");
 ok(clipRes && clipRes.content === "hello 剪贴板", "剪贴板自动读回: " + JSON.stringify(clipRes && clipRes.content));
 const locRes = msgs.find(m => m.role === "tool" && m.tool_call_id === "call_loc");
-ok(locRes && locRes.content.startsWith("lat,lng: 30.274100,120.155100 (±35 m)\naddress: unavailable") && locRes.content.includes("remembered for this conversation"), "locate 自动做, 结果经服务端收尾: " + JSON.stringify(locRes && locRes.content));
+ok(locRes && locRes.content.startsWith("lat,lng: 30.274100,120.155100 (±35 m)\naddress: ") && locRes.content.includes("remembered for this conversation"), "locate 自动做, 结果经服务端收尾: " + JSON.stringify(locRes && locRes.content));
 const meta = JSON.parse(readFileSync(path.join(ASST, "sessions", sid, "meta.json"), "utf8"));
 ok(meta.loc && meta.loc.lat === 30.2741 && meta.loc.acc === 35 && meta.loc.t > 0, "meta.loc 落盘: " + JSON.stringify(meta.loc));
 const runIt = items.find(i => i.kind === "tool" && i.name === "run");
@@ -129,7 +129,7 @@ rmSync(vid, { force: true });
 ok(vshare && vshare.name === "e2e_share.mp4" && vshare.type === "video/mp4" && vshare.size === 21, "mp4 分享贴 video/mp4, 过 Chromium 白名单: " + JSON.stringify(vshare));
 ok(await page.evaluate(() => Object.keys(FILE_TYPES).length && "avif bmp css csv ehtml flac gif htm html ico jfif jpeg jpg m4a m4v mp3 mp4 mpeg mpg oga ogg ogm ogv opus pdf pja pjpeg png shtm shtml svg svgz text tif tiff txt wav weba webm webp xbm".split(" ").every(e => CHROME_SHARE_EXT.test("a." + e) && FILE_TYPES[e])), "FILE_TYPES 覆盖 Chromium 分享扩展名表的每一项");
 ok(await page.evaluate(() => { const ds = [...document.querySelectorAll("details.think")]; return ds.length > 0 && ds.every(d => !d.open && d.querySelector("summary").textContent === "思考过程"); }), "思考过程边想边展开, 正文出来后自动收起");
-/* 第二条消息: 附件按钮上传 → 事实行带上次定位 + 附件行 */
+/* 第二条消息: 附件按钮上传 → 事实行带上次定位 + 附件行; 本机有火狐时上次定位后面多一段反查出的地址(没火狐只有坐标), 两种都认 */
 await page.locator("#attach-in").setInputFiles({ name: "合同.docx", mimeType: "application/octet-stream", buffer: Buffer.from("DOCX-bytes") });
 await page.waitForFunction(() => pendingFiles.length === 1, null, { timeout: 5000 }).catch(() => {});
 ok(await page.evaluate(() => pendingFiles.join()) === "inbox/合同.docx" && await page.locator("#attach-list .chip").count() === 1, "附件传进 inbox/ 并显示成小标签");
@@ -137,7 +137,7 @@ await page.evaluate(() => { inputEl.value = "转成 PDF"; inputEl.disabled = fal
 await page.waitForFunction(() => view && view.items.filter(i => i.kind === "end").length >= 2, null, { timeout: 15000 }).catch(() => {});
 msgs = readMsgs();
 const u1 = msgs.filter(m => m.role === "user")[1];
-ok(u1 && /^\[设备: 手机 · [^\]]* · 上次定位: 30\.27410,120\.15510 ±35 m \(0 分钟前\)\]\n\[附件: inbox\/合同\.docx \(1 KB\)\]\n转成 PDF$/.test(u1.content), "第二条消息的事实行带上次定位 + 附件行: " + JSON.stringify(u1 && u1.content));
+ok(u1 && /^\[设备: 手机 · [^\]]* · 上次定位: 30\.27410,120\.15510 ±35 m(?: [^\]]*?)? \(0 分钟前\)\]\n\[附件: inbox\/合同\.docx \(1 KB\)\]\n转成 PDF$/.test(u1.content), "第二条消息的事实行带上次定位 + 附件行: " + JSON.stringify(u1 && u1.content));
 ok(await page.evaluate(() => pendingFiles.length) === 0, "发送后附件清空");
 await ctx.close();
 

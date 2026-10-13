@@ -219,6 +219,7 @@ int main(int argc, char **argv) {
     { extern int studio_auth_test(const char *base); g_fail += studio_auth_test(base); }
     { extern int studio_net_test(const char *base); g_fail += studio_net_test(base); }
     { extern int studio_models_test(const char *base); g_fail += studio_models_test(base); }
+    asst_browser_shutdown();   /* 网页 / 视频测试起的无头火狐: 不关就成孤儿一直占着几百 MB(10-13 Mac 上攒了 10 个) */
     char rm[4400]; snprintf(rm, sizeof rm, "rm -rf '%s'", base); if (system(rm)) {}
     printf("asst: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail ? 1 : 0;

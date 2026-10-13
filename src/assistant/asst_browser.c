@@ -127,7 +127,15 @@ static bool ff_start(char *err, size_t errn) {
     const long avail = mem_avail_mb();
     if (avail >= 0 && avail < FF_MIN_AVAIL_MB) { snprintf(err, errn, "not enough free memory to start the browser (%ld MB available, need %d)", avail, FF_MIN_AVAIL_MB); return false; }
     struct stat st;
-    if (!stat("/snap/bin/firefox", &st)) { char d[ASST_PATH + 32]; snprintf(d, sizeof d, "%s/snap/firefox/common", asst_home); mkdir(d, 0700); snprintf(ff_prof, sizeof ff_prof, "%.900s/ds4-assistant-profile", d); }
+    if (!stat("/snap/bin/firefox", &st)) {
+        /* 配置目录名按助理根目录区分: 生产(默认根 ~/.ds4/assistant)沿用原名; 单测 / 手动渲染用临时根, 另起一个目录 ——
+         * 共用一个的话, 测试起火狐时 kill_stale 会把正在服务的工作台的火狐当残留杀掉 */
+        char d[ASST_PATH + 32], def[ASST_PATH + 32]; snprintf(d, sizeof d, "%s/snap/firefox/common", asst_home); mkdir(d, 0700);
+        snprintf(def, sizeof def, "%s/.ds4/assistant", asst_home);
+        uint32_t hsh = 2166136261u; for (const char *c = asst_root; *c; c++) hsh = (hsh ^ (uint8_t)*c) * 16777619u;
+        if (!strcmp(asst_root, def)) snprintf(ff_prof, sizeof ff_prof, "%.900s/ds4-assistant-profile", d);
+        else snprintf(ff_prof, sizeof ff_prof, "%.900s/ds4-assistant-profile-%08x", d, hsh);
+    }
     else snprintf(ff_prof, sizeof ff_prof, "%.900s/firefox-profile", asst_root);
     mkdir(ff_prof, 0700);
     kill_stale(); write_prefs();
