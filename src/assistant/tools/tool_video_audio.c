@@ -1,9 +1,9 @@
-/* asst_video_audio.c — make_video 的声音: narration(旁白)+ music(背景乐)→ 一条 22050 Hz 单声道音轨 → AAC 帧。
- * 父进程只解析参数(解析器吃的是模型写的 JSON, 但只取数字和字符串); 合成、读 WAV、编码都在沙盒子进程里(asst_video.c 的编码子进程)。
+/* tool_video_audio.c — make_video 的声音: narration(旁白)+ music(背景乐)→ 一条 22050 Hz 单声道音轨 → AAC 帧。
+ * 父进程只解析参数(解析器吃的是模型写的 JSON, 但只取数字和字符串); 合成、读 WAV、编码都在沙盒子进程里(tool_video.c 的编码子进程)。
  * 混音: 音乐垫底(有旁白时压到 0.3, 没旁白 0.8), 每句旁白按 at 秒叠上去。句子重叠不自动挪 —— 结果里说清楚哪句和哪句撞了, 让模型自己改 at。
  * 出错会怎样: 某句念不出(本机没有能在沙盒里念这种语言的语音)→ 整次调用失败并说原因, 不静默出一段哑巴视频。 */
-#include "asst_internal.h"
-#include "../video/ds4_video.h"
+#include "../asst_internal.h"
+#include "../../video/ds4_video.h"
 #include <math.h>
 #include <sys/stat.h>
 

@@ -47,7 +47,7 @@ GGUF_BYTES=113556639424
 # published simply has no such file: the server then starts without it and rejects image requests (HTTP 400).
 VISION="DeepSeek-V4.1-Flash.vision.gguf"
 # Narration voices live under tts/ in the repository and ride along with the "everything except the parts" download;
-# nothing here reads them — the workbench (ds4-train) looks for <dir>/model/tts/<name>.gguf itself (src/assistant/asst_tts.c).
+# nothing here reads them — the workbench (ds4-train) looks for <dir>/model/tts/<name>.gguf itself (src/assistant/tools/tool_tts.c).
 # The base is published as 40 parts (…gguf.part01-of-40 … part40-of-40) because a single 113.6 GB upload could not
 # survive our own uplink. `split -n 40` gives the first PART_EXTRA parts one byte more than the rest:
 # parts 1–24 are 2,838,915,986 bytes, parts 25–40 are 2,838,915,985. SHA256SUMS holds every hash.

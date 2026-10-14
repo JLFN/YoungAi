@@ -1,8 +1,8 @@
-/* asst_fs.c — 文件工具本体: 读/列/写/改/搜。全部在沙盒子进程里跑(asst_sbx_run), 拿到的路径已由守门解析成绝对路径。
+/* tool_fs.c — 文件工具本体: 读/列/写/改/搜。全部在沙盒子进程里跑(asst_sbx_run), 拿到的路径已由守门解析成绝对路径。
  * 这里不做任何"这个路径能不能碰"的判断 —— 那是守门(要不要问)与沙盒(内核拦)的事; 这里碰不到就如实把 errno 报给模型。
  * 写与改都是"同目录临时文件 + rename": 写到一半被超时杀掉, 原文件也还是完整的旧版本。
  * 覆盖或改之前把原文件复制进工作区 .trash/(≤64 MiB 的才复制): 破坏前先保全, 改错了从那里拿回来。 */
-#include "asst_internal.h"
+#include "../asst_internal.h"
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>

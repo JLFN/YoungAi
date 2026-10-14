@@ -1,6 +1,6 @@
 /* ds4_office.h — 官方产出工具的格式基元(方案稿 docs/assistant_office.md): Markdown → 文档树 → docx / xlsx(JSON → 表 → 公式求值) 。
  * 零依赖: zip(含 deflate)、OOXML 都在这里手写; 不引 libzip/libxml。
- * 与助理解耦: 这里不知道工作区、沙盒、守门, 只吃字节吐字节; 文件怎么落盘是调用方(src/assistant/asst_office.c)的事。
+ * 与助理解耦: 这里不知道工作区、沙盒、守门, 只吃字节吐字节; 文件怎么落盘是调用方(src/assistant/tools/tool_office.c)的事。
  * 产物可逐字节金标: 所有时间由调用方传 now(单测传常量), zip 不写随机数、不写本机路径。 */
 #ifndef DS4_OFFICE_H
 #define DS4_OFFICE_H

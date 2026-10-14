@@ -56,7 +56,7 @@ bool asst_jint(const char *obj, const char *key, long *out);
 bool asst_jbool(const char *obj, const char *key, bool *out);
 bool asst_jraw(const char *obj, const char *key, char **out);   /* 顶层 key 的值原文(对象/数组也行) */
 
-/* ---------------- 文件工具(asst_fs.c): 全部在沙盒子进程里执行 ---------------- */
+/* ---------------- 文件工具(tool_fs.c): 全部在沙盒子进程里执行 ---------------- */
 #define ASST_READ_LINES 400            /* read_file 一次最多给这么多行: 再多模型也读不过来, 用 start 分页 */
 #define ASST_LINE_MAX 2000             /* 单行截断(压缩过的 js 一行几 MB) */
 #define ASST_READ_BYTES (16u << 10)    /* read_file 一次最多吐这么多字节(≈5~6k token)。只限行数不够: 400 行网页正文 82 KB, 10-11 一次读进去上下文 14 万涨到 19 万、预填几分钟 */
@@ -120,7 +120,7 @@ bool asst_policy_op(const char *body, char *err, size_t errn);   /* 页面改 po
 void asst_approvals_json(ds4_buf *b);
 bool asst_secret_like(const char *s);  /* 卡号(15~19 位且过 Luhn)/ 私钥头 / password= / 本机口令原文 */
 
-/* ---------------- 官方产出工具(asst_office.c, 方案稿 docs/assistant_office.md): write_document / write_xlsx, 在沙盒子进程里跑 src/office 的写出器 ---------------- */
+/* ---------------- 官方产出工具(tool_office.c, 方案稿 docs/assistant_office.md): write_document / write_xlsx, 在沙盒子进程里跑 src/office 的写出器 ---------------- */
 bool asst_office_tool(const char *name);
 char *asst_office_exec(const char *tool, const char *args, const asst_gres *g, const char *trash, int *ok);   /* 已过守门(g->path = 产物绝对路径) */
 
@@ -132,7 +132,7 @@ char *asst_forget(const char *text);
 void asst_memory_json(ds4_buf *b);     /* {profile, rules} */
 bool asst_memory_save(const char *body, char *err, size_t errn);
 
-/* ---------------- 工具(asst_tools.c): 一张注册表(总纲 docs/assistant_arch.md §2) + 浏览器(asst_browser.c) ---------------- */
+/* ---------------- 工具(asst_tools.c): 一张注册表(总纲 docs/assistant_arch.md §2) + 浏览器(tool_browser.c) ---------------- */
 typedef struct { const char *caps, *apps, *task; } asst_tctx;   /* 这条消息的上下文: 页面报的设备能力(逗号表) + 能打开的 app(逗号表) + 任务 id(任务会话才有, 否则 NULL); 工具表按它筛 */
 
 /* ---------------- 任务(asst_task.c, 2026-10-14): 一句话 + 专属会话 + 下次跟进时间; 调度线程到点往会话里发"继续这个任务", 周期由模型用 task_check_in 定 ---------------- */
@@ -239,21 +239,21 @@ void asst_phone_apps_refresh(void);
 void asst_phone_video_attach(int fd);
 int asst_phone_video_viewers(void);
 size_t asst_phone_nal_split(const unsigned char *p, size_t n, size_t *starts, size_t max);   /* 起始码位置表(最后一个可能不完整, 调用方自己留尾); 单测用 */
-/* asst_phone_tools.c: 模型的六个 phone_* 工具 */
+/* tool_phone.c: 模型的六个 phone_* 工具 */
 bool asst_phone_tool(const char *name);
 bool asst_phone_build_open(const asst_tctx *c, ds4_buf *b);   /* phone_open 的 schema(app 枚举随手机变) */
 char *asst_phone_tool_exec(const char *sid, const char *tool, const char *args, int *ok);
 char *asst_phone_ui_text(const char *xml);   /* uiautomator 的 XML → 给模型看的元素表(单测用) */
 char *asst_phone_ui_json(const char *xml);   /* → REST 的 {elements:[…]} */
 
-/* ---------------- 视频(asst_video.c + asst_video_srv.c, 方案稿 docs/assistant_video.md) ---------------- */
+/* ---------------- 视频(tool_video.c + tool_video_srv.c, 方案稿 docs/assistant_video.md) ---------------- */
 char *asst_video_exec(const char *args, const asst_gres *g, const char *trash, int *ok);   /* 已过守门(g->path = .mp4 绝对路径) */
 typedef struct asst_vsrv asst_vsrv;   /* 渲染期间的本机只读 HTTP 源: 页面从内存给, 别的只给工作区文件 */
 asst_vsrv *asst_vsrv_start(const char *page, size_t n, char *url, size_t urln, char *err, size_t errn);   /* url = 页面地址 */
 void asst_vsrv_stop(asst_vsrv *s);
 void asst_run_progress(const char *text);   /* asst_run.c: 给正在执行的那张工具卡发一条进度(tool_progress 事件) */
 void asst_fs_trash(const char *trash, const char *path);   /* 旧版复制进 .trash(覆盖前保全) */
-/* asst_video_audio.c: make_video 的旁白 + 背景乐 → AAC 音轨 */
+/* tool_video_audio.c: make_video 的旁白 + 背景乐 → AAC 音轨 */
 typedef struct { double at; char *text; } asst_vline;
 typedef struct { asst_vline *lines; int n; char music[ASST_PATH]; } asst_vaudio;
 typedef struct { ds4_buf frames; size_t *off, nf; long samples; int bitrate; } asst_aac_track;   /* 第 i 帧 = frames[off[i] .. off[i+1]) */
@@ -261,7 +261,7 @@ bool asst_vaudio_parse(const char *args, asst_vaudio *a, char *err, size_t errn)
 void asst_vaudio_free(asst_vaudio *a);
 bool asst_vaudio_build(const asst_vaudio *a, double seconds, const char *tmpdir, asst_aac_track *t, ds4_buf *note, char *err, size_t errn);   /* 子进程: 合成 + 编码; note 收给模型看的说明 */
 void asst_aac_track_free(asst_aac_track *t);
-/* asst_tts.c: 旁白(只在沙盒子进程里调) */
+/* tool_tts.c: 旁白(只在沙盒子进程里调) */
 extern char asst_repo[ASST_PATH];   /* 仓库根(发布包 = 解压目录): 随包走的资源(gguf/tts 旁白小模型)从这里找; ds4-train 起时 asst_set_repo(tr_root), 没设 = 当前目录 */
 void asst_set_repo(const char *root);
 /* 旁白小模型(Piper VITS 转的 GGUF, 各 63 MB): 中文 huayan / 英文 lessac。找两处: 源码树的 gguf/tts/<名>, 以及工作台"模型"页用 install.sh
@@ -289,7 +289,7 @@ bool asst_device_waiting(void);        /* asst_mu 下读 */
 bool asst_run_stopping(void);          /* 当前运行被按了停止(asst_mu 下读) */
 int asst_device_tool(const char *name);   /* 0 = 不是设备工具; 1 = 要等设备交结果(定位/剪贴板/选文件); 2 = 交出去的动作(分享/打开/导航/拨打/复制/开 app), 页面出按钮, 不等 */
 
-/* ---------------- 地点(asst_geo.c): 高德 Web 服务, key 在 secrets/amap_key ---------------- */
+/* ---------------- 地点(tool_geo.c): 高德 Web 服务, key 在 secrets/amap_key ---------------- */
 bool asst_secret_get(const char *name, char *out, size_t n);
 bool asst_secret_set(const char *name, const char *value, char *err, size_t errn);   /* 空值 = 删 */
 bool asst_geo_ready(void);             /* 反查地址可用: 本机有火狐(不要 key: 走高德网页版自用接口) */

@@ -1,13 +1,13 @@
-/* asst_video.c — make_video 的执行点(方案稿 docs/assistant_video.md §3.4): 模型写一页 HTML 动画 → 火狐按虚拟时钟逐帧截图 → 沙盒子进程编码成 mp4。
- * 分工: 主进程(工人线程)驱动火狐、开本机只读 HTTP 源(asst_video_srv.c), 每帧截图(PNG)经管道喂给沙盒子进程;
+/* tool_video.c — make_video 的执行点(方案稿 docs/assistant_video.md §3.4): 模型写一页 HTML 动画 → 火狐按虚拟时钟逐帧截图 → 沙盒子进程编码成 mp4。
+ * 分工: 主进程(工人线程)驱动火狐、开本机只读 HTTP 源(tool_video_srv.c), 每帧截图(PNG)经管道喂给沙盒子进程;
  *   子进程解 PNG → src/video 编 H.264 → MP4 落工作区, 首 / 中 / 末三帧另存 PNG。编码器有 bug 只炸子进程, 主进程永不退。
  * 虚拟时钟(预载脚本, 页面脚本跑之前装好): Date / performance.now / requestAnimationFrame / setTimeout / setInterval 全换成读一个变量,
  *   每帧 __ds4.step(毫秒): 按序跑到期的定时器 → 这一帧的 rAF → 所有 CSS / Web 动画拨到"出生以来经过的时间"并暂停 → SVG setCurrentTime → 全局 render(秒)。
  *   于是画面里的时间严格等于 帧号 / 30, 渲多慢都一样, 同一页两次渲染逐字节同帧。
  * 出错会怎样: 页面脚本死循环 → 这一帧的 evaluate 20 s 读不到回复, 火狐被当坏连接杀掉, 结果报"页面卡住"; 页面报错 → 原文放进结果给模型改。 */
-#include "asst_internal.h"
-#include "../office/ds4_office.h"
-#include "../video/ds4_video.h"
+#include "../asst_internal.h"
+#include "../../office/ds4_office.h"
+#include "../../video/ds4_video.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <math.h>

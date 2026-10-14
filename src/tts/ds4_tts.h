@@ -1,6 +1,6 @@
 /* ds4_tts.h — 旁白小模型(Piper VITS zh_CN-huayan-medium, 转成自家 GGUF)的 C 推理入口(2026-10-13)。
  * 定位: 按需调用的能力 —— 打开(mmap)→ 念几句 → 关掉, 与引擎/服务进程无关, 只在 make_video 的沙盒子进程里用。
- * 输入是音素 id 序列(espeak IPA 逐码点查表, 规矩在 asst_tts.c), 输出 22050 Hz 单声道 float 波形([-1,1])。
+ * 输入是音素 id 序列(espeak IPA 逐码点查表, 规矩在 tool_tts.c), 输出 22050 Hz 单声道 float 波形([-1,1])。
  * 判决: tests/tts/t_tts.c 拿官方 piper(onnxruntime)噪声全 0 的波形逐样本对拍。 */
 #ifndef DS4_TTS_H
 #define DS4_TTS_H

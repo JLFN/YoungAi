@@ -1,9 +1,9 @@
-/* asst_office.c — write_document(.docx / .pdf / .pptx, 可 also 多出一种格式) / write_xlsx 的执行点: 解参 → fork 沙盒子进程 → src/office 写出器 → 产物落工作区 → 一句结果给模型。
+/* tool_office.c — write_document(.docx / .pdf / .pptx, 可 also 多出一种格式) / write_xlsx 的执行点: 解参 → fork 沙盒子进程 → src/office 写出器 → 产物落工作区 → 一句结果给模型。
  * 为什么写出器也进沙盒: 解析器吃的是模型写的 Markdown/JSON 和工作区里的图片; 解析器有 bug 也只炸子进程, 碰不到主进程和工作区外(图片在工作区外 → 内核拦, 这里只看到"读不到")。
  * 结果句写清: 建了什么、多大、里面有几个标题/表/图/页(模型据此自检), 以及没嵌进去的图、没算出来的公式、PDF 字体没嵌(没中文 TrueType 的机器)。
  * also: 同一份 Markdown 不用再发一遍就多出一个格式(长报告几千 token); docx ↔ pdf 互为 also, pptx 的分页语义不同不参与。 */
-#include "asst_internal.h"
-#include "../office/ds4_office.h"
+#include "../asst_internal.h"
+#include "../../office/ds4_office.h"
 #include <sys/stat.h>
 #include <time.h>
 #include <errno.h>

@@ -1,11 +1,11 @@
-/* asst_tts.c — make_video 的旁白: 文本 → 22050 Hz 单声道 16 位 PCM。两个平台都只用系统自带的东西(方案稿 docs/assistant_video.md §3.3)。
+/* tool_tts.c — make_video 的旁白: 文本 → 22050 Hz 单声道 16 位 PCM。两个平台都只用系统自带的东西(方案稿 docs/assistant_video.md §3.3)。
  * macOS: /usr/bin/say(系统自带)写 WAV 再读回。按语言挑语音: 中文挑 zh_CN, 其他挑 en_US, 高品质(Premium / Enhanced)优先;
  *   10-13 实测沙盒里 Lili / Han(Premium)和英文语音能念, 普通音质的中文语音 Eddy / Flo 还缺别的系统服务 —— 念不出时 say 照样退出 0,
  *   只吐 0.1 s 的空文件, 所以每个语音都要看产物长度, 念不出就换下一个。
  * Linux: dlopen libespeak-ng.so.1(Ubuntu 桌面读屏栈 speech-dispatcher-espeak-ng 自带, 不用装)。中文 cmn-latn-pinyin(为什么不是 cmn 见 voice_for), 其他 en。共振峰合成, 听得懂但机械。
  * 只在沙盒子进程里调(make_video 的编码子进程, asst_sbx_spec.tts): 不许挪出沙盒。 */
-#include "asst_internal.h"
-#include "../video/ds4_video.h"
+#include "../asst_internal.h"
+#include "../../video/ds4_video.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <math.h>
@@ -96,7 +96,7 @@ int16_t *asst_tts(const char *text, const char *tmpdir, size_t *n, char *voice, 
 const char *asst_tts_model(const char *name) { (void)name; return ""; }   /* macOS 用 say 的高品质语音, 不走小模型 */
 
 #else   /* Linux: libespeak-ng 出音标; 有小模型(VITS: 中文 huayan / 英文 lessac)就由它出声, 没有才让 espeak 共振峰出声 */
-#include "../tts/ds4_tts.h"
+#include "../../tts/ds4_tts.h"
 static const char *const LIBDIRS[] = { "/usr/lib/aarch64-linux-gnu", "/usr/lib/x86_64-linux-gnu", "/usr/lib64", "/usr/lib", NULL };
 static bool have_espeak(void) { char p[256]; for (int i = 0; LIBDIRS[i]; i++) { snprintf(p, sizeof p, "%s/libespeak-ng.so.1", LIBDIRS[i]); if (!access(p, R_OK)) return true; } return false; }
 const char *asst_tts_model(const char *name) {

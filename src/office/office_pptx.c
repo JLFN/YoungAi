@@ -223,7 +223,7 @@ static void slide(sw *w, const office_node *blocks, int nblocks, bool first) {
 
 uint8_t *office_pptx_build(const office_node *doc, const office_opts *o, office_report *rep, size_t *len) {
     office_zip z; office_zip_begin(&z, o->now);
-    T = pptx_theme_find(o->theme); if (!T) T = pptx_theme_find(NULL);   /* 不认识的名字调用方该先拦(asst_office.c); 这里退回 clean 而不是炸 */
+    T = pptx_theme_find(o->theme); if (!T) T = pptx_theme_find(NULL);   /* 不认识的名字调用方该先拦(tool_office.c); 这里退回 clean 而不是炸 */
     sw w = { &z, o, rep, {0}, {0}, 0, 2, 1, 0, false, false };
     /* 按 --- 切片: 把链表临时断开成每片一段 */
     office_node *head = doc->child; bool any_notes = false;

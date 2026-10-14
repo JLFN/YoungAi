@@ -1,4 +1,4 @@
-/* asst_browser.c — 助理的浏览器: 无头火狐 + WebDriver BiDi(10-11 用户: "有火狐浏览器的先跑通流程")。
+/* tool_browser.c — 助理的浏览器: 无头火狐 + WebDriver BiDi(10-11 用户: "有火狐浏览器的先跑通流程")。
  * 为什么 BiDi 不是 CDP: 火狐 129 起弃用、后来移除了 CDP, 156 版只剩 BiDi(ws://127.0.0.1:<端口>/session)。
  *   BiDi 的命令帧 {"id","method","params"} 与 CDP 同形, WebSocket 与按 id 等回复直接用 src/web 那一份(web_ws_connect / web_cdp_call)。
  * 隔离: 独立配置目录(不碰你自己的火狐), 无头, 关密码记忆/表单记忆/通知/摄像头, 下载落配置目录里。
@@ -7,9 +7,9 @@
  *   网页内容进模型前已被当作不可信(污点 taint_web, 见 sbx_guard.c); 本机/内网地址在守门那里就拒了。
  * 生命周期: 第一次用时起, 之后常驻(起一次 5~10 s); 连接坏了就杀掉, 下一次调用重起。主进程退出时整组杀。
  * 出错会怎样: 本机没火狐 → "no Firefox found"; 内存不够(MemAvailable < 3 GB)→ 不起(模型子进程占着 100+ GB, 浏览器不许把机器推过红线)。 */
-#include "asst_internal.h"
+#include "../asst_internal.h"
 #include <limits.h>   /* web_internal.h 用 PATH_MAX 却不自带 */
-#include "../web/web_internal.h"
+#include "../../web/web_internal.h"
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -282,7 +282,7 @@ char *asst_web_search(const char *query, char *err, size_t errn) {
     return r;
 }
 
-/* ---------------- 渲染原语(asst_video.c): 独立标签页, 不碰网页工具的 ff_ctx ----------------
+/* ---------------- 渲染原语(tool_video.c): 独立标签页, 不碰网页工具的 ff_ctx ----------------
  * 视口按像素给(devicePixelRatio 1: 截图就是 w×h); 预载脚本只挂在这个标签上(contexts), 网页工具开的标签不受影响。
  * 渲完先摘预载脚本再关标签; 网页工具的标签一直开着, 所以关这个不会把火狐窗口关掉。 */
 char *asst_ff_call(const char *method, const char *params, char *err, size_t errn) { return bidi(method, params, err, errn); }

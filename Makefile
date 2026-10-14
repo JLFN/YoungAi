@@ -45,7 +45,7 @@ EVAL_SRCS := $(wildcard src/eval/*.c)
 EVAL_OBJS := $(EVAL_SRCS:.c=.o)
 EVAL_CPU_OBJS := $(EVAL_SRCS:.c=_cpu.o)
 # 个人助理模块(src/assistant/, 见下方 ds4-train 段): 变量要在用到它的规则之前定义, make 解析规则时就展开前置
-ASST_SRCS := $(sort $(wildcard src/assistant/*.c))
+ASST_SRCS := $(sort $(wildcard src/assistant/*.c) $(wildcard src/assistant/tools/*.c))
 ASST_OBJS := $(ASST_SRCS:.c=.o)
 # 沙盒(src/sandbox/, 总纲 docs/modules.md): 守门 + 内核锁 + 沙盒工具箱 + 云手机生命周期/adb; 云手机本体 ds4-phone 在 src/sandbox/phone/
 SANDBOX_SRCS := $(sort $(wildcard src/sandbox/*.c))
@@ -317,6 +317,9 @@ endif
 src/studio/studio_main.o src/studio/studio_phone.o: src/assistant/asst_internal.h
 src/assistant/%.o: src/assistant/%.c src/assistant/asst_internal.h src/common/ds4_json.h src/office/ds4_office.h src/video/ds4_video.h
 	$(CC) $(CFLAGS) -c -o $@ $<
+# 工具执行点(注册表 asst_tools.c 每行一个): 子目录要自己的规则, 落到默认规则上能编过但不跟头文件, 改了头不重编
+src/assistant/tools/%.o: src/assistant/tools/%.c src/assistant/asst_internal.h src/common/ds4_json.h src/office/ds4_office.h src/video/ds4_video.h src/tts/ds4_tts.h src/web/web_internal.h
+	$(CC) $(CFLAGS) -c -o $@ $<
 src/sandbox/%.o: src/sandbox/%.c src/assistant/asst_internal.h src/common/ds4_json.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 src/skill/%.o: src/skill/%.c src/assistant/asst_internal.h src/common/ds4_json.h
@@ -516,7 +519,7 @@ linecount:
 	if [ -n "$$viol" ]; then echo "linecount: 以下文件超 500 行(豁免走 .linecount-exempt, 要带理由):"; echo "$$viol"; exit 1; \
 	else echo "linecount: ok (≤500 行, 豁免清单外零超标)"; fi
 clean:
-	rm -f ds4 ds4-server ds4-bench ds4-eval ds4-agent ds4-phone ds4_cpu ds4_native ds4_server_test ds4_test ds4_unit ds4_asst_test ds4_office_test ds4_video_test ds4_push_test tests/video/vidcheck e0-pingpong mm-ui mm-ocr *.o src/assistant/*.o src/sandbox/*.o src/sandbox/phone/*.o src/skill/*.o src/model/*.o src/studio/*.o src/push/*.o src/office/*.o src/video/*.o src/cli/*.o src/bench/*.o src/kv/*.o src/web/*.o src/eval/*.o src/agent/*.o src/dist/*.o src/server/*.o src/core/*.o src/common/*.o src/metal/*.o tests/server_tests_*.o tests/t_*.o tests/cuda_long_context_smoke tests/cuda_long_context_smoke.o
+	rm -f ds4 ds4-server ds4-bench ds4-eval ds4-agent ds4-phone ds4_cpu ds4_native ds4_server_test ds4_test ds4_unit ds4_asst_test ds4_office_test ds4_video_test ds4_push_test tests/video/vidcheck e0-pingpong mm-ui mm-ocr *.o src/assistant/*.o src/assistant/tools/*.o src/sandbox/*.o src/sandbox/phone/*.o src/skill/*.o src/model/*.o src/studio/*.o src/push/*.o src/office/*.o src/video/*.o src/cli/*.o src/bench/*.o src/kv/*.o src/web/*.o src/eval/*.o src/agent/*.o src/dist/*.o src/server/*.o src/core/*.o src/common/*.o src/metal/*.o tests/server_tests_*.o tests/t_*.o tests/cuda_long_context_smoke tests/cuda_long_context_smoke.o
 
 # Task 04 / E0: standalone thunderbolt ping-pong latency gate (no core deps, no
 # model). Defined after the default targets so it never becomes the default goal.

@@ -1902,7 +1902,7 @@ async function devicePos() {
   const p = await new Promise(res => navigator.geolocation.getCurrentPosition(res, () => res(null), { maximumAge: 60000, timeout: 6000 })).catch(() => null);
   if (!p) return geoCache && Date.now() / 1000 - geoCache.t < 600 ? geoCache : null;   /* 10 分钟内的上一个定位还算数; 再旧就不冒充"现在在这" */
   const loc = { lat: +p.coords.latitude.toFixed(5), lng: +p.coords.longitude.toFixed(5), acc: Math.round(p.coords.accuracy), t: Math.floor(Date.now() / 1000) };
-  geoCache = loc; return loc;   /* 地址不在页面查: 服务端反查高德(asst_geo.c), 和 locate 的结果一起记进会话 */
+  geoCache = loc; return loc;   /* 地址不在页面查: 服务端反查高德(tool_geo.c), 和 locate 的结果一起记进会话 */
 }
 /* 交出去的动作 → 这台设备上怎么做(平台差异全在这一张表里, 模型不知道也不该知道)。
    导航 / 打开 / 拨打 / 开 app 做成真正的 <a> 链接, 不用 window.open: iPhone 装成 App 后 window.open 开出来是一张白页(10-12 真机实撞), 安卓里 geo: 经 window.open 也不弹应用选择。

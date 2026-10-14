@@ -1,4 +1,4 @@
-/* asst_video_srv.c — make_video 渲染期间的本机只读 HTTP 源, 只活这一次调用。
+/* tool_video_srv.c — make_video 渲染期间的本机只读 HTTP 源, 只活这一次调用。
  * 为什么不直接让火狐开 file://: 10-13 探针(tests/video/ff_file_probe.mjs, 火狐 157)实测 file:// 页面能 fetch / iframe / img 读本机任意文件,
  *   BiDi 网络拦截看不到 file 请求, 页面里的 CSP meta 对 file:// 也不起作用 —— 模型写的页面就能把工作区外的文件渲进视频。
  * 换成 http://127.0.0.1:<随机端口>/<随机口令>/ 之后: http 页面加载不了 file://; CSP 用响应头下发(对 http 源浏览器一定执行),
@@ -6,7 +6,7 @@
  * 只答 GET; 页面本身从内存给, 别的路径一律映射到工作区里的文件(realpath 后必须还在工作区内, 软链跳出去也不行);
  *   口令不对一律 404 —— 渲染那几十秒里, 同机别的用户扫端口也拿不到工作区文件。
  * 出错会怎样: 页面引用了不存在的图 → 404, 浏览器里是一张裂图, 页面控制台报错会回到结果里给模型。 */
-#include "asst_internal.h"
+#include "../asst_internal.h"
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>

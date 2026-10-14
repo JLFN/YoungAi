@@ -185,5 +185,5 @@ char *ds4_web_visit_page(ds4_web *web, const char *url,
     return web_run_page_js(web, url, web_extract_page_js, true, err, err_len);
 }
 
-/* 网页正文提取脚本(页面里跑, 返回 markdown 形状的正文 + 可见链接): 工作台助理的火狐路(src/assistant/asst_browser.c)也用这一份, 不抄第二遍 */
+/* 网页正文提取脚本(页面里跑, 返回 markdown 形状的正文 + 可见链接): 工作台助理的火狐路(src/assistant/tools/tool_browser.c)也用这一份, 不抄第二遍 */
 const char *ds4_web_extract_page_js(void) { return web_extract_page_js; }

@@ -1,4 +1,4 @@
-/* asst_geo.c — 地点数据源: 高德 Web 服务(坐标 → 地址; 周边 POI)。10-12 用户手机实测"附近有什么吃的"跑了 11 轮 30 次工具调用没出结果:
+/* tool_geo.c — 地点数据源: 高德 Web 服务(坐标 → 地址; 周边 POI)。10-12 用户手机实测"附近有什么吃的"跑了 11 轮 30 次工具调用没出结果:
  * 手机只报了坐标(±9 m, 精度没问题), 页面反查地址走的 OSM 在国内手机网络连不上, 模型拿着一串数字用 Bing 猜它在哪条街 —— 通用搜索不做地理检索, 猜不出来。
  * 所以: ① 反查地址在服务端做, 设备行里直接给"××市××区××路"; ② 给模型一个 nearby 工具, 一次回 10 家真实 POI(名字/距离/地址/电话/评分/坐标)。
  * key: ~/.ds4/assistant/secrets/amap_key(0600, 方案稿 §4.5): C 在发请求那一刻填进 URL, 模型的上下文里永远没有它; 工具参数里只有 query。
@@ -8,9 +8,9 @@
  *   没 key 的 nearby 工具不消失, 自己降级成"地址 + 关键词"的网页搜索(nearby_by_search) —— 工具永远在, 只是结果档次不同。
  * 没火狐 → 什么都不做, 行为退回只有坐标。
  * 出错会怎样: 高德回 status != "1"(key 错、额度用完) → 原文 info 给模型, 它会告诉你。 */
-#include "asst_internal.h"
+#include "../asst_internal.h"
 #include <limits.h>   /* web_internal.h 用 PATH_MAX 却不自带 */
-#include "../web/web_internal.h"
+#include "../../web/web_internal.h"
 #include <ctype.h>
 #include <sys/stat.h>
 #include <time.h>

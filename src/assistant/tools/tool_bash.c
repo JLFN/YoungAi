@@ -1,9 +1,9 @@
-/* asst_bash.c — bash 工具本体: 在已上锁的沙盒子进程里再 fork 出 bash(锁会继承, bash 和它开的一切都在同一套规则里)。
+/* tool_bash.c — bash 工具本体: 在已上锁的沙盒子进程里再 fork 出 bash(锁会继承, bash 和它开的一切都在同一套规则里)。
  * 环境变量全换成干净的五个(PATH/HOME/TMPDIR/LANG/TERM): ds4-train 的环境里可能有 HF_TOKEN、代理口令, 一个 `env` 就全吐给模型了。
  *   HOME 指向工作区: 工具写 ~/.cache 之类落在工作区里(沙盒外的真家目录本来也写不了)。
  * 超时由这里自己管(比外层 asst_sbx_run 的墙钟早 3 秒): 到点杀 bash 的进程组, 已经输出的部分照样交回, 模型能看到卡在哪。
  * 输出只留头 64 KB + 尾 8 KB: 编译刷屏时错误常在最后。 */
-#include "asst_internal.h"
+#include "../asst_internal.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>

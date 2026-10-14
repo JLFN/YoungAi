@@ -69,7 +69,7 @@ int tr_phone_api(const tr_req *rq, ds4_buf *out, const char **ctype) {
     }
     if (!strcmp(op, "text")) {
         char *t = NULL; if (!asst_jstr(rq->body ? rq->body : "{}", "text", &t) || !t || !t[0]) { free(t); return jerr(out, 400, "text"); }
-        extern char *asst_phone_type_cmd(const char *); char *typed = asst_phone_type_cmd(t); free(t);   /* ASCII 走 input text, 其余走剪贴板+粘贴(见 asst_phone_tools.c) */
+        extern char *asst_phone_type_cmd(const char *); char *typed = asst_phone_type_cmd(t); free(t);   /* ASCII 走 input text, 其余走剪贴板+粘贴(见 tool_phone.c) */
         char err[256]; char *r = asst_phone_shell(typed, 15000, err, sizeof err); free(typed);
         if (!r) return jerr(out, 502, err);
         if (strstr(r, "clipboard: ")) { const int rc = jerr(out, 502, r); free(r); return rc; }   /* service call 抛了异常(parcel 布局对不上这版 Android)*/
