@@ -297,9 +297,15 @@ tool_call_id, content}` 时渲染结果与活 KV 逐字节对齐——这段机�
 | 框架（机械规则，不经模型） | 任务这一轮调了 `task_done`（任务做完） | "任务完成: 盯着 X 的价格" + 总结 |
 | 框架 | 任何一次运行跑了 ≥ 120 s | 做了 10 分钟的视频好了 → "<对话标题>" + 回复头部 |
 
-**正开着页面在看时一律不推**：页面可见时每 20 s 报一次在场（`POST /api/assistant/presence`），切后台/关页立刻报走了；
-服务端看到 45 s 内有页面在看，就不推设备，改落 `push/notices.jsonl`，页面 2.5 s 一轮的 poll 拉来在页面里弹（点了进那个对话）。
-`notify` 工具的结果会如实说"shown on the page the user has open"。
+**哪台设备正开着页面在看，就先不推给它，页面里也不弹**：页面可见时每 20 s 报一次在场（`POST /api/assistant/presence`，
+带上这台浏览器的推送订阅 endpoint），切后台/锁屏/关页立刻报走了。发给这台设备的那条先压进 `push/held/<订阅 id>.jsonl`，
+它一离开页面（或 45 s 没心跳，页面被杀不会报走了）通知线程就原样补推。只压那一台：电脑上开着标签页，手机照常收。
+`notify` 工具的结果会如实说"held for N device(s) whose page the user is looking at"；"发一条测试"不压（那一下页面必然开着）。
+
+**定时准到秒**：`notify` 有 `after`（几秒后，"三十秒后提醒我"= `after: 30`）和 `at`（可带秒）；只要在未来就排上，到点由通知线程发
+（睡到最近一条到点的时刻，新排了就叫醒），不跟任务调度的 30 s 一拍。之前 `at` 只到分钟、不到 30 s 的当场发，"三十秒后提醒"会在你还看着页面时立刻弹出来。
+
+**一台设备都没开通知**：`notify` 现在发 → 工具直接报错，模型会让你去任务页打开；定时的到点时也没处去，审计里记一条"not sent: no device"，不再静默丢。
 
 **怎么做的**（零依赖，纯 C）：
 
@@ -308,15 +314,19 @@ tool_call_id, content}` 时渲染结果与活 KV 逐字节对齐——这段机�
   RFC 8291 附录 A 逐字节；首跑与 node:crypto 独立实现逐项对照过。
 - `asst_push.c`：`push/vapid.json` 一对 VAPID 密钥（首次生成，0600）；订阅存 `push/subs/<endpoint 哈希>.json`；发送 = 加密 → `curl` POST 到
   endpoint（推送服务全是 https，本项目不引 TLS 库，下 frp / 探公网口已经在用 curl）；404/410 当场删订阅；每条进 `audit.jsonl`。
-- `asst_notify.c`：`notify` 工具、`reminders/<id>.json`（调度线程每 30 s 扫到点的）、运行收尾规则、在场表、notices。
+- `asst_notify.c`：`notify` 工具、`reminders/<id>.json`、通知线程（到点提醒 + 补推压着的）、运行收尾规则、按设备的在场表。
 - `web/sw.js`：`push` 事件 → 系统通知；点通知 → 聚焦已开的工作台并切到那个对话（没开就新开 `/?session=<id>#chat`）。
 - 接口：`GET|POST /api/assistant/push`（key / devices；subscribe / unsubscribe / test）、`GET|POST /api/assistant/reminders`、
-  `POST /api/assistant/presence`、`GET /api/assistant/notices?after=`。
-- 门：`ds4_push_test` 37 项；`ds4_asst_test` 的 `asst push` 52 项（测试自己开假推送服务收 POST、当浏览器解开、验 VAPID、notify 现在/定时/到点、
-  收尾规则、在场不推、410 删订阅）；`make asst-e2e` 任务段加通知卡与"页面开着 → 页面里弹"。
+  `POST /api/assistant/presence`。
+- 门：`ds4_push_test` 37 项；`ds4_asst_test` 的 `asst push` 72 项（测试自己开假推送服务收 POST、当浏览器解开、验 VAPID、notify 现在/定时/到点/秒级、
+  收尾规则、按设备压着与离开补推、心跳过期补推、通知线程自己到点发与被叫醒补推、推送代理存取与真走代理(CONNECT)、410 删订阅）；`make asst-e2e` 任务段加通知卡与"没设备 → 工具直说、页面不弹"。
 
 **出错会怎样**：手机用 `http://局域网IP:8000` 打开 → 不是安全上下文，开关灰、提示要 https（frp + 证书那条路）；通知权限拒过 → 提示去浏览器设置；
-推送服务（FCM）在国内要走代理 → curl 吃进程环境里的 `http_proxy`；推不出去的每条在"活动"页流水里有原因。
+推不出去的每条在"活动"页流水里有原因。
+安卓 Chrome 的推送整条走谷歌 FCM：手机这头订阅要连 FCM（连不上开关会报订阅失败），发送这头 ds4-train 也要连 FCM（国内直连超时，流水里是 `curl exit 28`）。
+**发送这头的代理**：任务页通知卡里填"推送代理"（如 `http://127.0.0.1:7890`，存 `push/proxy`），发推送的 curl 带 `-x` 走它；留空 = 直连，
+且显式不吃进程环境里的 `http_proxy`（全仓零 env 配置）。填了但代理不通，流水里是 `curl exit 7`。
+iPhone（主屏幕打开的 PWA）走苹果的 `web.push.apple.com`，spark 不走代理直连能连上（10-14 实测 0.7 s 答 403 = 没带鉴权的正常拒绝）。
 
 ## 7. 会话、运行、事件流
 
@@ -565,8 +575,8 @@ tests/asst/e2e_device.mjs     make asst-e2e: 系统 Chrome 仿真 iPhone 跑整�
 
 ## 14. 语音输入（10-14 方案稿 `docs/assistant_asr.md`）
 
-语音输入是输入法，不是工具：页面录 16 kHz PCM → ds4-server 里纯 C + GPU 自实现的 moonshine-tiny-zh（27M）识别 → 文字回填输入框，
-用户看过再发。不进 caps、不改提示词。模型来源 / 结构 / 代码落点（`src/model/asr/`）/ 门全在那份稿里。
+语音输入是输入法，不是工具：照微信按住说话，页面录 16 kHz PCM → ds4-server 里纯 C + GPU 自实现的 moonshine-tiny-zh（27M）识别 →
+松手直接作为文字消息发出。不进 caps、不改提示词。交互、模型来源 / 结构 / 代码落点（`src/model/asr/`）/ 门全在那份稿里。
 
 ## 来源
 

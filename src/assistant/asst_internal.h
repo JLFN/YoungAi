@@ -153,22 +153,24 @@ bool asst_task_info(const char *tid, char *state, size_t sn, char *text, size_t 
 /* ---------------- 推送(asst_push.c, Web Push; 密码学在 src/push) + 通知规则(asst_notify.c), 2026-10-14 ---------------- */
 void asst_push_init(void);                     /* push/vapid.json 没有就生成; ds4-train 起时调 */
 const char *asst_push_key(void);               /* VAPID 公钥 base64url(页面订阅用); 没初始化 = "" */
-void asst_push_json(ds4_buf *b);               /* {key, devices:[{id, label, origin, created}]} */
-bool asst_push_op(const char *body, char *err, size_t errn);   /* {op: subscribe|unsubscribe|test, sub, label, origin, endpoint, id, lang} */
+void asst_push_json(ds4_buf *b);               /* {key, proxy, devices:[{id, label, origin, created}]} */
+bool asst_push_op(const char *body, char *err, size_t errn);   /* {op: subscribe|unsubscribe|test|proxy, sub, label, origin, endpoint, id, lang, url} */
 int asst_push_devices(void);                   /* 开了通知的设备数 */
-int asst_push_send_sync(const char *title, const char *body, const char *url);   /* 推给全部设备, 返回送达数(2xx); 404/410 的订阅当场删 */
+int asst_push_send_sync(const char *title, const char *body, const char *url, int *held);   /* 推给全部设备, 返回送达数(2xx); 正看着页面的设备不推, 压进 push/held/(*held 计数, 可 NULL); 404/410 的订阅当场删 */
 void asst_push_send(const char *title, const char *body, const char *url);       /* 异步版: 起线程, 立刻返回 */
+void asst_push_flush(long now);                /* 不再看页面的设备: 把压着的补推出去 */
+void asst_push_sub_id(const char *endpoint, char id[17]);   /* 订阅 endpoint → 订阅 id(sha256 前 16 位 hex); 空 endpoint → "" */
 bool asst_notify_tool(const char *name);       /* notify */
 bool asst_notify_build(const asst_tctx *c, ds4_buf *b);
 char *asst_notify_tool_exec(const char *sid, const char *args, int *ok);
 void asst_reminders_json(ds4_buf *b);          /* {reminders:[{id, at, created, session, title, text}]} 按时间 */
 bool asst_reminder_op(const char *body, char *err, size_t errn);   /* {op: delete, id} */
-int asst_notify_tick(long now);                /* 到点的提醒发出去; 返回发了几条 */
+int asst_notify_tick(long now, long *next);    /* 到点的提醒发出去; 返回发了几条; *next = 下一条的到点时刻(0 = 没有, 可 NULL) */
+void asst_notify_start(void);                  /* ds4-train 起时: 开通知线程(到点提醒 + 补推压着的) */
+void asst_notify_wake(void);                   /* 叫醒通知线程: 新排了提醒 / 页面报走了 */
 void asst_notify_run_end(const char *sid, const char *end, const char *last_text, double secs);   /* 运行收尾: 任务做完 / 跑了很久 → 推一条 */
-void asst_presence_set(const char *client, bool visible);   /* 页面报"我在看/我走了" */
-bool asst_presence_visible(long now);                       /* 有页面正开着在看(ASST_PRESENCE_S 内报过 visible) → 不推设备, 落 notices */
-void asst_notice_add(const char *title, const char *body, const char *url);   /* push/notices.jsonl 追加一条(页面 poll 拉走弹出) */
-void asst_notices_json(ds4_buf *out, long after);           /* {notices:[{t,title,body,url}]} t > after */
+void asst_presence_set(const char *client, bool visible, const char *endpoint);   /* 页面报"我在看/我走了"; endpoint = 它所在浏览器的推送订阅(没订阅给 NULL/"") */
+bool asst_presence_watching(const char *sub, long now);    /* 这台设备(订阅 id)有页面正开着在看(ASST_PRESENCE_S 内报过 visible) */
 
 /* ---------------- 技能(src/skill/skill.c, 方案稿 docs/assistant_skills.md): skills/<名>/SKILL.md + 随附文件; 工具只读, 页面"技能"tab 增删改 ---------------- */
 #define ASST_SKILL_NAME_MAX 64

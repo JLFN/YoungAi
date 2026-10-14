@@ -118,9 +118,6 @@ int asst_api(const asst_req *rq, ds4_buf *out, const char **ctype) {
         if (post) { if (!asst_push_op(rq->body, err, sizeof err)) return jerr(out, 400, err); }
         asst_push_json(out); return 200;
     }
-    if (!strcmp(r, "notices")) {   /* 页面开着时没推出去的通知: GET ?after=<t>(asst_notify.c) */
-        char a[32]; asst_qget(rq->query, "after", a, sizeof a); asst_notices_json(out, atol(a)); return 200;
-    }
     if (!strcmp(r, "reminders")) {   /* 定时提醒: GET 列表; POST {op: delete, id}(asst_notify.c) */
         if (post) { if (!asst_reminder_op(rq->body, err, sizeof err)) return jerr(out, 400, err); }
         asst_reminders_json(out); return 200;
@@ -141,9 +138,9 @@ int asst_api(const asst_req *rq, ds4_buf *out, const char **ctype) {
     }
     if (!post) return jerr(out, 405, "use POST");
     if (!strcmp(r, "policy")) { if (!asst_policy_op(rq->body, err, sizeof err)) return jerr(out, 400, err); ds4_buf_puts(out, "{\"ok\":true}"); return 200; }
-    if (!strcmp(r, "presence")) {   /* 页面可见性心跳 {client, visible}: 有页面在看就不推设备(asst_notify.c) */
-        char *client = NULL; bool vis = false; asst_jstr(rq->body, "client", &client); asst_jbool(rq->body, "visible", &vis);
-        asst_presence_set(client ? client : "", vis); free(client);
+    if (!strcmp(r, "presence")) {   /* 页面可见性心跳 {client, visible, endpoint}: 正看着页面的那台设备的推送先压着(asst_notify.c / asst_push.c) */
+        char *client = NULL, *endpoint = NULL; bool vis = false; asst_jstr(rq->body, "client", &client); asst_jbool(rq->body, "visible", &vis); asst_jstr(rq->body, "endpoint", &endpoint);
+        asst_presence_set(client ? client : "", vis, endpoint); free(client); free(endpoint);
         ds4_buf_puts(out, "{\"ok\":true}"); return 200;
     }
     if (!strcmp(r, "secret")) {   /* {name, value}: 凭证进 secrets/<name>(0600); 空 value = 删; 页面永远拿不回原文 */

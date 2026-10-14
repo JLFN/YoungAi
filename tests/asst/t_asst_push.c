@@ -61,7 +61,7 @@ int asst_test_push(void) {
     CHECK(!asst_push_op("{\"op\":\"subscribe\",\"sub\":{\"endpoint\":\"http://evil.example/x\",\"keys\":{\"p256dh\":\"BAAA\",\"auth\":\"AAAA\"}}}", err, sizeof err) && strstr(err, "https"), "http endpoint off this machine refused");
     { char bad[1024]; snprintf(bad, sizeof bad, "{\"op\":\"subscribe\",\"sub\":{\"endpoint\":\"%s\",\"keys\":{\"p256dh\":\"BAAA\",\"auth\":\"%s\"}}}", endpoint, a64); CHECK(!asst_push_op(bad, err, sizeof err) && strstr(err, "p256dh"), "bad p256dh refused"); }
     /* 发一条 → 假服务收到 → 当浏览器解开 */
-    CHECK(asst_push_send_sync("标题 T", "正文 hello\n第二行", "/?session=x#chat") == 1 && wait_count(1, 2000), "send_sync delivered to 1 device");
+    CHECK(asst_push_send_sync("标题 T", "正文 hello\n第二行", "/?session=x#chat", NULL) == 1 && wait_count(1, 2000), "send_sync delivered to 1 device");
     CHECK(hdr("Content-Encoding: aes128gcm") && hdr("TTL: 86400") && hdr("Urgency: normal") && hdr("Content-Type: application/octet-stream"), "push request headers");
     {
         const char *az = hdr("Authorization: vapid t="); CHECK(az != NULL, "Authorization: vapid");
@@ -95,9 +95,9 @@ int asst_test_push(void) {
       char *r = asst_notify_tool_exec(sid, args, &ok); CHECK(ok && strstr(r, "scheduled: \"出发\" at ") && strstr(r, "1 device(s)"), "notify at → scheduled"); free(r);
       ds4_buf b = {0}; asst_reminders_json(&b); CHECK(strstr(b.ptr, "\"title\":\"出发\"") && strstr(b.ptr, "\"text\":\"该去车站了\"") && strstr(b.ptr, sid), "reminder listed");
       char *id = NULL; const char *ip = strstr(b.ptr, "\"id\":\""); if (ip) { id = strndup(ip + 6, ASST_ID_LEN); } ds4_buf_free(&b);
-      CHECK(asst_notify_tick((long)time(NULL)) == 0, "not due yet");
+      { long nx = 0; CHECK(asst_notify_tick((long)time(NULL), &nx) == 0 && nx > (long)when - 60 && nx <= (long)when, "not due yet; next = its time (at is to the minute)"); }
       const int c0 = count_now();
-      CHECK(asst_notify_tick((long)when + 1) == 1 && wait_count(c0 + 1, 2000), "due → sent");
+      CHECK(asst_notify_tick((long)when + 1, NULL) == 1 && wait_count(c0 + 1, 2000), "due → sent");
       ds4_buf b2 = {0}; asst_reminders_json(&b2); CHECK(!strstr(b2.ptr, "该去车站了"), "sent reminder removed"); ds4_buf_free(&b2);
       uint8_t enc[4200], pt[4200]; size_t en, pn2; pthread_mutex_lock(&smu); const char *be = strstr(s_req, "\r\n\r\n"); const size_t off = (size_t)(be - s_req) + 4; en = s_len - off; memcpy(enc, s_req + off, en); pthread_mutex_unlock(&smu);
       ds4_webpush_decrypt(ua_priv, auth, enc, en, pt, sizeof pt, &pn2); pt[pn2] = 0; CHECK(strstr((char *)pt, "\"title\":\"出发\",\"body\":\"该去车站了\""), "reminder payload");
@@ -105,6 +105,14 @@ int asst_test_push(void) {
       char *r2 = asst_notify_tool_exec(sid, args, &ok); free(r2); ds4_buf b3 = {0}; asst_reminders_json(&b3); const char *ip2 = strstr(b3.ptr, "\"id\":\""); char id2[ASST_ID_LEN + 1] = ""; if (ip2) snprintf(id2, sizeof id2, "%.*s", ASST_ID_LEN, ip2 + 6); ds4_buf_free(&b3);
       char del[64]; snprintf(del, sizeof del, "{\"op\":\"delete\",\"id\":\"%s\"}", id2); CHECK(id2[0] && asst_reminder_op(del, err, sizeof err), "reminder delete op");
       ds4_buf b4 = {0}; asst_reminders_json(&b4); CHECK(!strcmp(b4.ptr, "{\"reminders\":[]}"), "reminders empty after delete"); ds4_buf_free(&b4); free(id); }
+    /* 秒级(10-14 实撞: "三十秒之后提醒我" → 模型只能填到分钟, 不到 30 s 的被当成"现在发", 人还在页面上): after 秒数 / at 带秒, 哪怕只差几秒也排上 */
+    { int ok = 0; const long t0 = (long)time(NULL); char *r = asst_notify_tool_exec(sid, "{\"text\":\"该睡觉了\",\"after\":30}", &ok);
+      CHECK(ok && strstr(r, "scheduled: ") && strstr(r, "(in 30 seconds)"), "after 30 → scheduled in 30 seconds"); free(r);
+      long nx = 0; const int c0 = count_now(); CHECK(asst_notify_tick(t0 + 29, &nx) == 0 && (nx == t0 + 30 || nx == t0 + 31) && count_now() == c0, "29 s later: not yet, next = +30");
+      CHECK(asst_notify_tick(nx, NULL) == 1 && wait_count(c0 + 1, 2000), "at +30 → sent");
+      time_t w = (time_t)t0 + 5; char at[40], args[160]; strftime(at, sizeof at, "%Y-%m-%d %H:%M:%S", localtime(&w)); snprintf(args, sizeof args, "{\"text\":\"五秒\",\"at\":\"%s\"}", at);
+      r = asst_notify_tool_exec(sid, args, &ok); CHECK(ok && strstr(r, "scheduled: ") && strstr(r, at), "at with seconds, 5 s ahead → scheduled (not sent now), seconds kept"); free(r);
+      CHECK(asst_notify_tick((long)w - 1, &nx) == 0 && nx == (long)w && asst_notify_tick((long)w, NULL) == 1, "fires at that exact second"); }
     /* 运行收尾规则 */
     { const int c0 = count_now(); asst_notify_run_end(sid, "done", "两日游安排好了", 5.0); usleep(300000); CHECK(count_now() == c0, "short run: no push"); }
     { const int c0 = count_now(); asst_notify_run_end(sid, "done", "两日游安排好了", 200.0); CHECK(wait_count(c0 + 1, 3000), "long run → push");
@@ -117,26 +125,53 @@ int asst_test_push(void) {
       uint8_t enc[4200], pt[4200]; size_t en, pn2; pthread_mutex_lock(&smu); const char *be = strstr(s_req, "\r\n\r\n"); const size_t off = (size_t)(be - s_req) + 4; en = s_len - off; memcpy(enc, s_req + off, en); pthread_mutex_unlock(&smu);
       ds4_webpush_decrypt(ua_priv, auth, enc, en, pt, sizeof pt, &pn2); pt[pn2] = 0; CHECK(strstr((char *)pt, "\"title\":\"任务完成: 盯着机票价格\",\"body\":\"买到了, 580 元\""), "task-done payload");
       char del[64]; snprintf(del, sizeof del, "{\"op\":\"delete\",\"id\":\"%s\"}", tid); asst_task_op(del, err, sizeof err); }
-    /* 在场: 页面开着在看 → 不推设备, 落 notices; 页面说走了 → 又推 */
-    { asst_presence_set("page-1", true); CHECK(asst_presence_visible((long)time(NULL)), "presence visible");
-      const int c0 = count_now(); const long t0 = (long)time(NULL);
-      CHECK(asst_push_send_sync("在看", "不该推到手机", "/#tasks") == 1, "send while a page is visible returns 1 (shown on page)");
-      usleep(300000); CHECK(count_now() == c0, "nothing went to the push service");
-      ds4_buf b = {0}; asst_notices_json(&b, t0 - 1); CHECK(strstr(b.ptr, "\"title\":\"在看\",\"body\":\"不该推到手机\",\"url\":\"/#tasks\""), "notice recorded for the page"); ds4_buf_free(&b);
-      ds4_buf b2 = {0}; asst_notices_json(&b2, (long)time(NULL) + 10); CHECK(!strcmp(b2.ptr, "{\"notices\":[]}"), "after= filters old notices"); ds4_buf_free(&b2);
-      int ok = 0; char *r = asst_notify_tool_exec(sid, "{\"text\":\"看这里\"}", &ok); CHECK(ok && strstr(r, "shown on the page"), "notify tool says it was shown on the page"); free(r);
-      asst_presence_set("page-1", false); CHECK(!asst_presence_visible((long)time(NULL)), "page hidden → not visible");
-      asst_presence_set("page-2", true); CHECK(!asst_presence_visible((long)time(NULL) + ASST_PRESENCE_S_TEST + 1), "stale heartbeat → not visible"); asst_presence_set("page-2", false);
-      const int c1 = count_now(); CHECK(asst_push_send_sync("走了", "推到手机", "/") == 1 && wait_count(c1 + 1, 2000), "after the page left, pushes go to the device again"); }
+    /* 在场按设备认(10-14 用户: "在 app 里什么都不弹, 离开后再推"): 这台设备的页面正开着 → 不推, 压进 push/held/; 页面走了 → 补推, 明文与直推逐字节同。
+     * 别的设备(或没订阅的页面)开着, 不挡这台 —— 早先全局口径下电脑开着标签页, 手机就永远收不到 */
+    { char hid[17], hp[ASST_PATH + 64]; struct stat st; int held = -1; asst_push_sub_id(endpoint, hid); snprintf(hp, sizeof hp, "%s/push/held/%s.jsonl", asst_root, hid);
+      asst_presence_set("page-nosub", true, NULL); asst_presence_set("page-other", true, "https://fcm.googleapis.com/fcm/send/other-device");
+      const int c0 = count_now();
+      CHECK(asst_push_send_sync("别的设备在看", "推到这台", "/", &held) == 1 && held == 0 && wait_count(c0 + 1, 2000), "other pages open elsewhere do not stop the push to this device");
+      asst_presence_set("page-1", true, endpoint); CHECK(asst_presence_watching(hid, (long)time(NULL)), "this device is watching");
+      const int c1 = count_now();
+      CHECK(asst_push_send_sync("在看", "不该推到手机", "/#tasks", &held) == 0 && held == 1 && !stat(hp, &st), "this device looking: 0 sent, 1 held in push/held/");
+      int ok = 0; char *r = asst_notify_tool_exec(sid, "{\"text\":\"看这里\"}", &ok); CHECK(ok && strstr(r, "held for 1 device(s)") && !strstr(r, "sent to"), "notify tool says it is held until they leave"); free(r);
+      CHECK(asst_push_op("{\"op\":\"test\",\"lang\":\"zh\"}", err, sizeof err) && wait_count(c1 + 1, 2000), "the test button pushes even while looking (that is what it tests)");
+      const int c2 = count_now(); asst_push_flush((long)time(NULL)); usleep(300000); CHECK(count_now() == c2 && !stat(hp, &st), "still looking → flush pushes nothing, keeps them");
+      asst_presence_set("page-1", false, endpoint); CHECK(!asst_presence_watching(hid, (long)time(NULL)), "page hidden → not watching");
+      asst_push_flush((long)time(NULL)); CHECK(wait_count(c2 + 2, 3000) && stat(hp, &st) != 0, "left the page → both held ones pushed, held file gone");
+      uint8_t enc[4200], pt[4200]; size_t en, pn2; pthread_mutex_lock(&smu); const char *be = strstr(s_req, "\r\n\r\n"); const size_t off = (size_t)(be - s_req) + 4; en = s_len - off; memcpy(enc, s_req + off, en); pthread_mutex_unlock(&smu);
+      ds4_webpush_decrypt(ua_priv, auth, enc, en, pt, sizeof pt, &pn2); pt[pn2] = 0;
+      char want[200]; snprintf(want, sizeof want, "{\"title\":\"旅游计划\",\"body\":\"看这里\",\"url\":\"/?session=%s#chat\"}", sid); CHECK(!strcmp((char *)pt, want), "held one pushed byte-exact like a direct push, in order (last = the notify)");
+      asst_presence_set("page-2", true, endpoint); const int c3 = count_now(); asst_push_send_sync("页面被杀", "没报 hidden", "/", &held); CHECK(held == 1, "held again");
+      asst_push_flush((long)time(NULL) + ASST_PRESENCE_S_TEST + 1); CHECK(wait_count(c3 + 1, 3000), "stale heartbeat (page killed) → flushed");
+      asst_presence_set("page-2", false, endpoint); asst_presence_set("page-nosub", false, NULL); asst_presence_set("page-other", false, "https://fcm.googleapis.com/fcm/send/other-device");
+      const int c4 = count_now(); CHECK(asst_push_send_sync("走了", "推到手机", "/", NULL) == 1 && wait_count(c4 + 1, 2000), "after the page left, pushes go straight to the device again"); }
+    /* 通知线程本身(不手动 tick): 排一条 2 s 后的 → 到点自己发; 页面报走了 → 叫醒线程补推压着的 */
+    { asst_notify_start(); const int c0 = count_now(); int ok = 0; char *r = asst_notify_tool_exec(sid, "{\"text\":\"线程发的\",\"after\":2}", &ok); free(r);
+      usleep(1000000); CHECK(count_now() == c0, "thread: not before its time");
+      CHECK(wait_count(c0 + 1, 4000), "thread: fired on time by itself");
+      int held = 0; asst_presence_set("page-9", true, endpoint); const int c1 = count_now(); asst_push_send_sync("压着", "线程补推", "/", &held); CHECK(held == 1, "thread: held while looking");
+      asst_presence_set("page-9", false, endpoint); CHECK(wait_count(c1 + 1, 3000), "thread: page left → woken, held one pushed"); }
     /* 测试按钮 + 410 → 订阅删 */
     CHECK(asst_push_op("{\"op\":\"test\",\"lang\":\"zh\"}", err, sizeof err), "test op");
     pthread_mutex_lock(&smu); s_code = 410; pthread_mutex_unlock(&smu);
-    CHECK(asst_push_send_sync("x", "y", "/") == 0 && asst_push_devices() == 0, "410 → subscription removed");
+    CHECK(asst_push_send_sync("x", "y", "/", NULL) == 0 && asst_push_devices() == 0, "410 → subscription removed");
     pthread_mutex_lock(&smu); s_code = 201; pthread_mutex_unlock(&smu);
     { int ok = 1; char *r = asst_notify_tool_exec(sid, "{\"text\":\"x\"}", &ok); CHECK(!ok && strstr(r, "no device has notifications turned on"), "notify with no devices → tells the model"); free(r); }
     CHECK(!asst_push_op("{\"op\":\"test\"}", err, sizeof err) && strstr(err, "no device"), "test with no devices → error");
     CHECK(asst_push_op(body, err, sizeof err) && asst_push_devices() == 1, "subscribe again");
     { char un[300]; snprintf(un, sizeof un, "{\"op\":\"unsubscribe\",\"endpoint\":\"%s\"}", endpoint); CHECK(asst_push_op(un, err, sizeof err) && asst_push_devices() == 0, "unsubscribe by endpoint"); }
+    /* 推送代理(10-15: 国内连 FCM 要走代理): 存取/校验; 填上后真去代理 —— 拿假推送服务当代理, 发往 https 推送服务的一条应在它那儿留下 CONNECT */
+    CHECK(!asst_push_op("{\"op\":\"proxy\",\"url\":\"http://127.0.0.1\"}", err, sizeof err) && strstr(err, "port"), "proxy without a port refused");
+    CHECK(!asst_push_op("{\"op\":\"proxy\",\"url\":\"http://a:1 -o /etc/x\"}", err, sizeof err), "proxy with spaces refused (it goes into curl argv)");
+    { char px[96]; snprintf(px, sizeof px, "{\"op\":\"proxy\",\"url\":\"http://127.0.0.1:%d\"}", s_port); CHECK(asst_push_op(px, err, sizeof err), "proxy saved");
+      ds4_buf b = {0}; asst_push_json(&b); char want[64]; snprintf(want, sizeof want, "\"proxy\":\"http://127.0.0.1:%d\"", s_port); CHECK(strstr(b.ptr, want) != NULL, "push json shows the proxy"); ds4_buf_free(&b);
+      char sb[1024]; snprintf(sb, sizeof sb, "{\"op\":\"subscribe\",\"label\":\"fcm\",\"sub\":{\"endpoint\":\"https://push.example.test/fcm/abc\",\"keys\":{\"p256dh\":\"%s\",\"auth\":\"%s\"}}}", p64, a64);
+      CHECK(asst_push_op(sb, err, sizeof err), "subscribe an https endpoint");
+      const int c0 = count_now(); asst_push_send_sync("经代理", "x", "/", NULL);
+      CHECK(count_now() == c0 + 1 && hdr("CONNECT push.example.test:443") == s_req, "send went to the proxy as CONNECT push.example.test:443");
+      CHECK(asst_push_op("{\"op\":\"unsubscribe\",\"endpoint\":\"https://push.example.test/fcm/abc\"}", err, sizeof err) && asst_push_op("{\"op\":\"proxy\",\"url\":\"\"}", err, sizeof err), "cleanup: unsubscribe, proxy cleared");
+      ds4_buf b2 = {0}; asst_push_json(&b2); CHECK(strstr(b2.ptr, "\"proxy\":\"\"") != NULL, "proxy cleared → direct"); ds4_buf_free(&b2); }
     close(ls);
     printf("asst push: %d passed, %d failed\n", pass, fail);
     return fail;

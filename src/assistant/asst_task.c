@@ -291,7 +291,6 @@ static void *sched(void *arg) {
     (void)arg;
     for (;;) {
         sleep(ASST_TASK_TICK_S);
-        asst_notify_tick((long)time(NULL));   /* 到点的定时提醒(asst_notify.c)与任务共用这一拍 */
         char tid[ASST_ID_LEN + 1], sid[ASST_ID_LEN + 1], text[4096];
         if (!asst_task_due((long)time(NULL), tid, sid, text, sizeof text)) continue;
         bool ahead = false; char err[256];

@@ -61,8 +61,10 @@ static int subs_list(sub_t *rows, int max) {   /* 调用方拿着 pmu */
 }
 static void sub_unlink(const char *id) { char d[ASST_PATH + 32], p[ASST_PATH + 64]; subs_dir(d, sizeof d); snprintf(p, sizeof p, "%s/%s.json", d, id); unlink(p); }
 
+static void proxy_get(char *out, size_t n);
 void asst_push_json(ds4_buf *b) {
-    ds4_buf_puts(b, "{\"key\":\""); ds4_buf_puts(b, asst_push_key()); ds4_buf_puts(b, "\",\"devices\":[");
+    char px[256]; proxy_get(px, sizeof px);
+    ds4_buf_puts(b, "{\"key\":\""); ds4_buf_puts(b, asst_push_key()); ds4_buf_puts(b, "\",\"proxy\":"); ds4_json_escape(b, px); ds4_buf_puts(b, ",\"devices\":[");
     sub_t rows[ASST_PUSH_SUBS]; pthread_mutex_lock(&pmu); const int n = subs_list(rows, ASST_PUSH_SUBS); pthread_mutex_unlock(&pmu);
     for (int i = 0; i < n; i++) {
         ds4_buf_printf(b, "%s{\"id\":\"%s\",\"created\":%ld,\"label\":", i ? "," : "", rows[i].id, rows[i].created); ds4_json_escape(b, rows[i].label ? rows[i].label : "");
@@ -72,6 +74,20 @@ void asst_push_json(ds4_buf *b) {
     ds4_buf_puts(b, "]}");
 }
 int asst_push_devices(void) { sub_t rows[ASST_PUSH_SUBS]; pthread_mutex_lock(&pmu); const int n = subs_list(rows, ASST_PUSH_SUBS); pthread_mutex_unlock(&pmu); for (int i = 0; i < n; i++) sub_free(&rows[i]); return n; }
+
+static int deliver(const char *title, const char *body, const char *url, bool hold_watched, int *held);
+
+/* ---- 推送代理(10-15): 安卓 Chrome 的推送服务是谷歌 FCM, 国内直连超时(spark 实测 curl exit 28), 发送这头要走代理。
+ * push/proxy 一行 URL, 任务页通知卡里填; 空 = 直连(苹果 web.push.apple.com 国内直连就通)。不读 http_proxy 这类环境变量: 全仓零 env 配置。 */
+static void proxy_path(char *out, size_t n) { snprintf(out, n, "%s/push/proxy", asst_root); }
+static void proxy_get(char *out, size_t n) {
+    char p[ASST_PATH + 32]; proxy_path(p, sizeof p); char *m = asst_slurp(p, NULL);
+    snprintf(out, n, "%s", m ? m : ""); free(m); out[strcspn(out, "\r\n")] = 0;
+}
+static bool proxy_ok(const char *u) {   /* 只认 scheme://host:port, 字符白名单: 它进 curl 的 argv, 不许夹别的东西 */
+    const bool scheme = !strncmp(u, "http://", 7) || !strncmp(u, "socks5://", 9) || !strncmp(u, "socks5h://", 10);
+    return scheme && strlen(u) < 200 && strspn(u, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.:/-_[]") == strlen(u) && strchr(strstr(u, "://") + 3, ':');
+}
 
 static bool endpoint_ok(const char *e) {   /* 推送服务一律 https; http 只认本机(单测里的假推送服务) */
     return !strncmp(e, "https://", 8) || !strncmp(e, "http://127.0.0.1", 16) || !strncmp(e, "http://localhost", 16);
@@ -112,9 +128,15 @@ bool asst_push_op(const char *body, char *err, size_t errn) {
     } else if (!strcmp(op, "test")) {
         char *lang = NULL; asst_jstr(body, "lang", &lang);
         const bool zh = !lang || strcmp(lang, "en");
-        const int n = asst_push_send_sync(zh ? "YoungAi 通知已打开" : "YoungAi notifications are on", zh ? "任务有进展、助理安排的提醒到点, 都会推到这里。" : "Task progress and the assistant's reminders will arrive here.", "/#tasks");
+        const int n = deliver(zh ? "YoungAi 通知已打开" : "YoungAi notifications are on", zh ? "任务有进展、助理安排的提醒到点, 都会推到这里。" : "Task progress and the assistant's reminders will arrive here.", "/#tasks", false, NULL);
         if (n > 0) ok = true; else snprintf(err, errn, "no device received it (%s)", asst_push_devices() ? "the push service did not accept the message; see the audit log" : "no device has notifications turned on");
         free(lang);
+    } else if (!strcmp(op, "proxy")) {   /* {op: proxy, url}: 空 url = 清掉, 直连 */
+        char *u = NULL; asst_jstr(body, "url", &u); char p[ASST_PATH + 32]; proxy_path(p, sizeof p);
+        if (!u || !u[0]) { pthread_mutex_lock(&pmu); unlink(p); pthread_mutex_unlock(&pmu); ok = true; }
+        else if (!proxy_ok(u)) snprintf(err, errn, "proxy must look like http://127.0.0.1:7890 (http, socks5 or socks5h, with a port)");
+        else { pthread_mutex_lock(&pmu); ok = asst_write_file(p, u, strlen(u), 0600); pthread_mutex_unlock(&pmu); if (!ok) snprintf(err, errn, "cannot write push/proxy"); }
+        free(u);
     } else snprintf(err, errn, "unknown op");
     free(op);
     return ok;
@@ -155,8 +177,9 @@ static bool send_one(const sub_t *s, const uint8_t *payload, size_t pn, char *st
     char tmp[ASST_PATH + 64]; snprintf(tmp, sizeof tmp, "%s/push/.out-%ld-%s", asst_root, (long)getpid(), s->id);
     if (!asst_write_file(tmp, (const char *)body, bn, 0600)) { snprintf(status, sn, "cannot write body"); return false; }
     char authz[1400], ttl[32], data[ASST_PATH + 72]; snprintf(authz, sizeof authz, "Authorization: vapid t=%s, k=%s", jwt, g_pub64); snprintf(ttl, sizeof ttl, "TTL: %d", ASST_PUSH_TTL); snprintf(data, sizeof data, "@%s", tmp);
-    char tmo[16]; snprintf(tmo, sizeof tmo, "%d", ASST_PUSH_CURL_S);
-    const char *argv[] = { "curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "-m", tmo, "--noproxy", "127.0.0.1,localhost", "-X", "POST",
+    char tmo[16], px[256]; snprintf(tmo, sizeof tmo, "%d", ASST_PUSH_CURL_S); proxy_get(px, sizeof px);
+    /* 没填代理时 -x "" = curl 明说不用代理(也不吃进程环境里的 http_proxy); 本机地址(单测的假推送服务)一律不走代理 */
+    const char *argv[] = { "curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "-m", tmo, "-x", px, "--noproxy", "127.0.0.1,localhost", "-X", "POST",
                            "-H", "Content-Type: application/octet-stream", "-H", "Content-Encoding: aes128gcm", "-H", ttl, "-H", "Urgency: normal", "-H", authz,
                            "--data-binary", data, s->endpoint, NULL };
     char out[64] = ""; const int rc = run_curl(argv, out, sizeof out);
@@ -167,38 +190,85 @@ static bool send_one(const sub_t *s, const uint8_t *payload, size_t pn, char *st
     return rc == 0 && code >= 200 && code < 300;
 }
 
-/* 同步版: 返回送达(推送服务 2xx)的设备数; 失败的每条进审计。有页面正开着在看 → 不推, 落 notices 让那个页面当场弹(10-14 用户: "在当前页面肯定不通知"), 返回 1 */
-int asst_push_send_sync(const char *title, const char *body, const char *url) {
-    if (!g_ready) return 0;
-    if (asst_presence_visible((long)time(NULL))) {
-        asst_notice_add(title, body, url);
-        ds4_buf a = {0}; ds4_buf_puts(&a, "{\"session\":\"\",\"tool\":\"push\",\"args\":"); ds4_json_escape(&a, title ? title : "");
-        ds4_buf_puts(&a, ",\"decision\":\"auto\",\"ok\":true,\"ms\":0,\"sandbox\":\"none\",\"result\":\"shown on the open page (a page is visible, not pushed)\"}");
-        asst_audit(a.ptr); ds4_buf_free(&a);
-        return 1;
-    }
-    ds4_buf pl = {0};
-    ds4_buf_puts(&pl, "{\"title\":"); ds4_json_escape(&pl, title ? title : "YoungAi");
+static void payload(ds4_buf *pl, const char *title, const char *body, const char *url) {   /* sw.js 收到的明文 {title, body, url} */
+    ds4_buf_puts(pl, "{\"title\":"); ds4_json_escape(pl, title && title[0] ? title : "YoungAi");
     char cut[801]; snprintf(cut, sizeof cut, "%s", body ? body : ""); size_t c = strlen(cut); while (c && ((unsigned char)cut[c] & 0xC0) == 0x80) cut[c--] = 0;   /* 正文最多 800 字节, 退到字符边界 */
-    ds4_buf_puts(&pl, ",\"body\":"); ds4_json_escape(&pl, cut);
-    ds4_buf_puts(&pl, ",\"url\":"); ds4_json_escape(&pl, url ? url : "/"); ds4_buf_putc(&pl, '}');
+    ds4_buf_puts(pl, ",\"body\":"); ds4_json_escape(pl, cut);
+    ds4_buf_puts(pl, ",\"url\":"); ds4_json_escape(pl, url ? url : "/"); ds4_buf_putc(pl, '}');
+}
+static void audit_push(const char *title, bool ok, const char *result) {
+    ds4_buf a = {0}; ds4_buf_puts(&a, "{\"session\":\"\",\"tool\":\"push\",\"args\":"); ds4_json_escape(&a, title ? title : "");
+    ds4_buf_printf(&a, ",\"decision\":\"auto\",\"ok\":%s,\"ms\":0,\"sandbox\":\"none\",\"result\":", ok ? "true" : "false"); ds4_json_escape(&a, result); ds4_buf_putc(&a, '}');
+    asst_audit(a.ptr); ds4_buf_free(&a);
+}
+static const char *sub_name(const sub_t *s) { return s->label && s->label[0] ? s->label : s->id; }
+static bool push_to(const sub_t *s, const char *title, const ds4_buf *pl) {
+    char st[128], r[256]; const bool ok = send_one(s, (const uint8_t *)pl->ptr, pl->len, st, sizeof st);
+    snprintf(r, sizeof r, "%.64s: %.100s", sub_name(s), st); audit_push(title, ok, r);
+    return ok;
+}
+
+/* ---- 压着的(10-14 用户: "在 app 里什么都不弹, 离开后再推"): 哪台设备的页面正开着在看(在场表按订阅 id 认, asst_notify.c), 发给它的那条不推也不在页面里弹,
+ * 追加进 push/held/<订阅 id>.jsonl; 它切后台/锁屏/心跳过期后, 通知线程的 asst_push_flush 按原样补推。只压那一台: 别的设备该推照推。 */
+static void held_path(const char *id, char *out, size_t n) { snprintf(out, n, "%s/push/held/%.16s.jsonl", asst_root, id); }
+static void hold(const sub_t *s, const char *title, const char *body, const char *url) {
+    ds4_buf b = {0}; ds4_buf_printf(&b, "{\"t\":%ld,\"title\":", (long)time(NULL)); ds4_json_escape(&b, title ? title : "");
+    ds4_buf_puts(&b, ",\"body\":"); ds4_json_escape(&b, body ? body : ""); ds4_buf_puts(&b, ",\"url\":"); ds4_json_escape(&b, url ? url : "/"); ds4_buf_puts(&b, "}\n");
+    char d[ASST_PATH + 32], p[ASST_PATH + 64]; snprintf(d, sizeof d, "%s/push/held", asst_root); held_path(s->id, p, sizeof p);
+    pthread_mutex_lock(&pmu); mkdir(d, 0700); const int fd = open(p, O_WRONLY | O_CREAT | O_APPEND, 0600); const bool ok = fd >= 0 && write(fd, b.ptr, b.len) == (ssize_t)b.len; if (fd >= 0) close(fd); pthread_mutex_unlock(&pmu);
+    char r[256]; snprintf(r, sizeof r, ok ? "%.64s: held, the page is open on it now; pushed when it leaves the page" : "%.64s: cannot write push/held", sub_name(s)); audit_push(title, ok, r);
+    ds4_buf_free(&b);
+}
+
+/* hold=false 只给"发一条测试": 那一下页面必然开着, 压着就测不到推送 */
+static int deliver(const char *title, const char *body, const char *url, bool hold_watched, int *held) {
+    if (held) *held = 0;
+    if (!g_ready) return 0;
     sub_t rows[ASST_PUSH_SUBS]; pthread_mutex_lock(&pmu); const int n = subs_list(rows, ASST_PUSH_SUBS); pthread_mutex_unlock(&pmu);
-    int sent = 0;
+    if (!n) audit_push(title, false, "not sent: no device has notifications turned on (Tasks page → notifications)");   /* 到点的提醒没处去, 至少留一笔, 不静默丢 */
+    ds4_buf pl = {0}; payload(&pl, title, body, url);
+    const long now = (long)time(NULL); int sent = 0;
     for (int i = 0; i < n; i++) {
-        char st[128]; const bool ok = send_one(&rows[i], (const uint8_t *)pl.ptr, pl.len, st, sizeof st);
-        sent += ok;
-        ds4_buf a = {0}; ds4_buf_printf(&a, "{\"session\":\"\",\"tool\":\"push\",\"args\":"); ds4_json_escape(&a, title ? title : "");
-        ds4_buf_printf(&a, ",\"decision\":\"auto\",\"ok\":%s,\"ms\":0,\"sandbox\":\"none\",\"result\":", ok ? "true" : "false");
-        char r[256]; snprintf(r, sizeof r, "%s: %s", rows[i].label && rows[i].label[0] ? rows[i].label : rows[i].id, st); ds4_json_escape(&a, r); ds4_buf_putc(&a, '}');
-        asst_audit(a.ptr); ds4_buf_free(&a);
+        if (hold_watched && asst_presence_watching(rows[i].id, now)) { hold(&rows[i], title, body, url); if (held) (*held)++; }
+        else sent += push_to(&rows[i], title, &pl);
         sub_free(&rows[i]);
     }
     ds4_buf_free(&pl);
     return sent;
 }
+int asst_push_send_sync(const char *title, const char *body, const char *url, int *held) { return deliver(title, body, url, true, held); }
+
+/* 通知线程每次醒来调: 页面已经不在看的设备, 把压着的按顺序推出去; 订阅已删的、压了超过推送服务存期(一天)的直接扔 */
+void asst_push_flush(long now) {
+    char d[ASST_PATH + 32]; snprintf(d, sizeof d, "%s/push/held", asst_root);
+    DIR *dir = opendir(d); if (!dir) return;
+    char ids[ASST_PUSH_SUBS * 2][17]; int k = 0; struct dirent *e;
+    while ((e = readdir(dir)) && k < ASST_PUSH_SUBS * 2) if (strlen(e->d_name) == 22 && !strcmp(e->d_name + 16, ".jsonl")) snprintf(ids[k++], 17, "%.16s", e->d_name);
+    closedir(dir);
+    for (int i = 0; i < k; i++) {
+        if (asst_presence_watching(ids[i], now)) continue;
+        char p[ASST_PATH + 64]; held_path(ids[i], p, sizeof p);
+        sub_t rows[ASST_PUSH_SUBS]; pthread_mutex_lock(&pmu);
+        char *all = asst_slurp(p, NULL); unlink(p);   /* 读和删在同一把锁里: hold() 的追加不会夹在中间丢掉 */
+        const int n = subs_list(rows, ASST_PUSH_SUBS); pthread_mutex_unlock(&pmu);
+        const sub_t *s = NULL; for (int j = 0; j < n; j++) if (!strcmp(rows[j].id, ids[i])) s = &rows[j];
+        for (char *line = all; s && line && *line; ) {
+            char *nl = strchr(line, '\n'); if (nl) *nl = 0;
+            long t = 0; char *ti = NULL, *bo = NULL, *ur = NULL;
+            if (asst_jint(line, "t", &t) && now - t <= ASST_PUSH_TTL && asst_jstr(line, "title", &ti)) {
+                asst_jstr(line, "body", &bo); asst_jstr(line, "url", &ur);
+                ds4_buf pl = {0}; payload(&pl, ti, bo, ur); push_to(s, ti, &pl); ds4_buf_free(&pl);
+            }
+            free(ti); free(bo); free(ur);
+            line = nl ? nl + 1 : NULL;
+        }
+        free(all); for (int j = 0; j < n; j++) sub_free(&rows[j]);
+    }
+}
+void asst_push_sub_id(const char *endpoint, char id[17]) { if (endpoint && endpoint[0]) sub_id(endpoint, id); else id[0] = 0; }
 
 typedef struct { char *title, *body, *url; } push_job;
-static void *push_thread(void *arg) { push_job *j = arg; asst_push_send_sync(j->title, j->body, j->url); free(j->title); free(j->body); free(j->url); free(j); return NULL; }
+static void *push_thread(void *arg) { push_job *j = arg; asst_push_send_sync(j->title, j->body, j->url, NULL); free(j->title); free(j->body); free(j->url); free(j); return NULL; }
 void asst_push_send(const char *title, const char *body, const char *url) {
     if (!g_ready) return;
     push_job *j = calloc(1, sizeof *j); j->title = strdup(title ? title : ""); j->body = strdup(body ? body : ""); j->url = strdup(url ? url : "/");

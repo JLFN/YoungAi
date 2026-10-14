@@ -1,5 +1,5 @@
 /* asst_notify.c — 什么时候推一条通知(推送本身在 asst_push.c)。三个口子, 都不经提示词(能力=工具协商, 10-12 铁律):
- *   ① 模型的 notify 工具: 现在推一条, 或给一个时间到点再推(旅游计划里"出发前一小时提醒"这种) —— 定时的落 reminders/<id>.json, 调度线程每拍扫;
+ *   ① 模型的 notify 工具: 现在推一条, 或给一个时间到点再推(旅游计划里"出发前一小时提醒"这种) —— 定时的落 reminders/<id>.json, 通知线程(本文件末尾)到点就发;
  *   ② 一次运行结束时的机械规则(asst_run.c 收尾钩子): 任务这一轮把任务做完了(task_done) → 推"任务完成"; 任何运行跑了 ≥ ASST_NOTIFY_LONG_S 秒 → 推"回答好了"
  *      —— 等了两分钟以上的人多半已经离开页面, 这是框架能判断的事, 不用模型猜;
  *   ③ 页面的"发一条测试"(asst_push.c 的 test)。
@@ -12,57 +12,42 @@
 #include <unistd.h>
 
 #define ASST_NOTIFY_LONG_S 120      /* 一次运行超过这么久就推一条"好了": 用户等不了两分钟还盯着屏幕, 两分钟以内推又成了噪音 */
-#define ASST_REMIND_MIN_S 30        /* 不到半分钟的"定时"直接当现在发 */
 #define ASST_REMIND_MAX_S (366L * 86400)
 #define ASST_NOTIFY_HEAD 300        /* 通知正文取回复头部多少字节 */
 
 static pthread_mutex_t rmu = PTHREAD_MUTEX_INITIALIZER;
 static void rdir(char *out, size_t n) { snprintf(out, n, "%s/reminders", asst_root); }
 
-/* ---- 在场(10-14 用户: "在当前页面肯定不通知"): 页面可见时每 20 s 报一次 {client, visible}, 切到后台立刻报 visible=false。
- * 有任何一个页面在看 → 不推到设备, 改落 push/notices.jsonl, 页面 2.5 s 一轮的 poll 拉走当场弹出。ASST_PRESENCE_S 没再报就当走了(页面被杀不会报 hidden)。 */
+/* ---- 在场(10-14 用户: "在 app 里什么都不弹, 离开后再推"): 页面可见时每 20 s 报一次 {client, visible, endpoint}, 切到后台立刻报 visible=false。
+ * 按设备认: endpoint = 那个页面所在浏览器的推送订阅, 正看着页面的那台设备的推送先压着(asst_push.c), 别的设备照推 ——
+ * 早先"任何页面在看就全不推"的口径下, 电脑上开着一个标签页, 手机就永远收不到。ASST_PRESENCE_S 没再报就当走了(页面被杀不会报 hidden)。 */
 #define ASST_PRESENCE_S 45          /* 单测里引用同一个数: 改这里要一起改 tests/asst/t_asst_push.c 的 ASST_PRESENCE_S_TEST */
 #define ASST_PRESENCE_MAX 32
-#define ASST_NOTICES_KEEP 50
-typedef struct { char client[40]; long t; bool visible; } pres_t;
+typedef struct { char client[40]; char sub[17]; long t; bool visible; } pres_t;
 static pres_t pres[ASST_PRESENCE_MAX]; static pthread_mutex_t pmu2 = PTHREAD_MUTEX_INITIALIZER;
-void asst_presence_set(const char *client, bool visible) {
+void asst_presence_set(const char *client, bool visible, const char *endpoint) {
     if (!client || !client[0] || strlen(client) > 32) return;
     pthread_mutex_lock(&pmu2);
     int slot = -1, oldest = 0;
     for (int i = 0; i < ASST_PRESENCE_MAX; i++) { if (!strcmp(pres[i].client, client)) { slot = i; break; } if (pres[i].t < pres[oldest].t) oldest = i; }
     if (slot < 0) slot = oldest;
-    snprintf(pres[slot].client, sizeof pres[slot].client, "%s", client); pres[slot].t = (long)time(NULL); pres[slot].visible = visible;
+    snprintf(pres[slot].client, sizeof pres[slot].client, "%s", client); asst_push_sub_id(endpoint, pres[slot].sub); pres[slot].t = (long)time(NULL); pres[slot].visible = visible;
     pthread_mutex_unlock(&pmu2);
+    if (!visible) asst_notify_wake();   /* 走了 → 压着的马上补推, 不等心跳过期 */
 }
-bool asst_presence_visible(long now) {
+bool asst_presence_watching(const char *sub, long now) {
     bool v = false;
     pthread_mutex_lock(&pmu2);
-    for (int i = 0; i < ASST_PRESENCE_MAX && !v; i++) if (pres[i].client[0] && pres[i].visible && now - pres[i].t <= ASST_PRESENCE_S) v = true;
+    for (int i = 0; i < ASST_PRESENCE_MAX && !v; i++) if (pres[i].client[0] && pres[i].sub[0] && !strcmp(pres[i].sub, sub) && pres[i].visible && now - pres[i].t <= ASST_PRESENCE_S) v = true;
     pthread_mutex_unlock(&pmu2);
     return v;
 }
-void asst_notice_add(const char *title, const char *body, const char *url) {
-    ds4_buf b = {0}; ds4_buf_printf(&b, "{\"t\":%ld,\"title\":", (long)time(NULL)); ds4_json_escape(&b, title ? title : "");
-    ds4_buf_puts(&b, ",\"body\":"); ds4_json_escape(&b, body ? body : ""); ds4_buf_puts(&b, ",\"url\":"); ds4_json_escape(&b, url ? url : "/"); ds4_buf_putc(&b, '}');
-    char p[ASST_PATH + 32]; snprintf(p, sizeof p, "%s/push/notices.jsonl", asst_root);
-    pthread_mutex_lock(&pmu2); FILE *f = fopen(p, "a"); if (f) { fputs(b.ptr, f); fputc('\n', f); fclose(f); } pthread_mutex_unlock(&pmu2);
-    ds4_buf_free(&b);
-}
-void asst_notices_json(ds4_buf *out, long after) {   /* t > after 的, 最多最近 50 条(文件只追加, 旧的留着当记录) */
-    char p[ASST_PATH + 32]; snprintf(p, sizeof p, "%s/push/notices.jsonl", asst_root);
-    size_t n = 0; pthread_mutex_lock(&pmu2); char *all = asst_slurp(p, &n); pthread_mutex_unlock(&pmu2);
-    const char *lines[ASST_NOTICES_KEEP]; int k = 0;
-    for (char *s = all; s && *s; ) {
-        char *nl = strchr(s, '\n'); if (nl) *nl = 0;
-        long t = 0; if (*s == '{' && asst_jint(s, "t", &t) && t > after) { if (k < ASST_NOTICES_KEEP) lines[k++] = s; else { memmove(lines, lines + 1, sizeof lines - sizeof lines[0]); lines[ASST_NOTICES_KEEP - 1] = s; } }
-        if (!nl) break;
-        s = nl + 1;
-    }
-    ds4_buf_puts(out, "{\"notices\":[");
-    for (int i = 0; i < k; i++) { if (i) ds4_buf_putc(out, ','); ds4_buf_puts(out, lines[i]); }
-    ds4_buf_puts(out, "]}");
-    free(all);
+static long presence_next_expiry(long now) {   /* 最早一个还在看的页面心跳过期的时刻(0 = 没有): 通知线程睡到那时把压着的补推 */
+    long e = 0;
+    pthread_mutex_lock(&pmu2);
+    for (int i = 0; i < ASST_PRESENCE_MAX; i++) if (pres[i].client[0] && pres[i].visible && now - pres[i].t <= ASST_PRESENCE_S) { const long x = pres[i].t + ASST_PRESENCE_S + 1; if (!e || x < e) e = x; }
+    pthread_mutex_unlock(&pmu2);
+    return e;
 }
 
 bool asst_notify_tool(const char *name) { return !strcmp(name, "notify"); }
@@ -74,16 +59,21 @@ bool asst_notify_build(const asst_tctx *c, ds4_buf *b) {
                     "A scheduled one is kept on this machine and sent at that time even if this conversation is over; the user sees and can delete it in the Tasks page. "
                     "The result says how many devices got it; when none has notifications turned on it says so, then tell the user they can turn them on in the Tasks page. Text should be short: a notification shows one or two lines.\","
                     "\"parameters\":{\"type\":\"object\",\"properties\":{\"text\":{\"type\":\"string\",\"description\":\"The notification text (one or two lines)\"},\"title\":{\"type\":\"string\",\"description\":\"Short title (default: this conversation's title)\"},"
-                    "\"at\":{\"type\":\"string\",\"description\":\"When to send, local time, YYYY-MM-DD HH:MM; omit to send now\"}},\"required\":[\"text\"]}}}");
+                    "\"after\":{\"type\":\"integer\",\"description\":\"Send this many seconds from now (30 = in thirty seconds, 7200 = in two hours); use it for relative times instead of working out a clock time\"},"
+                    "\"at\":{\"type\":\"string\",\"description\":\"When to send, local time, YYYY-MM-DD HH:MM or YYYY-MM-DD HH:MM:SS; omit both at and after to send now\"}},\"required\":[\"text\"]}}}");
     return true;
 }
 
-static bool parse_at(const char *s, time_t *out) {
-    struct tm tm; memset(&tm, 0, sizeof tm);
-    const char *e = strptime(s, "%Y-%m-%d %H:%M", &tm); if (!e) e = strptime(s, "%Y-%m-%dT%H:%M", &tm);
-    if (!e) return false;
-    tm.tm_isdst = -1; *out = mktime(&tm); return *out > 0;
+static bool parse_at(const char *s, time_t *out) {   /* 先试带秒的: 不带秒的格式会把 "22:26:30" 的前半截吃下来, 秒被丢掉 */
+    static const char *const fmts[] = { "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M" };
+    for (size_t i = 0; i < sizeof fmts / sizeof fmts[0]; i++) {
+        struct tm tm; memset(&tm, 0, sizeof tm);
+        if (!strptime(s, fmts[i], &tm)) continue;
+        tm.tm_isdst = -1; *out = mktime(&tm); return *out > 0;
+    }
+    return false;
 }
+static void in_words(long s, char *out, size_t n) { if (s < 120) snprintf(out, n, "in %ld seconds", s); else snprintf(out, n, "in %ld minutes", s / 60); }
 
 static char *session_title(const char *sid) {
     char *v = NULL, *t = NULL; if (asst_meta_get(sid, "title", &v) && v) { const char *p = v; json_string(&p, &t); } free(v);
@@ -99,10 +89,11 @@ char *asst_notify_tool_exec(const char *sid, const char *args, int *ok) {
     if (!title || !title[0]) { free(title); title = session_title(sid); }
     char url[ASST_ID_LEN + 32]; session_url(sid, url, sizeof url);
     const int devices = asst_push_devices();
-    time_t when = 0; const long now = (long)time(NULL);
-    if (at && at[0] && !parse_at(at, &when)) { ds4_buf_printf(&r, "error: at must look like 2026-10-20 07:30 (local time), got \"%s\"\n", at); goto out; }
+    time_t when = 0; const long now = (long)time(NULL); long after = 0;
+    if (asst_jint(args, "after", &after) && after > 0) when = (time_t)(now + after);
+    else if (at && at[0] && !parse_at(at, &when)) { ds4_buf_printf(&r, "error: at must look like 2026-10-20 07:30 (local time), got \"%s\"\n", at); goto out; }
     if (when && when - now > ASST_REMIND_MAX_S) { ds4_buf_puts(&r, "error: at is more than a year away\n"); goto out; }
-    if (when && when - now >= ASST_REMIND_MIN_S) {
+    if (when > now) {   /* 哪怕只差几秒也排上: "三十秒后提醒我"当场就发, 人还在页面上, 等于没提醒(10-14 实撞) */
         char d[ASST_PATH + 32]; rdir(d, sizeof d); mkdir(d, 0700);
         unsigned char rnd[6]; char id[ASST_ID_LEN + 1]; const int fd = open("/dev/urandom", O_RDONLY);
         if (fd < 0 || read(fd, rnd, 6) != 6) { if (fd >= 0) close(fd); ds4_buf_puts(&r, "error: cannot read /dev/urandom\n"); goto out; }
@@ -113,15 +104,16 @@ char *asst_notify_tool_exec(const char *sid, const char *args, int *ok) {
         char p[ASST_PATH + 64]; snprintf(p, sizeof p, "%s/%s.json", d, id);
         pthread_mutex_lock(&rmu); const bool w = asst_write_file(p, b.ptr, b.len, 0600); pthread_mutex_unlock(&rmu); ds4_buf_free(&b);
         if (!w) { ds4_buf_puts(&r, "error: cannot save the reminder\n"); goto out; }
-        char ws[64]; strftime(ws, sizeof ws, "%Y-%m-%d %H:%M", localtime(&when));
-        ds4_buf_printf(&r, "scheduled: \"%s\" at %s (in %ld minutes); %d device(s) have notifications on%s\n", title, ws, (long)((when - now) / 60), devices, devices ? "" : " — none yet, so tell the user to turn them on in the Tasks page before then");
+        asst_notify_wake();   /* 通知线程按最近一条的到点时刻睡, 新排的可能更早 */
+        char ws[64], in[48]; strftime(ws, sizeof ws, "%Y-%m-%d %H:%M:%S", localtime(&when)); in_words(when - now, in, sizeof in);
+        ds4_buf_printf(&r, "scheduled: \"%s\" at %s (%s); %d device(s) have notifications on%s\n", title, ws, in, devices, devices ? "" : " — none yet, so it will reach nobody: tell the user to turn them on in the Tasks page before then");
         *ok = 1; goto out;
     }
-    const bool watching = asst_presence_visible(now);
-    if (!devices && !watching) { ds4_buf_puts(&r, "error: no device has notifications turned on; the user can turn them on in the Tasks page (notifications card), then call again\n"); goto out; }
-    const int n = asst_push_send_sync(title, text, url);
-    if (n && watching) { ds4_buf_puts(&r, "shown on the page the user has open right now (not pushed: they are looking at it)\n"); *ok = 1; }
-    else if (n) { ds4_buf_printf(&r, "sent to %d device(s)\n", n); *ok = 1; }
+    if (!devices) { ds4_buf_puts(&r, "error: no device has notifications turned on; the user can turn them on in the Tasks page (notifications card), then call again\n"); goto out; }
+    int held = 0; const int n = asst_push_send_sync(title, text, url, &held);
+    if (n) ds4_buf_printf(&r, "sent to %d device(s)", n);
+    if (held) ds4_buf_printf(&r, "%sheld for %d device(s) whose page the user is looking at right now; it is pushed there as soon as they leave the page", n ? "; " : "", held);
+    if (n || held) { ds4_buf_putc(&r, '\n'); *ok = 1; }
     else ds4_buf_printf(&r, "error: the push service accepted it for none of the %d device(s); see the audit log in the Activity page\n", devices);
 out:
     free(text); free(title); free(at);
@@ -170,20 +162,39 @@ bool asst_reminder_op(const char *body, char *err, size_t errn) {
     return ok;
 }
 
-/* 调度线程每拍调: 到点的提醒发出去并删掉文件(发没发到由 audit 记; 不重发 —— 推送服务自己会替离线设备存一天) */
-int asst_notify_tick(long now) {
+/* 通知线程每次醒来调: 到点的提醒发出去并删掉文件(发没发到由 audit 记; 不重发 —— 推送服务自己会替离线设备存一天)。*next = 还没到点的里最早那条(0 = 没有) */
+int asst_notify_tick(long now, long *next) {
     rem_t rows[200]; pthread_mutex_lock(&rmu); const int n = rem_list(rows, 200); pthread_mutex_unlock(&rmu);
-    int sent = 0;
+    int sent = 0; if (next) *next = 0;
     for (int i = 0; i < n; i++) {
         if (rows[i].at <= now) {
             char url[ASST_ID_LEN + 32]; session_url(rows[i].session, url, sizeof url);
-            asst_push_send_sync(rows[i].title, rows[i].text, url);
+            asst_push_send_sync(rows[i].title, rows[i].text, url, NULL);
             pthread_mutex_lock(&rmu); rem_unlink(rows[i].id); pthread_mutex_unlock(&rmu); sent++;
-        }
+        } else if (next && (!*next || rows[i].at < *next)) *next = rows[i].at;
         rem_free(&rows[i]);
     }
     return sent;
 }
+
+/* ---- 通知线程: 睡到"最早一条提醒到点"与"最早一个在看的页面心跳过期"里较早的那刻; 新排了提醒 / 页面报走了就叫醒(asst_notify_wake)。
+ * 原先挂在任务调度的 30 s 一拍上, "三十秒后提醒我"最多晚 30 s 才发, 现在准到秒。 */
+static pthread_mutex_t wmu = PTHREAD_MUTEX_INITIALIZER; static pthread_cond_t wcv = PTHREAD_COND_INITIALIZER; static bool wkick;
+void asst_notify_wake(void) { pthread_mutex_lock(&wmu); wkick = true; pthread_cond_signal(&wcv); pthread_mutex_unlock(&wmu); }
+static void *notify_loop(void *arg) {
+    (void)arg;
+    for (;;) {
+        const long now = (long)time(NULL); long next = 0;
+        asst_notify_tick(now, &next); asst_push_flush(now);
+        const long e = presence_next_expiry(now); if (e && (!next || e < next)) next = e;
+        pthread_mutex_lock(&wmu);
+        if (next) { const struct timespec ts = { (time_t)next, 0 }; while (!wkick && pthread_cond_timedwait(&wcv, &wmu, &ts) == 0) {} }   /* time() 与 timedwait 都是 CLOCK_REALTIME, 同一把尺 */
+        else while (!wkick) pthread_cond_wait(&wcv, &wmu);   /* 什么都没排: 只等叫醒 */
+        wkick = false; pthread_mutex_unlock(&wmu);
+    }
+    return NULL;
+}
+void asst_notify_start(void) { pthread_t th; pthread_create(&th, NULL, notify_loop, NULL); pthread_detach(th); }
 
 static void head_of(const char *s, char *out, size_t n) {
     snprintf(out, n, "%s", s ? s : ""); size_t k = strlen(out); if (k + 1 >= n) { k = n - 1; while (k && ((unsigned char)out[k] & 0xC0) == 0x80) k--; out[k] = 0; }

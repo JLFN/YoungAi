@@ -72,7 +72,8 @@ int main(int argc, char **argv) {
     if (asst_init(NULL, aerr, sizeof aerr)) {
         asst_run_start(TR_MODEL_PORT(g_port));
         asst_push_init();    /* 推送密钥(src/assistant/asst_push.c): push/vapid.json, 没有就生成 */
-        asst_task_start();   /* 任务调度线程(src/assistant/asst_task.c): 到点往任务会话里发"继续这个任务"; 定时提醒也在这一拍 */
+        asst_task_start();   /* 任务调度线程(src/assistant/asst_task.c): 到点往任务会话里发"继续这个任务" */
+        asst_notify_start(); /* 通知线程(src/assistant/asst_notify.c): 定时提醒准到秒 + 页面离开后补推压着的 */
         fprintf(stderr, "ds4-train: 助理 %s (沙盒 %s, 浏览器 %s); 别的设备访问要口令: %s/token\n", asst_root, asst_sbx_kind(), asst_browser_kind()[0] ? asst_browser_kind() : "无", asst_root);
     } else { asst_root[0] = 0; fprintf(stderr, "ds4-train: 助理不可用: %s(助理接口答 503, 训练/模型页不受影响)\n", aerr); }
     tr_auth_init(NULL, asst_token); tr_keys_init(NULL);   /* 助理口令兼作本机脚本的登录口令(助理没起来就是空串 = 只认网页登录) */
