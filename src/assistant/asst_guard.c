@@ -58,6 +58,11 @@ static void guard_file(const char *sid, bool write, const char *tool, const char
     r->rw = write;
     if (!asst_path_resolve(in && in[0] ? in : "", r->path, sizeof r->path)) { free(in); set(r, ASST_DENY, "path too long or unresolvable"); return; }
     free(in);
+    /* 技能文件夹: 读放行(用户装的做法说明和脚本, 模型就是要读它们), 写一律拒 —— 模型能改自己的技能, 网页里一句注入就能长期住进去; 改要在页面"技能"tab 里改 */
+    if (asst_skills[0] && asst_under(r->path, asst_skills)) {
+        if (write) set(r, ASST_DENY, "skills are read-only for tools; the user edits them in the Skills tab"); else set(r, ASST_ALLOW, "inside an installed skill (read-only)");
+        return;
+    }
     if (asst_under(r->path, asst_root) && !asst_under(r->path, asst_ws)) { set(r, ASST_DENY, "this is the assistant's own control folder (token, policy, approvals, sessions); it cannot be read or changed by tools"); return; }
     const bool dir_target = !strcmp(tool, "list_dir") || !strcmp(tool, "search_files");
     if (dir_target && !write) snprintf(r->target, sizeof r->target, "%s", r->path); else dirname_of(r->path, r->target, sizeof r->target);
@@ -85,8 +90,22 @@ static bool url_host(const char *url, char *host, size_t n) {
 void asst_guard(const char *sid, const char *tool, const char *args, asst_gres *r) {
     memset(r, 0, sizeof *r);
     if (!strcmp(tool, "remember") || !strcmp(tool, "forget")) { snprintf(r->cls, sizeof r->cls, "mem"); set(r, ASST_ALLOW, "memory"); return; }
+    if (!strcmp(tool, "use_skill")) { snprintf(r->cls, sizeof r->cls, "skill"); set(r, ASST_ALLOW, "installed skill"); return; }   /* 主进程读 skills/<名>/SKILL.md, 不进沙盒; 用户自己装的, 不置污点 */
     if (!strcmp(tool, "nearby")) { snprintf(r->cls, sizeof r->cls, "geo"); set(r, ASST_ALLOW, "places near the user"); return; }   /* 出门的只有查询词与坐标, key 由 C 填; 不置污点 */
+    if (asst_task_tool(tool)) { snprintf(r->cls, sizeof r->cls, "task"); set(r, ASST_ALLOW, "task schedule"); return; }   /* 只改自己这个任务的下次时间/状态, 不碰文件系统; 不进沙盒 */
+    if (asst_notify_tool(tool)) {   /* 推到用户自己的设备: 出门的只有标题与正文(加密后经推送服务), 像密文的不推 */
+        snprintf(r->cls, sizeof r->cls, "notify"); snprintf(r->target, sizeof r->target, "notify");
+        char *tx = NULL; asst_jstr(args, "text", &tx);
+        if (tx && asst_secret_like(tx)) set(r, ASST_DENY, "the notification text looks like a password, key or card number"); else set(r, ASST_ALLOW, "notification to the user's own devices");
+        free(tx); return;
+    }
     if (asst_device_tool(tool)) { snprintf(r->cls, sizeof r->cls, "dev"); set(r, ASST_ALLOW, "device"); return; }   /* 在用户自己的设备上、由用户的浏览器执行(剪贴板读取 iOS 还要用户点一下): 放行, 不进沙盒 */
+    if (asst_phone_tool(tool)) {   /* 云手机: 开关是用户在设置里拨的, 每一步再弹卡就没法用; 执行时再核一次开关 —— 运行中途被关掉, 模型手里的旧工具表不算数 */
+        snprintf(r->cls, sizeof r->cls, "phone"); snprintf(r->target, sizeof r->target, "phone");
+        if (!asst_phone_on()) set(r, ASST_DENY, "danger mode is off: the virtual phone is not running (the user can turn it on in Settings)");
+        else set(r, ASST_ALLOW, "virtual phone (danger mode on)");
+        return;
+    }
     if (!strcmp(tool, "read_file") || !strcmp(tool, "list_dir") || !strcmp(tool, "search_files")) { guard_file(sid, false, tool, args, r); return; }
     if (!strcmp(tool, "write_file") || !strcmp(tool, "edit_file") || asst_office_tool(tool) || !strcmp(tool, "make_video")) { guard_file(sid, true, tool, args, r); return; }   /* 产出工具 = 写一个文件, 守门口径与 write_file 同 */
     if (!strcmp(tool, "run")) {   /* 沙盒里跑, 不审批(10-12 用户: "确保在沙箱当中, 暂时不要审批"): 安全靠沙盒不靠审批 —— 没网络就没有外送通道, 只能写工作区且 .trash 留旧版; 污点态也不降级。
@@ -119,8 +138,8 @@ void asst_guard(const char *sid, const char *tool, const char *args, asst_gres *
 }
 
 void asst_guard_mark(const char *sid, const char *cls, const char *path) {
-    if (!strcmp(cls, "web")) { if (!meta_flag(sid, "taint_web")) asst_meta_set(sid, "taint_web", "true"); }
-    else if ((!strcmp(cls, "read") || !strcmp(cls, "exec")) && path && !asst_under(path, asst_ws)) { if (!meta_flag(sid, "taint_priv")) asst_meta_set(sid, "taint_priv", "true"); }
+    if (!strcmp(cls, "web") || !strcmp(cls, "phone")) { if (!meta_flag(sid, "taint_web")) asst_meta_set(sid, "taint_web", "true"); }   /* 手机屏幕上的字和网页一样是别人写的 */
+    else if ((!strcmp(cls, "read") || !strcmp(cls, "exec")) && path && !asst_under(path, asst_ws) && !(asst_skills[0] && asst_under(path, asst_skills))) { if (!meta_flag(sid, "taint_priv")) asst_meta_set(sid, "taint_priv", "true"); }   /* 技能是用户装的, 读它不算读私有文件 */
 }
 
 void asst_guard_spec(const asst_gres *r, bool exec, asst_sbx_spec *sp) {
@@ -128,6 +147,7 @@ void asst_guard_spec(const asst_gres *r, bool exec, asst_sbx_spec *sp) {
     sp->timeout_s = exec ? 0 : 30;   /* exec 的超时由调用方按 bash 参数设 */
     sp->exec = exec;
     asst_sbx_add(sp, true, asst_ws);
+    if (asst_skills[0]) asst_sbx_add(sp, false, asst_skills);   /* 技能文件夹只读: run 能跑里面的脚本、read_file 能读参考资料, 写不进去 */
     char d[ASST_PATH]; bool w;
     for (int i = 0; asst_policy_dir(i, d, sizeof d, &w); i++) asst_sbx_add(sp, w, d);
     if (exec || !r->path[0] || asst_under(r->path, asst_ws)) return;

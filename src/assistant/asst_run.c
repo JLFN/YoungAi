@@ -107,8 +107,10 @@ static void audit_call(const char *sid, const char *tool, const char *args, cons
 static void run_one(const char *sid, const char *text, const char *device, const char *files) {
     ds4_buf b = {0}, full = {0};
     const bool zh = asst_lang_is_zh(text);
+    char tid[ASST_ID_LEN + 1]; const bool task = asst_task_of(sid, tid);   /* 任务会话(asst_task.c): 多一行任务事实、工具表多 task_*、收尾记进展 */
     char *ctx = asst_device_line(device, cur_caps, zh, sid), *att = asst_attach_line(files, zh);
     ds4_buf_puts(&full, ctx); ds4_buf_putc(&full, '\n'); free(ctx);   /* 事实行在用户文本前面: 模型看到, 页面不显示(事件里只有 text) */
+    if (task) { char *tl = asst_task_fact_line(tid, zh); if (tl) { ds4_buf_puts(&full, tl); ds4_buf_putc(&full, '\n'); free(tl); } }
     if (att) { ds4_buf_puts(&full, att); ds4_buf_putc(&full, '\n'); free(att); }
     ds4_buf_puts(&full, text);
     ds4_buf_puts(&b, "{\"role\":\"user\",\"content\":"); asst_content_with_images(&b, full.ptr, files); ds4_buf_putc(&b, '}');   /* 图片附件随消息进模型(asst_image.c) */
@@ -117,11 +119,13 @@ static void run_one(const char *sid, const char *text, const char *device, const
     char upd[32]; snprintf(upd, sizeof upd, "%ld", (long)time(NULL)); asst_meta_set(sid, "updated", upd);
     char last_sig[512] = ""; int repeat = 0, ncalls = 0;
     const char *end = "done";
+    char *last_text = NULL;   /* 最后一轮的正文: 任务列表里的"上次进展"、通知的正文 */
+    const double t_run = now_s();
     for (;;) {
         char *msgs = asst_messages(sid);
         asst_llm_cb cb = { on_text, on_think, want_stop, (void *)sid };
         asst_llm_out o;
-        const asst_tctx tc = { cur_caps, cur_apps };
+        const asst_tctx tc = { cur_caps, cur_apps, task ? tid : NULL };
         char *tools = asst_tools_json(&tc);
         const bool good = asst_llm_chat(g_port, msgs, tools, &cb, &o);
         free(msgs); free(tools);
@@ -142,6 +146,7 @@ static void run_one(const char *sid, const char *text, const char *device, const
         ds4_buf_putc(&m, '}');
         if (o.content.len || nc) asst_msg(sid, m.ptr);   /* 停在半截的正文也存: 下一轮历史与页面看到的一致 */
         ds4_buf_free(&m);
+        if (o.content.len) { free(last_text); last_text = strdup(o.content.ptr); }
         ds4_buf u = {0}; ds4_buf_printf(&u, "{\"ev\":\"usage\",\"prompt\":%ld,\"completion\":%ld}", o.prompt_tokens, o.completion_tokens); asst_ev(sid, u.ptr); ds4_buf_free(&u);
         if (!good) { ev_str(sid, "error", "msg", o.err); asst_llm_out_free(&o); end = "error"; break; }
         if (o.stopped) { asst_llm_out_free(&o); end = "stopped"; break; }
@@ -172,9 +177,10 @@ static void run_one(const char *sid, const char *text, const char *device, const
             asst_ev(sid, t.ptr); ds4_buf_free(&t);
             ds4_buf tm = {0};
             ds4_buf_puts(&tm, "{\"role\":\"tool\",\"tool_call_id\":"); ds4_json_escape(&tm, id);
-            /* pick_file 拍/选的是图 ⇒ 工具结果里顺手带上 image_url 块, 模型直接看, 不用再去读路径(asst_image.c) */
+            /* pick_file 拍/选的是图、phone_* 带回的截图 ⇒ 工具结果里顺手带上 image_url 块, 模型直接看, 不用再去读路径(asst_image.c) */
             char picked[ASST_PATH] = ""; const char *sv = !strcmp(name, "pick_file") ? strstr(res, "saved: ") : NULL;
             if (sv) { const char *sp = strchr(sv + 7, ' '); if (sp && (size_t)(sp - sv - 7) < sizeof picked) snprintf(picked, sizeof picked, "%.*s", (int)(sp - sv - 7), sv + 7); }
+            if (asst_phone_tool(name) && !strncmp(res, "screenshot: .phone/", 19)) { const char *nl = strchr(res, '\n'); if (nl && (size_t)(nl - res - 12) < sizeof picked) snprintf(picked, sizeof picked, "%.*s", (int)(nl - res - 12), res + 12); }
             ds4_buf_puts(&tm, ",\"content\":"); asst_content_with_images(&tm, res, picked); ds4_buf_putc(&tm, '}');
             asst_msg(sid, tm.ptr); ds4_buf_free(&tm);
             free(res);
@@ -184,6 +190,9 @@ static void run_one(const char *sid, const char *text, const char *device, const
     }
     snprintf(upd, sizeof upd, "%ld", (long)time(NULL)); asst_meta_set(sid, "updated", upd);
     ev_str(sid, "end", "reason", end);
+    if (task) asst_task_run_end(tid, end, last_text);
+    asst_notify_run_end(sid, end, last_text, now_s() - t_run);   /* 任务做完 / 跑了很久 → 推一条到用户设备(asst_notify.c) */
+    free(last_text);
 }
 
 static void *worker(void *arg) {

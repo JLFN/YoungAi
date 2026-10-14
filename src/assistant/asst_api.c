@@ -110,6 +110,25 @@ int asst_api(const asst_req *rq, ds4_buf *out, const char **ctype) {
         if (post) { if (!asst_memory_save(rq->body, err, sizeof err)) return jerr(out, 400, err); }
         asst_memory_json(out); return 200;
     }
+    if (!strcmp(r, "skills")) {   /* 技能页: GET 列表(含 SKILL.md 原文与文件表); POST {op:save|delete, name, md} */
+        if (post) { if (!asst_skill_op(rq->body, err, sizeof err)) return jerr(out, 400, err); }
+        asst_skills_json(out); return 200;
+    }
+    if (!strcmp(r, "push")) {   /* 通知: GET {key, devices}; POST {op: subscribe|unsubscribe|test, …}(asst_push.c) */
+        if (post) { if (!asst_push_op(rq->body, err, sizeof err)) return jerr(out, 400, err); }
+        asst_push_json(out); return 200;
+    }
+    if (!strcmp(r, "notices")) {   /* 页面开着时没推出去的通知: GET ?after=<t>(asst_notify.c) */
+        char a[32]; asst_qget(rq->query, "after", a, sizeof a); asst_notices_json(out, atol(a)); return 200;
+    }
+    if (!strcmp(r, "reminders")) {   /* 定时提醒: GET 列表; POST {op: delete, id}(asst_notify.c) */
+        if (post) { if (!asst_reminder_op(rq->body, err, sizeof err)) return jerr(out, 400, err); }
+        asst_reminders_json(out); return 200;
+    }
+    if (!strcmp(r, "tasks")) {   /* 任务页: GET 列表; POST {op: add|pause|resume|done|run|delete, id, text}(asst_task.c) */
+        if (post) { if (!asst_task_op(rq->body, err, sizeof err)) return jerr(out, 400, err); }
+        asst_tasks_json(out); return 200;
+    }
     if (!strcmp(r, "activity")) {
         ds4_buf_puts(out, "{\"audit\":"); audit_tail(out, 300);
         ds4_buf_puts(out, ",\"approvals\":"); asst_approvals_json(out);
@@ -122,6 +141,11 @@ int asst_api(const asst_req *rq, ds4_buf *out, const char **ctype) {
     }
     if (!post) return jerr(out, 405, "use POST");
     if (!strcmp(r, "policy")) { if (!asst_policy_op(rq->body, err, sizeof err)) return jerr(out, 400, err); ds4_buf_puts(out, "{\"ok\":true}"); return 200; }
+    if (!strcmp(r, "presence")) {   /* 页面可见性心跳 {client, visible}: 有页面在看就不推设备(asst_notify.c) */
+        char *client = NULL; bool vis = false; asst_jstr(rq->body, "client", &client); asst_jbool(rq->body, "visible", &vis);
+        asst_presence_set(client ? client : "", vis); free(client);
+        ds4_buf_puts(out, "{\"ok\":true}"); return 200;
+    }
     if (!strcmp(r, "secret")) {   /* {name, value}: 凭证进 secrets/<name>(0600); 空 value = 删; 页面永远拿不回原文 */
         char *name = NULL, *value = NULL; asst_jstr(rq->body, "name", &name); asst_jstr(rq->body, "value", &value);
         const bool ok = asst_secret_set(name ? name : "", value, err, sizeof err);
@@ -137,6 +161,13 @@ int asst_api(const asst_req *rq, ds4_buf *out, const char **ctype) {
         ds4_buf_puts(out, "{\"path\":"); if (p && sp) { char path[300]; snprintf(path, sizeof path, "%.*s", (int)(sp - p - 7), p + 7); ds4_json_escape(out, path); } else ds4_buf_puts(out, "\"\"");
         ds4_buf_puts(out, ",\"note\":"); ds4_json_escape(out, msg); ds4_buf_putc(out, '}'); free(msg);
         return 200;
+    }
+    if (!strcmp(r, "skill_file")) {   /* 技能的随附文件(页面选整个文件夹, 每个文件一次): 原始体 = 文件字节, 技能名与相对路径在查询串里 */
+        char name[ASST_SKILL_NAME_MAX + 8], path[512];
+        asst_qget(rq->query, "name", name, sizeof name); asst_qget(rq->query, "path", path, sizeof path);
+        char *why = asst_skill_put_file(name, path, rq->body, rq->body_len);
+        if (why) { const int c = jerr(out, 400, why); free(why); return c; }
+        ds4_buf_puts(out, "{\"ok\":true}"); return 200;
     }
     if (!strcmp(r, "device_file")) {   /* pick_file 的答复: 原始体 = 文件字节, 名字与请求 id 在查询串里 */
         char sid[ASST_ID_LEN + 1], id[64], name[256];

@@ -2,6 +2,7 @@
  * 由 t_asst_sbx.c 的 main 调用(它先建好临时目录), 返回失败条数。助理根目录用临时目录, 不碰真的 ~/.ds4/assistant。 */
 #include "../../src/assistant/asst_internal.h"
 #include "../../src/office/ds4_office.h"
+#include <dirent.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -177,14 +178,14 @@ static void test_lang(void) {
     CHECKL(e && strstr(e, "handing it over") && !strstr(e, "small screen") && !strstr(e, "nearby") && !strstr(e, "navigate") && !strstr(e, "http"), "en desktop prompt: no phone segment, no scenario words");
     free(z); free(e);
     /* 工具表 = 注册表里 avail 为真的行: 没报能力 = 只有固定工具; 报了哪些就多哪些; 名字只认整词(share 不匹配 share_files); open_app 还要 apps 非空; run 永远在, 描述带工具箱 */
-    const asst_tctx c0 = { NULL, NULL }, c1 = { "clipboard_read,share_files,navigate,geolocation", NULL }, c2 = { "", "" }, c3 = { "open_app", "douyin,wechat" }, c4 = { "open_app", "" };
+    const asst_tctx c0 = { NULL, NULL, NULL }, c1 = { "clipboard_read,share_files,navigate,geolocation", NULL, NULL }, c2 = { "", "", NULL }, c3 = { "open_app", "douyin,wechat", NULL }, c4 = { "open_app", "", NULL };
     char *t0 = asst_tools_json(&c0), *t1 = asst_tools_json(&c1), *t2 = asst_tools_json(&c2), *t3 = asst_tools_json(&c3), *t4 = asst_tools_json(&c4), *t5 = asst_tools_json(NULL);
     CHECKL(t0 && strstr(t0, "\"name\":\"run\"") && strstr(t0, "\"write_file\"") && !strstr(t0, "read_clipboard") && !strstr(t0, "\"locate\"") && !strstr(t0, "\"bash\"") && t0[strlen(t0) - 1] == ']', "no caps: base tools only, run instead of bash");
     CHECKL(t0 && strstr(t0, "Run a shell command inside the sandbox") && strstr(t0, asst_toolbox_desc()[0] ? "no network" : "x"), "run description comes from the toolbox probe");
     CHECKL(t1 && strstr(t1, "\"read_clipboard\"") && strstr(t1, "\"navigate\"") && strstr(t1, "\"locate\"") && !strstr(t1, "\"name\":\"share\"") && !strstr(t1, "pick_file") && !strstr(t1, "open_app"), "caps pick device tools, whole-word match");
     CHECKL(t2 && !strcmp(t2, t0) && t5 && !strcmp(t5, t0), "empty caps == no caps == NULL ctx");
     CHECKL(t3 && strstr(t3, "\"open_app\"") && strstr(t3, "\"enum\":[\"douyin\",\"wechat\"]"), "open_app lists the device's apps as enum: %.0s", t3);
-    const asst_tctx c6 = { "open_app", "douyin,wechat,dingtalk,alipay,meituan,eleme" }; char *t6 = asst_tools_json(&c6);   /* 外卖两行: 枚举带上, 描述告诉模型 query 填店名 */
+    const asst_tctx c6 = { "open_app", "douyin,wechat,dingtalk,alipay,meituan,eleme", NULL }; char *t6 = asst_tools_json(&c6);   /* 外卖两行: 枚举带上, 描述告诉模型 query 填店名 */
     CHECKL(t6 && strstr(t6, "\"enum\":[\"douyin\",\"wechat\",\"dingtalk\",\"alipay\",\"meituan\",\"eleme\"]") && strstr(t6, "meituan and eleme (food delivery) open their search"), "open_app enum carries meituan/eleme, description says query = shop name");
     free(t6);    CHECKL(t4 && !strstr(t4, "open_app"), "open_app cap without apps → no tool");
     CHECKL(asst_device_tool("locate") == 1 && asst_device_tool("read_clipboard") == 1 && asst_device_tool("share") == 2 && asst_device_tool("open_app") == 2 && asst_device_tool("write_file") == 0 && asst_device_tool("run") == 0, "device tool kinds");
@@ -255,6 +256,19 @@ static void test_office(void) {
     /* 10-13 spark 实撞: 字体在沙盒里找, 永远读不到 /usr/share/fonts → 有字体的机器也走了非内嵌。本机有字体时结果里不许有 not embedded */
     if (office_ttf_find()) CHECKL(o && !strstr(o, "not embedded"), "pdf embeds the machine's CJK font from inside the sandbox: %s", o ? o : "(null)");
     free(o);
+    /* pptx 主题(10-14): theme=tech 出深色片子且结果句报主题; 不认识的主题名当场拒并列出可选项; 不给 = clean */
+    const char *pt = "{\"path\":\"out/t.pptx\",\"theme\":\"tech\",\"markdown\":\"# 科技风\\n副标题\\n\\n---\\n\\n## 第二页\\n\\n- 要点\"}";
+    r = G(sid, "write_document", pt); o = asst_tool_exec(sid, "write_document", pt, &r, &ok);
+    CHECKL(ok && o && strstr(o, "2 slides, theme tech"), "pptx theme tech: %s", o ? o : "(null)"); free(o);
+    snprintf(p, sizeof p, "%s/out/t.pptx", asst_ws); size_t zn = 0; char *zb = asst_slurp(p, &zn);
+    CHECKL(zb && zn > 3000, "tech pptx on disk %zu bytes", zn); free(zb);
+    const char *pnt = "{\"path\":\"out/n.pptx\",\"theme\":\"neon\",\"markdown\":\"# x\"}";
+    r = G(sid, "write_document", pnt); o = asst_tool_exec(sid, "write_document", pnt, &r, &ok);
+    CHECKL(!ok && o && strstr(o, "unknown theme \"neon\"; theme must be one of: clean, tech, warm"), "unknown theme refused with the list: %s", o ? o : "(null)"); free(o);
+    const char *pc = "{\"path\":\"out/c.pptx\",\"markdown\":\"# x\"}";
+    r = G(sid, "write_document", pc); o = asst_tool_exec(sid, "write_document", pc, &r, &ok);
+    CHECKL(ok && o && strstr(o, "theme clean"), "no theme = clean: %s", o ? o : "(null)"); free(o);
+    tj = asst_tools_json(NULL); CHECKL(tj && strstr(tj, "\"theme\":{\"type\":\"string\",\"description\":\"Slide look, .pptx only: clean") && strstr(tj, "tech = dark navy"), "write_document schema has theme with the three looks"); free(tj);
     /* source: 工作区里现成的 .md 一次短调用转成 pdf + docx, 不用把正文重发一遍 */
     snprintf(p, sizeof p, "%s/out/src.md", asst_ws); { FILE *f = fopen(p, "w"); fputs("# 源文件\n\n第一段。\n\n- 甲\n- 乙\n", f); fclose(f); }
     const char *ps = "{\"path\":\"out/src.pdf\",\"source\":\"out/src.md\",\"also\":\"docx\"}";
@@ -361,13 +375,111 @@ static void test_file(void) {
     CHECKL(asst_api(&up, &o, &ct2) == 200 && o.ptr && strstr(o.ptr, "{\"path\":\"inbox/合同-2.docx\""), "upload → inbox path: %s", o.ptr ? o.ptr : "(null)"); ds4_buf_free(&o);
 }
 
+/* 技能(asst_skill.c): 没装 → 工具表没有 use_skill; 装了 → 描述列"名字: 描述"、name 枚举; use_skill 给文件夹路径 + 文件表 + 去掉 frontmatter 的正文;
+ * 守门: 读技能文件放行且不置污点, 写拒; 页面接口 save / 上传 / delete; 名字与路径净化 */
+static void test_skills(void) {
+    char *t = asst_tools_json(NULL); CHECKL(t && !strstr(t, "use_skill"), "no skills installed → no use_skill tool"); free(t);
+    CHECKL(asst_skill_count() == 0, "count 0");
+    CHECKL(asst_skill_name_ok("pdf-forms") && asst_skill_name_ok("a1") && !asst_skill_name_ok("Pdf") && !asst_skill_name_ok("../x") && !asst_skill_name_ok("-x") && !asst_skill_name_ok("a b") && !asst_skill_name_ok(""), "skill name rules");
+    char err[256] = "";
+    CHECKL(!asst_skill_op("{\"op\":\"save\",\"name\":\"Bad Name\",\"md\":\"x\"}", err, sizeof err) && strstr(err, "lowercase"), "save rejects bad name: %s", err);
+    CHECKL(!asst_skill_op("{\"op\":\"save\",\"name\":\"empty\",\"md\":\"\"}", err, sizeof err) && strstr(err, "empty"), "save rejects empty md: %s", err);
+    /* ★不许带脚本★(10-14 用户定): 围栏代码块 / #! / 命令行 / 行内代码里的命令或脚本文件名 / <script> 都拒并报行号; 纯说明过 */
+    char why[256];
+    CHECKL(!asst_skill_check("# x\n\n```bash\nls\n```\n", why, sizeof why) && strstr(why, "line 3: fenced code block"), "fenced block rejected: %s", why);
+    CHECKL(!asst_skill_check("#!/bin/sh\necho hi\n", why, sizeof why) && strstr(why, "line 1: shebang"), "shebang rejected: %s", why);
+    CHECKL(!asst_skill_check("steps:\n- python3 scripts/fill.py in.json\n", why, sizeof why) && strstr(why, "line 2: command 'python3'"), "command line rejected: %s", why);
+    CHECKL(!asst_skill_check("| Read | `python scripts/thumbnail.py deck.pptx` |\n", why, sizeof why) && strstr(why, "line 1: command 'python' in inline code"), "command in inline code rejected: %s", why);
+    CHECKL(!asst_skill_check("Run `scripts/add_slide.py` after unpacking.\n", why, sizeof why) && strstr(why, "line 1: script file reference"), "script file name in inline code rejected: %s", why);
+    CHECKL(!asst_skill_check("1. `./scripts/x.sh` does it\n", why, sizeof why) && strstr(why, "command './'"), "./x rejected: %s", why);
+    CHECKL(!asst_skill_check("- curl https://x/y.json > out.json\n", why, sizeof why) && strstr(why, "command 'curl'"), "curl rejected: %s", why);
+    CHECKL(!asst_skill_check("<p>hi</p>\n<SCRIPT src=x>\n", why, sizeof why) && strstr(why, "line 2: <script>"), "script tag rejected: %s", why);
+    CHECKL(asst_skill_check("---\nname: a\ndescription: run the weekly report\n---\n# Weekly\n\n1. read reference/tpl.md\n2. use `write_document` with a .docx path, then `share` it\n- Node: the python folder is not involved\n- Make the title short; go over it twice\n", why, sizeof why), "prose with tool names, a lone word and 'go'/'make' mid-sentence passes: %s", why);
+    CHECKL(asst_skill_check("| Task | Approach |\n|---|---|\n| **Create** | write_document, path ends in .pptx |\n", why, sizeof why), "table of prose passes: %s", why);
+    const char *md1 = "---\nname: pdf-forms\ndescription: >\n  Fill PDF forms\n  from a JSON of field values.\nlicense: MIT\n---\n# PDF forms\n\n1. read reference/fields.md, then fill with write_document\n";
+    char body[2048]; ds4_buf jb = {0}; ds4_buf_puts(&jb, "{\"op\":\"save\",\"name\":\"pdf-forms\",\"md\":"); ds4_json_escape(&jb, md1); ds4_buf_putc(&jb, '}');
+    CHECKL(asst_skill_op(jb.ptr, err, sizeof err), "save pdf-forms: %s", err); ds4_buf_free(&jb);
+    CHECKL(!asst_skill_op("{\"op\":\"save\",\"name\":\"scripty\",\"md\":\"# S\\n\\n1. bash scripts/x.sh\\n\"}", err, sizeof err) && strstr(err, "SKILL.md rejected: line 3: command 'bash'"), "save with a command is rejected whole: %s", err);
+    snprintf(body, sizeof body, "%s/scripty", asst_skills); struct stat st; CHECKL(stat(body, &st) != 0, "rejected skill leaves no folder");
+    CHECKL(asst_skill_op("{\"op\":\"save\",\"name\":\"zh-report\",\"md\":\"# 周报\\n\\n按部门汇总。\"}", err, sizeof err), "save zh-report without frontmatter: %s", err);
+    char *w = asst_skill_put_file("pdf-forms", "../evil.sh", "x", 1); CHECKL(w != NULL, "put_file rejects .."); free(w);
+    w = asst_skill_put_file("pdf-forms", ".git/config", "x", 1); CHECKL(w && strstr(w, "hidden"), "put_file rejects hidden segment: %s", w ? w : "(null)"); free(w);
+    w = asst_skill_put_file("pdf-forms", "/etc/x", "x", 1); CHECKL(w != NULL, "put_file rejects absolute"); free(w);
+    w = asst_skill_put_file("pdf-forms", "scripts/fill.py", "print(1)\n", 9); CHECKL(w && strstr(w, "file type not allowed"), "put_file rejects .py: %s", w ? w : "(null)"); free(w);
+    w = asst_skill_put_file("pdf-forms", "helper", "#!/bin/sh\n", 10); CHECKL(w && strstr(w, "not allowed"), "put_file rejects extension-less: %s", w ? w : "(null)"); free(w);
+    w = asst_skill_put_file("pdf-forms", "notes.txt", "#!/bin/sh\necho\n", 15); CHECKL(w && strstr(w, "#!"), "put_file rejects #! in txt: %s", w ? w : "(null)"); free(w);
+    w = asst_skill_put_file("pdf-forms", "reference/how.md", "do `npm install x` first\n", 25); CHECKL(w && strstr(w, "how.md rejected: line 1: command 'npm'"), "put_file checks md text: %s", w ? w : "(null)"); free(w);
+    w = asst_skill_put_file("pdf-forms", "reference/fields.md", "a\n", 2); CHECKL(!w, "put_file nested md"); free(w);
+    w = asst_skill_put_file("pdf-forms", "reference/form.pdf", "%PDF-1.4\n", 9); CHECKL(!w, "put_file pdf"); free(w);
+    snprintf(body, sizeof body, "%s/pdf-forms/reference/form.pdf", asst_skills); CHECKL(!stat(body, &st) && !(st.st_mode & 0100), "no exec bit ever");
+    /* 仓库自带的 PPT 示例技能(docs/skills/pptx, 纯说明 + 示例稿)必须过检查并装得进 */
+    { char sp[ASST_PATH + 64]; size_t sn = 0; snprintf(sp, sizeof sp, "%s/docs/skills/pptx/SKILL.md", asst_repo); char *smd = asst_slurp(sp, &sn);
+      w = smd ? asst_skill_put_file("pptx", "SKILL.md", smd, sn) : strdup("missing docs/skills/pptx/SKILL.md"); CHECKL(!w, "bundled pptx skill SKILL.md accepted: %s", w ? w : "ok"); free(w); free(smd);
+      snprintf(sp, sizeof sp, "%s/docs/skills/pptx/reference/example-deck.md", asst_repo); smd = asst_slurp(sp, &sn);
+      w = smd ? asst_skill_put_file("pptx", "reference/example-deck.md", smd, sn) : strdup("missing example-deck.md"); CHECKL(!w, "bundled pptx example accepted: %s", w ? w : "ok"); free(w); free(smd);
+      char *pr = asst_skill_load("pptx"); CHECKL(pr && strstr(pr, "  reference/example-deck.md (") && strstr(pr, "---\n# 做一份 PPT\n") && strstr(pr, "write_document"), "bundled pptx skill loads: %.300s", pr ? pr : "(null)");
+      if (pr) printf("---- use_skill(pptx) head ----\n%.700s\n----\n", pr);
+      free(pr); }
+    /* 半拉子文件夹(没有 SKILL.md)不算技能 */
+    snprintf(body, sizeof body, "%s/half", asst_skills); mkdir(body, 0700);
+    CHECKL(asst_skill_count() == 3, "count 3 (folder without SKILL.md ignored): %d", asst_skill_count());
+    t = asst_tools_json(NULL);
+    const char *us0 = t ? strstr(t, "\"name\":\"use_skill\"") : NULL;
+    char *us = us0 ? strdup(us0) : NULL; if (us) { char *nx = strstr(us + 1, "{\"type\":\"function\""); if (nx) *nx = 0; }   /* 只看 use_skill 这一个对象(后面 run 的工具箱描述里也有 python3) */
+    CHECKL(us && strstr(us, "- pdf-forms: Fill PDF forms from a JSON of field values.") && strstr(us, "- pptx: 做 PPT") && strstr(us, "- zh-report: 周报") && strstr(us, "\"enum\":[\"pdf-forms\",\"pptx\",\"zh-report\"]"), "use_skill lists skills (folded description joined, no-frontmatter first line) with name enum: %.600s", us ? us : "(null)");
+    CHECKL(us && !strstr(us, "license") && !strstr(us, "fields.md") && strstr(us, "Skills contain no scripts") && !strstr(us, "run scripts"), "tool description carries descriptions only and says skills carry no scripts");
+    free(us); free(t);
+    char *z = asst_system_prompt("你好", false); CHECKL(z && !strstr(z, "技能") && !strstr(z, "skill"), "prompt unchanged by skills (tool description is the only door)"); free(z);
+    char *r = asst_skill_load("pdf-forms");
+    char want[ASST_PATH + 128]; snprintf(want, sizeof want, "folder: %s/pdf-forms (read-only", asst_skills);
+    CHECKL(r && !strncmp(r, "skill: pdf-forms\n", 17) && strstr(r, want) && strstr(r, "  SKILL.md (") && strstr(r, "  reference/fields.md (2 bytes)\n") && strstr(r, "  reference/form.pdf (9 bytes)\n") && !strstr(r, "scripts/") && strstr(r, "---\n# PDF forms\n") && !strstr(r, "license: MIT"), "use_skill result: folder + files + body without frontmatter: %s", r ? r : "(null)");
+    free(r);
+    r = asst_skill_load("zh-report"); CHECKL(r && strstr(r, "---\n# 周报\n"), "no-frontmatter body kept whole: %s", r ? r : "(null)"); free(r);
+    r = asst_skill_load("nope"); CHECKL(r && !strncmp(r, "error", 5), "unknown skill"); free(r);
+    r = asst_skill_load("half"); CHECKL(r && !strncmp(r, "error", 5), "folder without SKILL.md"); free(r);
+    char sid[ASST_ID_LEN + 1]; asst_session_new(sid, "sk", "x", false);
+    int ok = 0; asst_gres g = G(sid, "use_skill", "{\"name\":\"pdf-forms\"}");
+    CHECKL(g.dec == ASST_ALLOW && !strcmp(g.cls, "skill"), "guard use_skill: %s %s", dec_name(g.dec), g.cls);
+    r = asst_tool_exec(sid, "use_skill", "{\"name\":\"pdf-forms\"}", &g, &ok); CHECKL(ok && r && strstr(r, "# PDF forms"), "exec use_skill via registry"); free(r);
+    /* 守门: 技能文件读放行、不置污点; 写拒(不可审批); 沙盒规则里技能夹是只读根 */
+    snprintf(body, sizeof body, "{\"path\":\"%s/pdf-forms/reference/fields.md\"}", asst_skills);
+    g = G(sid, "read_file", body); CHECKL(g.dec == ASST_ALLOW && strstr(g.reason, "skill"), "read skill file: %s %s", dec_name(g.dec), g.reason);
+    asst_guard_mark(sid, g.cls, g.path);
+    char *v = NULL; CHECKL(asst_meta_get(sid, "taint_priv", &v) && !strcmp(v, "false"), "reading a skill does not taint: %s", v ? v : "(null)"); free(v);
+    asst_sbx_spec sp; asst_guard_spec(&g, true, &sp);
+    bool ro = false; for (int i = 0; i < sp.nro; i++) if (!strcmp(sp.ro[i], asst_skills)) ro = true;
+    CHECKL(ro, "sandbox spec mounts skills read-only");
+    snprintf(body, sizeof body, "{\"path\":\"%s/pdf-forms/SKILL.md\",\"content\":\"pwned\"}", asst_skills);
+    g = G(sid, "write_file", body); CHECKL(g.dec == ASST_DENY && strstr(g.reason, "Skills tab"), "write into skill denied: %s %s", dec_name(g.dec), g.reason);
+    snprintf(body, sizeof body, "{\"path\":\"%s\"}", asst_skills);
+    g = G(sid, "list_dir", body); CHECKL(g.dec == ASST_ALLOW, "list skills root: %s", dec_name(g.dec));
+    /* 真在沙盒里读: 守门给的路径 + 只读根 */
+    snprintf(body, sizeof body, "{\"path\":\"%s/pdf-forms/reference/fields.md\"}", asst_skills);
+    g = G(sid, "read_file", body); r = asst_tool_exec(sid, "read_file", body, &g, &ok); CHECKL(ok && r && strstr(r, "a"), "read skill file inside sandbox: %s", r ? r : "(null)"); free(r);
+    /* 接口: GET 列表; POST skill_file 原始体; POST delete → trash */
+    asst_req gq = { "GET", "/api/assistant/skills", "", "", 0, true, "localhost", "", "", true };
+    ds4_buf o = {0}; const char *ct = "";
+    CHECKL(asst_api(&gq, &o, &ct) == 200 && o.ptr && strstr(o.ptr, "\"name\":\"pdf-forms\",\"description\":\"Fill PDF forms from a JSON of field values.\"") && strstr(o.ptr, "{\"path\":\"reference/form.pdf\",\"size\":9}") && strstr(o.ptr, "\"md\":\"---\\nname: pdf-forms") && strstr(o.ptr, "\"name\":\"zh-report\""), "GET skills: %.400s", o.ptr ? o.ptr : "(null)"); ds4_buf_free(&o); o = (ds4_buf){0};
+    asst_req pf = { "POST", "/api/assistant/skill_file", "name=zh-report&path=tpl%2Fweek.md", "# {{dept}}\n", 11, true, "localhost", "", "1", true };
+    CHECKL(asst_api(&pf, &o, &ct) == 200, "POST skill_file: %s", o.ptr ? o.ptr : ""); ds4_buf_free(&o); o = (ds4_buf){0};
+    asst_req pb = { "POST", "/api/assistant/skill_file", "name=zh-report&path=..%2Fx", "x", 1, true, "localhost", "", "1", true };
+    CHECKL(asst_api(&pb, &o, &ct) == 400, "POST skill_file .. → 400"); ds4_buf_free(&o); o = (ds4_buf){0};
+    asst_req pd = { "POST", "/api/assistant/skills", "", "{\"op\":\"delete\",\"name\":\"zh-report\"}", 34, true, "localhost", "", "1", true };
+    CHECKL(asst_api(&pd, &o, &ct) == 200 && o.ptr && !strstr(o.ptr, "zh-report"), "delete skill → gone from list: %.200s", o.ptr ? o.ptr : ""); ds4_buf_free(&o);
+    snprintf(body, sizeof body, "%s/trash/skills", asst_root); DIR *td = opendir(body); bool trashed = false; struct dirent *e;
+    while (td && (e = readdir(td))) if (!strncmp(e->d_name, "zh-report-", 10)) trashed = true;
+    if (td) closedir(td);
+    CHECKL(trashed, "deleted skill moved into trash/skills/");
+    t = asst_tools_json(NULL); CHECKL(t && strstr(t, "\"enum\":[\"pdf-forms\",\"pptx\"]"), "tool enum follows the folder"); free(t);
+}
+
 int asst_test_logic(const char *base) {
     test_json();
     char root[4400], err[256]; snprintf(root, sizeof root, "%s/assist", base);
     if (!asst_init(root, err, sizeof err)) { printf("FAIL asst_init: %s\n", err); return fails + 1; }
     char link[4600], tgt[4600]; snprintf(link, sizeof link, "%s/link_to_secret", asst_ws); snprintf(tgt, sizeof tgt, "%s/outside/secret.txt", base);
     if (symlink(tgt, link)) perror("symlink");
-    test_lang(); test_secret(); test_auth(); test_store_memory(); test_guard(base); test_sse(); test_device_line(); test_device_channel(); test_file(); test_geo(); test_office();
+    test_lang(); test_secret(); test_auth(); test_store_memory(); test_guard(base); test_sse(); test_device_line(); test_device_channel(); test_file(); test_geo(); test_office(); test_skills();
     printf("asst logic: %d passed, %d failed\n", passes, fails);
     return fails;
 }

@@ -57,10 +57,13 @@ static void serve(int fd) {
     const int tools = count(body, "\"role\":\"tool\"");
     const bool has = strstr(body, "\"name\":\"locate\"") != NULL;   /* 工具表里有设备工具(页面报了能力)才走设备那几步 */
     sse(fd, "{\"reasoning_content\":\"假模型在想。\"}");
-    if (tools == 0 && strstr(body, "\"name\":\"read_clipboard\"")) {
+    if (tools == 0 && strstr(body, "通知我")) {   /* 任务页 e2e: 那句话里有"通知我" → 先调 notify(页面开着 → 服务端落 notices, 页面弹), 下一轮直接终稿 */
+        sse(fd, "{\"content\":\"先通知你一声。\"}");
+        call1(fd, "call_ntf", "notify", "{\\\"text\\\":\\\"e2e 通知: 价格降了\\\"}");
+    } else if (tools == 0 && strstr(body, "\"name\":\"read_clipboard\"")) {
         sse(fd, "{\"content\":\"我先看看你复制的内容。\"}");
         call1(fd, "call_clip", "read_clipboard", "{}");
-    } else if (tools == 1) {
+    } else if (tools == 1 && !strstr(body, "通知我")) {
         char clip[4096]; last_tool_content(body, clip, sizeof clip);
         char args[8192]; snprintf(args, sizeof args, "{\\\"path\\\":\\\"附近美食报告.md\\\",\\\"content\\\":\\\"# 附近美食\\\\n\\\\n剪贴板里是: %s\\\\n\\\\n- 龙井草堂 ☎ 0571-87979999\\\\n\\\"}", clip);
         sse(fd, "{\"content\":\"整理成一份报告。\"}");

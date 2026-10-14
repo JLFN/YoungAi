@@ -47,6 +47,9 @@ EVAL_CPU_OBJS := $(EVAL_SRCS:.c=_cpu.o)
 # 个人助理模块(src/assistant/, 见下方 ds4-train 段): 变量要在用到它的规则之前定义, make 解析规则时就展开前置
 ASST_SRCS := $(sort $(wildcard src/assistant/*.c))
 ASST_OBJS := $(ASST_SRCS:.c=.o)
+# 推送密码学(src/push/: P-256 / AES-GCM / HKDF / RFC 8291 加密 / VAPID JWT); 纯主机 C, 零依赖; 金标 tests/push/t_push.c
+PUSH_SRCS := $(sort $(wildcard src/push/*.c))
+PUSH_OBJS := $(PUSH_SRCS:.c=.o)
 # 官方产出工具的格式基元(src/office/: zip/deflate/Markdown/docx/xlsx, 方案稿 docs/assistant_office.md); 纯主机 C, 零依赖
 OFFICE_SRCS := $(sort $(wildcard src/office/*.c))
 OFFICE_OBJS := $(OFFICE_SRCS:.c=.o)
@@ -257,10 +260,25 @@ src/train/%.o: src/train/%.c src/train/train_internal.h src/common/ds4_json.h
 TRAIN_AUTH_OBJS := src/train/train_auth.o src/train/train_keys.o src/common/ds4_sha256.o
 src/train/train_auth.o src/train/train_keys.o: src/common/ds4_sha256.h
 # 设置弹窗(云服务器 / frp 穿透 / HTTPS 证书, 只有主进程): 外部命令 ssh curl tar unzip openssl 都是 fork+exec, 不链任何库
-TRAIN_NET_OBJS := src/train/train_net.o src/train/train_exec.o src/train/train_frp.o src/train/train_frps.o src/train/train_sshtun.o src/train/train_tunnel.o src/train/train_cert.o
+TRAIN_NET_OBJS := src/train/train_net.o src/train/train_phone.o src/train/train_exec.o src/train/train_frp.o src/train/train_frps.o src/train/train_sshtun.o src/train/train_tunnel.o src/train/train_cert.o
 src/train/train_frp.o: src/common/ds4_sha256.h
-ds4-train: src/train/train_main.o src/train/train_http.o src/train/train_proxy.o $(TRAIN_API_OBJS) $(TRAIN_AUTH_OBJS) $(TRAIN_NET_OBJS) $(ASST_OBJS) $(OFFICE_OBJS) $(VIDEO_OBJS) $(TTS_LINK) $(WEB_OBJS) src/common/ds4_json.o
-	$(CC) $(CFLAGS) -o $@ src/train/train_main.o src/train/train_http.o src/train/train_proxy.o $(TRAIN_API_OBJS) $(TRAIN_AUTH_OBJS) $(TRAIN_NET_OBJS) $(ASST_OBJS) $(OFFICE_OBJS) $(VIDEO_OBJS) $(TTS_LINK) $(WEB_OBJS) src/common/ds4_json.o $(LDLIBS)
+# 云手机运行时(src/phone/, 方案稿 docs/assistant_phone.md): 独立小二进制, root 跑(sudoers 一行放行), 只在 Linux 有 —— 用的是 Linux 命名空间/cgroup/binder
+ifneq ($(UNAME_S),Darwin)
+PHONE_OBJS := src/phone/phone_main.o src/phone/phone_cg.o src/phone/phone_net.o src/phone/phone_mnt.o src/phone/phone_rc.o
+src/phone/%.o: src/phone/%.c src/phone/phone_internal.h
+	$(CC) $(CFLAGS) -c -o $@ $<
+ds4-phone: $(PHONE_OBJS)
+	$(CC) $(CFLAGS) -o $@ $(PHONE_OBJS)
+endif
+# 云手机门 0 探针(tests/phone/adbprobe.c): 只链 adb 客户端与 ds4_buf, 不链引擎
+tests/phone/adbprobe: tests/phone/adbprobe.c src/assistant/asst_adb.o src/common/ds4_json.o
+	$(CC) $(CFLAGS) -o $@ tests/phone/adbprobe.c src/assistant/asst_adb.o src/common/ds4_json.o
+ds4-train: src/train/train_main.o src/train/train_http.o src/train/train_proxy.o $(TRAIN_API_OBJS) $(TRAIN_AUTH_OBJS) $(TRAIN_NET_OBJS) $(ASST_OBJS) $(PUSH_OBJS) $(OFFICE_OBJS) $(VIDEO_OBJS) $(TTS_LINK) $(WEB_OBJS) src/common/ds4_json.o
+	$(CC) $(CFLAGS) -o $@ src/train/train_main.o src/train/train_http.o src/train/train_proxy.o $(TRAIN_API_OBJS) $(TRAIN_AUTH_OBJS) $(TRAIN_NET_OBJS) $(ASST_OBJS) $(PUSH_OBJS) $(OFFICE_OBJS) $(VIDEO_OBJS) $(TTS_LINK) $(WEB_OBJS) src/common/ds4_json.o $(LDLIBS)
+src/push/%.o: src/push/%.c src/push/ds4_push.h src/common/ds4_sha256.h
+	$(CC) $(CFLAGS) -c $< -o $@
+ds4_push_test: tests/push/t_push.c $(PUSH_OBJS) src/common/ds4_sha256.o
+	$(CC) $(CFLAGS) -o $@ tests/push/t_push.c $(PUSH_OBJS) src/common/ds4_sha256.o $(LDLIBS)
 src/office/%.o: src/office/%.c src/office/ds4_office.h src/office/office_internal.h src/office/office_pdf.h src/common/ds4_json.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 # 格式基元单测: 金标逐字节 + flate 往返 + 公式 + 解析器; 有 unzip/xmllint/textutil 的机器再用它们复验(没有就 SKIP)
@@ -293,8 +311,8 @@ tests/asst/fake/ds4-server: tests/asst/fake_model.c
 asst-e2e: ds4-train tests/asst/fake/ds4-server
 	node tests/asst/e2e_device.mjs
 # 沙盒逃逸单测 + 纯逻辑单测 + 工作台登录单测(不要模型, 秒级; make test 里跑)
-ds4_asst_test: tests/asst/t_asst_sbx.c tests/asst/t_asst_logic.c tests/asst/t_asst_video.c tests/asst/t_studio_auth.c tests/asst/t_studio_net.c tests/asst/t_studio_models.c $(ASST_OBJS) $(OFFICE_OBJS) $(VIDEO_OBJS) $(TTS_LINK) $(WEB_OBJS) $(TRAIN_API_OBJS) $(TRAIN_AUTH_OBJS) $(TRAIN_NET_OBJS) src/common/ds4_json.o
-	$(CC) $(CFLAGS) -o $@ tests/asst/t_asst_sbx.c tests/asst/t_asst_logic.c tests/asst/t_asst_video.c tests/asst/t_studio_auth.c tests/asst/t_studio_net.c tests/asst/t_studio_models.c $(ASST_OBJS) $(OFFICE_OBJS) $(VIDEO_OBJS) $(TTS_LINK) $(WEB_OBJS) $(TRAIN_API_OBJS) $(TRAIN_AUTH_OBJS) $(TRAIN_NET_OBJS) src/common/ds4_json.o $(LDLIBS)
+ds4_asst_test: tests/asst/t_asst_sbx.c tests/asst/t_asst_logic.c tests/asst/t_asst_video.c tests/asst/t_studio_auth.c tests/asst/t_studio_net.c tests/asst/t_studio_models.c tests/asst/t_asst_phone.c tests/asst/t_asst_task.c tests/asst/t_asst_push.c $(ASST_OBJS) $(PUSH_OBJS) $(OFFICE_OBJS) $(VIDEO_OBJS) $(TTS_LINK) $(WEB_OBJS) $(TRAIN_API_OBJS) $(TRAIN_AUTH_OBJS) $(TRAIN_NET_OBJS) src/common/ds4_json.o
+	$(CC) $(CFLAGS) -o $@ tests/asst/t_asst_sbx.c tests/asst/t_asst_logic.c tests/asst/t_asst_video.c tests/asst/t_studio_auth.c tests/asst/t_studio_net.c tests/asst/t_studio_models.c tests/asst/t_asst_phone.c tests/asst/t_asst_task.c tests/asst/t_asst_push.c $(ASST_OBJS) $(PUSH_OBJS) $(OFFICE_OBJS) $(VIDEO_OBJS) $(TTS_LINK) $(WEB_OBJS) $(TRAIN_API_OBJS) $(TRAIN_AUTH_OBJS) $(TRAIN_NET_OBJS) src/common/ds4_json.o $(LDLIBS)
 
 
 # Standalone capability modules (self-contained, no engine coupling): z 隐变量
@@ -459,13 +477,14 @@ ds4_unit: tests/unit/test_common.c tests/unit/test_zmod.c tests/unit/t_zfinetune
 	$(CC) $(CFLAGS) -Isrc/common -I. -o $@ tests/unit/test_common.c tests/unit/test_zmod.c tests/unit/t_zfinetune.c tests/unit/t_sha256.c \
 	    src/common/ds4_sha256.c src/common/ds4_quantfmt.c src/common/ds4_gguf.c ds4_z.c ds4_zchain.c ds4_zfinetune.c ds4_loss.c $(LDLIBS)
 
-test: ds4_test ds4-eval ds4_unit ds4_asst_test ds4_office_test ds4_video_test ds4_tts_test linecount
+test: ds4_test ds4-eval ds4_unit ds4_asst_test ds4_office_test ds4_video_test ds4_tts_test ds4_push_test linecount
 	./ds4_unit
 	./ds4_office_test
 	./ds4_video_test
 	./ds4_tts_test gguf/tts/zh-huayan.gguf tests/tts/fixtures zh
 	./ds4_tts_test gguf/tts/en-lessac.gguf tests/tts/fixtures en
 	./ds4_asst_test
+	./ds4_push_test
 	./ds4-eval --self-test-extractors
 	./ds4_test
 
@@ -481,7 +500,7 @@ linecount:
 	if [ -n "$$viol" ]; then echo "linecount: 以下文件超 500 行(豁免走 .linecount-exempt, 要带理由):"; echo "$$viol"; exit 1; \
 	else echo "linecount: ok (≤500 行, 豁免清单外零超标)"; fi
 clean:
-	rm -f ds4 ds4-server ds4-bench ds4-eval ds4-agent ds4_cpu ds4_native ds4_server_test ds4_test ds4_unit ds4_asst_test ds4_office_test ds4_video_test tests/video/vidcheck e0-pingpong mm-ui mm-ocr *.o src/assistant/*.o src/office/*.o src/video/*.o src/cli/*.o src/bench/*.o src/kv/*.o src/web/*.o src/eval/*.o src/agent/*.o src/dist/*.o src/server/*.o src/core/*.o src/common/*.o src/metal/*.o tests/server_tests_*.o tests/t_*.o tests/cuda_long_context_smoke tests/cuda_long_context_smoke.o
+	rm -f ds4 ds4-server ds4-bench ds4-eval ds4-agent ds4-phone ds4_cpu ds4_native ds4_server_test ds4_test ds4_unit ds4_asst_test ds4_office_test ds4_video_test ds4_push_test tests/video/vidcheck e0-pingpong mm-ui mm-ocr *.o src/assistant/*.o src/phone/*.o src/push/*.o src/office/*.o src/video/*.o src/cli/*.o src/bench/*.o src/kv/*.o src/web/*.o src/eval/*.o src/agent/*.o src/dist/*.o src/server/*.o src/core/*.o src/common/*.o src/metal/*.o tests/server_tests_*.o tests/t_*.o tests/cuda_long_context_smoke tests/cuda_long_context_smoke.o
 
 # Task 04 / E0: standalone thunderbolt ping-pong latency gate (no core deps, no
 # model). Defined after the default targets so it never becomes the default goal.

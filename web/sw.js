@@ -29,3 +29,21 @@ self.addEventListener("fetch", e => {
   }
   if (STATIC.has(url.pathname)) e.respondWith(caches.match(url.pathname).then(hit => hit || fetch(req)));
 });
+
+/* 推送(10-14): 服务端(src/assistant/asst_push.c)按 RFC 8291 加密发来 {title, body, url}, 浏览器解开后到这里; 页面没开着也能收。
+   点通知: 有开着的工作台窗口就聚焦它并把 url 递过去(页面自己切到那个对话), 没有就开一个。
+   服务端在有页面正开着看时不推(改成页面里弹), 所以这里不再判"页面可见就不显示" —— Chrome 对"收到推送却不显示通知"有配额, 多了会替你弹一条"网站已在后台更新"。 */
+self.addEventListener("push", e => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch (_) { d = { body: e.data ? e.data.text() : "" }; }
+  e.waitUntil(self.registration.showNotification(d.title || "YoungAi", { body: d.body || "", icon: "/icon-192.png", badge: "/icon-192.png", data: { url: d.url || "/" } }));
+});
+self.addEventListener("notificationclick", e => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || "/";
+  e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(cs => {
+    const c = cs.find(x => x.url.startsWith(self.location.origin));
+    if (c) { c.postMessage({ notice: url }); return c.focus(); }
+    return self.clients.openWindow(url);
+  }));
+});

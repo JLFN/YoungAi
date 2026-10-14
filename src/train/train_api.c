@@ -139,7 +139,7 @@ static int api_upload(const tr_req *rq, ds4_buf *out) {
     char kind[16], name[256], dir[256], err[300] = "";
     tr_query_get(rq->query, "kind", kind, sizeof kind); tr_query_get(rq->query, "name", name, sizeof name); tr_query_get(rq->query, "dir", dir, sizeof dir);
     if (!rq->body || !rq->body_len) return reply(out, false, "空文件", 400);
-    if (rq->body_len > TR_UPLOAD_MAX) return reply(out, false, "超过 64 MB", 400);
+    if (rq->body_len > TR_UPLOAD_MAX) return reply(out, false, "超过 256 MB", 400);
     if (!name[0] || !tr_clean(name, "._-") || strstr(name, "..")) return reply(out, false, "文件名只许字母数字与 . _ -", 400);
     char path[TR_PATH + 600];
     if (!strcmp(kind, "jsonl")) {

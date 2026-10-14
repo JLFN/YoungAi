@@ -31,7 +31,7 @@
 #include <string.h>
 
 #define TR_PATH 1024
-#define TR_UPLOAD_MAX (64u * 1024u * 1024u)   /* 与 ds4-server 的请求体上限同(server_httpd.c max_body) */
+#define TR_UPLOAD_MAX (512u * 1024u * 1024u)   /* 曾与 ds4-server 同为 64 MB; 云手机装 apk 走原始体, 淘宝闪购 85 MB(10-13)、微信 8.0.79 arm64 285 MB(10-14) ⇒ 512 MB(一次一个请求, 内存可控) */
 
 typedef struct {
     char method[8];
@@ -95,6 +95,10 @@ static inline const char *tr_frp_token(const tr_cloud *c) { return c->ext_token[
 int tr_pub_port(const tr_cloud *c, bool tls, int page_port);
 void tr_net_init(const char *dir, int page_port);   /* dir = NULL → ~/.ds4/studio; 建 askpass 链接; 穿透开着就把 frpc 拉起来 */
 void tr_net_shutdown(void);                          /* 主进程退出前: 杀 frpc(它自成会话, 不会跟着走) */
+
+/* train_phone.c: 云手机 REST(/api/phone/…, 方案稿 docs/assistant_phone.md §3.2; 只有主进程) */
+bool tr_phone_path(const char *path);
+int tr_phone_api(const tr_req *rq, ds4_buf *out, const char **ctype);
 int tr_net_api(const tr_req *rq, ds4_buf *out);      /* /api/net/…; 不是这条路返回 -1 */
 int tr_askpass_main(const char *argv0, const char *prompt);   /* argv[0] 叫 ds4-askpass: 把同目录 cloud 文件里的密码打到 stdout(ssh 经 SSH_ASKPASS 调它) */
 const char *tr_net_dir(void);                        /* ~/.ds4/studio */

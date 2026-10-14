@@ -110,7 +110,7 @@
   .ok { color: #4ade80; } .bad { color: #f87171; }
   pre.box { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 11px 12px; font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-word; max-height: 460px; overflow: auto; margin: 0; }
   #toast { position: fixed; right: 20px; bottom: 20px; max-width: 420px; background: var(--panel-2); border: 1px solid var(--accent-line); border-radius: 10px; padding: 10px 14px; font-size: 13.5px; box-shadow: 0 10px 30px rgba(0,0,0,.4); opacity: 0; transform: translateY(8px); transition: .2s; pointer-events: none; z-index: 50; }
-  #toast.on { opacity: 1; transform: none; }
+  #toast.on { opacity: 1; transform: none; pointer-events: auto; cursor: pointer; }   /* 页内通知(pollNotices)点了进那个对话 */
   #toast.err { border-color: rgba(239,68,68,.6); }
 
   /* ---------- 聊天 ---------- */
@@ -211,7 +211,24 @@
   #btn-attach { padding: 4px 9px; font-size: 15px; line-height: 1; }
   .sdot.waiting_device { background: var(--accent-2); animation: pulse .9s infinite; }
   @media (max-width: 760px) { .deliver { margin-left: 0; } }
+  .tk-list .row { display: flex; align-items: flex-start; gap: 10px; padding: 11px 10px; border-radius: 9px; border: 1px solid var(--line); margin-bottom: 8px; }
+  .tk-list .row.done { opacity: .62; }
+  .tk-list .row .sdot { margin-top: 6px; }
+  .tk-list .row .tx { flex: 1; min-width: 0; }
+  .tk-list .row b { font-weight: 600; font-size: 13.5px; word-break: break-word; }
+  .tk-list .row small { display: block; color: var(--dim); font-size: 12px; line-height: 1.4; margin-top: 3px; word-break: break-word; }
+  .tk-list .row .last { color: var(--text); white-space: pre-wrap; max-height: 5.6em; overflow: hidden; }
+  .tk-list .row .ops { display: flex; gap: 4px; flex: none; flex-wrap: wrap; justify-content: flex-end; }
+  .tk-list .row .ops button { padding: 3px 8px; font-size: 12px; }
   .mem-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .sk-grid { display: grid; grid-template-columns: minmax(260px, 1fr) 2fr; gap: 16px; align-items: start; }
+  @media (max-width: 1100px) { .sk-grid { grid-template-columns: 1fr; } }
+  .sk-list .row { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; cursor: pointer; border: 1px solid transparent; }
+  .sk-list .row:hover { background: var(--hover); } .sk-list .row.sel { background: var(--accent-soft); border-color: var(--accent-line); }
+  .sk-list .row b { font-weight: 600; font-size: 13.5px; } .sk-list .row small { display: block; color: var(--dim); font-size: 12px; line-height: 1.35; margin-top: 2px; word-break: break-word; }
+  .sk-list .row .n { flex: none; color: var(--faint); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+  .sk-files .f { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; font: 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; border-bottom: 1px dashed var(--border); word-break: break-all; }
+  .sk-files .f span:last-child { color: var(--dim); flex: none; }
   textarea.memtxt { width: 100%; min-height: 360px; resize: vertical; font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; margin: 10px 0; }
   #v-act .card { margin-bottom: 16px; } #v-act td.wrap { white-space: normal; word-break: break-all; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; } #v-act td .act { font-size: 12.5px; padding: 3px 9px; }
   @media (max-width: 1100px) { .mem-grid { grid-template-columns: 1fr; } }
@@ -357,6 +374,30 @@
   .steps span.bad { color: #fca5a5; border-color: rgba(239,68,68,.55); }
   .serr { color: #fca5a5; font-size: 13px; } .serr:empty, .swarn:empty { display: none; } .swarn { color: #fcd34d; font-size: 13px; }
   .serr code, .swarn code { display: block; margin-top: 4px; color: var(--dim); font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; }
+  /* ---------- 云手机页: 竖屏 9:16 画面 + 右侧三键/输入/应用/装 apk ---------- */
+  /* 画面按可视高度撑满(9:16), 宽度跟着算; 手机竖屏时宽度撑满、高度跟着算。全屏按钮 = 画面元素 requestFullscreen */
+  .phwrap { display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap; padding: 16px; }
+  [data-shell=app] #v-phone { padding: 0 0 28px; }   /* 手机上画面要吃满高度: 去掉视图和容器的内边距, 画面水平居中, 按键那一排在画面下面(往下滑) */
+  [data-shell=app] .phwrap { padding: 0; gap: 10px; justify-content: center; }
+  [data-shell=app] .phscreen { border-radius: 0; }
+  /* 沉浸(⛶ 在没有元素全屏接口的浏览器上, 典型 iOS Safari/PWA): 藏顶栏底栏和右栏, 画面吃满整个窗口, 角上浮一个退出键 */
+  [data-immersive] .topbar, [data-immersive] .tabbar, [data-immersive] .phside, [data-immersive] aside { display: none !important; }
+  [data-immersive] .view { padding: 0; overflow: hidden; } [data-immersive] .phwrap { padding: 0; margin: 0; width: 100%; justify-content: center; align-items: center; min-height: 100vh; background: #000; }
+  [data-immersive] .phscreen, .phscreen:fullscreen { border: 0; border-radius: 0; }
+  #ph-exit { position: absolute; top: 8px; right: 8px; z-index: 2; display: none; width: 34px; height: 34px; border-radius: 17px; background: rgba(0,0,0,.55); color: #fff; border: 1px solid rgba(255,255,255,.4); font-size: 16px; line-height: 32px; text-align: center; padding: 0; }
+  [data-immersive] #ph-exit, .phscreen:fullscreen #ph-exit { display: block; }
+  /* 9:16 的盒子用 padding-top 撑高(177.78% of 宽), 画面绝对定位铺满 —— 不靠 aspect-ratio: 不支持它的浏览器会把盒子压成一条, 画面跟着被拉扁(10-13 用户实撞) */
+  /* 盒子的宽高由 phLayout() 按窗口算好直接写在 style 上(9:16), 画面 top/left 定位铺满 —— 不用 aspect-ratio / inset / ::before 这些新特性:
+     不认它们的浏览器把盒子压扁、把画面挪到盒子外(10-13 用户两次实撞: "压缩变形" → "只有上半截") */
+  .phscreen { position: relative; width: 360px; height: 640px; background: #000; border-radius: 16px; overflow: hidden; border: 1px solid var(--border); touch-action: none; cursor: crosshair; flex: none; }
+  /* !important: app 外壳里有一条给监控图表的 canvas 定高规则(190px), 把云手机画面也压成一条, 只显示上半截(10-13 用户实撞, 桌面壳没这条所以复现不出) */
+  .phscreen canvas, .phscreen img { position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; display: block; }
+  .phscreen canvas[hidden], .phscreen img[hidden] { display: none; }   /* 上一行的 display:block 会盖过 hidden 属性: 退路的旧截图盖在视频上面(10-13 实撞) */
+  .phscreen:fullscreen { border-radius: 0; border: 0; background: #000; }
+  .phside { flex: 1; min-width: 240px; display: flex; flex-direction: column; gap: 10px; }
+  .phkeys { display: flex; gap: 8px; } .phkeys button { flex: 1; font-size: 15px; }
+  .phtype { display: flex; gap: 8px; } .phtype input { flex: 1; }
+  .phapps { display: flex; flex-wrap: wrap; gap: 6px; } .phapps button { font-size: 12px; padding: 4px 9px; }
   [data-shell=app] .sgrid { grid-template-columns: 1fr 96px; } [data-shell=app] .sgrid.two { grid-template-columns: 1fr; }
   [data-shell=app] #settings { padding: 0; align-items: stretch; } [data-shell=app] .sbox { max-width: none; border-radius: 0; border: 0; padding-bottom: env(safe-area-inset-bottom); }
   [data-shell=app] .shead { padding-top: calc(14px + env(safe-area-inset-top)); }
@@ -412,6 +453,7 @@
   [data-shell=app] body:has(textarea:focus, input:not([type=checkbox]):focus) .tabbar { display: none; }
   .tabbar a { flex: 1; position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 7px 0 6px; font-size: 11px; color: var(--faint); text-decoration: none; cursor: pointer; }
   .tabbar a svg.i { width: 23px; height: 23px; }
+  .tabbar a[hidden] { display: none; }   /* 上一条 .tabbar a 的 display:flex 会盖过 hidden 属性: 手机没起来时云手机格照样占位 */
   .tabbar a.on { color: var(--accent-2); }
   .tabbar .tdot { position: absolute; top: 6px; left: calc(50% + 9px); width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 2px var(--side); animation: pulse 1.6s infinite; }
   .tabbar .tpct { position: absolute; top: 3px; left: calc(50% + 8px); font-size: 9.5px; padding: 0 4px; border-radius: 6px; background: var(--accent); color: #fff; }
@@ -483,7 +525,10 @@
   <div class="brand"><img src="/logo.jpg" alt=""><span>YoungAi<small data-i18n="brand_sub">DwarfStar 引擎</small></span></div>
   <nav>
     <a data-tab="chat"><svg class="i" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg><span data-i18n="tab_chat">助理</span></a>
+    <a data-tab="tasks"><svg class="i" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/></svg><span data-i18n="tab_tasks">任务</span><span class="ext" id="nav-tasks"></span></a>
+    <a data-tab="phone" id="nav-phone" hidden><svg class="i" viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M11 18h2"/></svg><span data-i18n="tab_phone">云手机</span></a>
     <a data-tab="mem"><svg class="i" viewBox="0 0 24 24"><path d="M12 4a4 4 0 0 1 4 4c0 1.5-.8 2.7-2 3.4V13h-4v-1.6A4 4 0 0 1 12 4z"/><path d="M10 17h4M10.5 20h3"/></svg><span data-i18n="tab_mem">记忆</span></a>
+    <a data-tab="skills"><svg class="i" viewBox="0 0 24 24"><path d="M10 4h4v3a2 2 0 1 0 4 0h2v4h-3a2 2 0 1 0 0 4h3v5h-5v-2a2 2 0 1 0-4 0v2H6v-5H4a2 2 0 1 0 0-4h2V7h4z"/></svg><span data-i18n="tab_skills">技能</span></a>
     <a data-tab="act"><svg class="i" viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.2-3 7.7-7 9-4-1.3-7-4.8-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg><span data-i18n="tab_act">活动</span></a>
     <a data-tab="models"><svg class="i" viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg><span data-i18n="tab_models">模型</span><span class="ext" id="nav-dl"></span></a>
     <a data-tab="train"><svg class="i" viewBox="0 0 24 24"><path d="M3 17l5-5 4 4 8-9"/><path d="M14 7h6v6"/></svg><span data-i18n="tab_train">训练</span></a>
@@ -528,6 +573,24 @@
     </div>
   </section>
 
+  <!-- ============ 任务 ============
+       一句话 = 一个任务(~/.ds4/assistant/tasks/<id>.json) + 一个专属对话; 助理到点往那个对话里发"继续这个任务", 什么时候再看由模型自己定(task_check_in), 做完了 task_done。
+       列表 = GET /api/assistant/tasks; 操作 POST tasks {op}; "打开"就是进它的对话(助理页), 工具卡/审批卡全是现成的。 -->
+  <section class="view" id="v-tasks">
+    <!-- 通知(10-14): 开关 = 这台设备订阅浏览器推送(VAPID 公钥从 GET /api/assistant/push 来, 订阅 POST 回去); 有页面开着时服务端不推, 改成页面里弹(poll 拉 /notices) -->
+    <div class="card"><div class="card-title" data-i18n="nt_title">通知</div><div class="muted" data-i18n="nt_sub" style="margin-bottom:10px"></div>
+      <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+        <label class="switch" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="nt-on"><span class="knob"></span><span data-i18n="nt_switch">在这台设备上接收通知</span></label>
+        <button id="nt-test" data-i18n="nt_test">发一条测试</button><span class="muted" id="nt-state"></span></div>
+      <div class="muted" id="nt-devices" style="margin-top:8px"></div></div>
+    <div class="card"><div class="card-title" data-i18n="tk_new">新任务</div><div class="muted" data-i18n="tk_new_sub" style="margin-bottom:10px"></div>
+      <div style="display:flex;gap:10px;align-items:center"><input id="tk-text" data-i18n-ph="tk_ph" style="flex:1" autocapitalize="off"><button class="primary" id="tk-add" data-i18n="tk_add">创建</button></div></div>
+    <div class="card"><div class="card-title" data-i18n="tk_list">任务</div><div class="muted" data-i18n="tk_list_sub" style="margin-bottom:10px"></div>
+      <div id="tk-list" class="tk-list"></div></div>
+    <div class="card"><div class="card-title" data-i18n="rm_title">定时提醒</div><div class="muted" data-i18n="rm_sub" style="margin-bottom:10px"></div>
+      <div id="rm-list" class="tk-list"></div></div>
+  </section>
+
   <!-- ============ 记忆 ============ -->
   <section class="view" id="v-mem">
     <div class="mem-grid">
@@ -537,6 +600,30 @@
       <div class="card"><div class="card-title" data-i18n="mem_rules">规矩</div><div class="muted" data-i18n="mem_rules_sub"></div>
         <textarea class="memtxt" id="mem-rules" spellcheck="false"></textarea>
         <div style="display:flex;gap:10px;align-items:center"><button class="primary" id="mem-save2" data-i18n="save">保存</button><span class="muted" id="mem-path2"></span></div></div>
+    </div>
+  </section>
+
+  <!-- ============ 技能 ============
+       ~/.ds4/assistant/skills/<名>/SKILL.md(+ 脚本/模板/资料), Agent Skills 开放标准的文件夹原样能用。左列已装的, 右边编辑 SKILL.md / 看文件 / 删;
+       "导入文件夹"选整个技能夹逐文件 POST /api/assistant/skill_file。模型那头只在工具表看到"名字: 描述", 调 use_skill 才读全文(渐进披露)。 -->
+  <section class="view" id="v-skills">
+    <div class="sk-grid">
+      <div class="card"><div class="card-title" data-i18n="sk_list">已装技能</div><div class="muted" data-i18n="sk_list_sub"></div>
+        <div id="sk-list" class="sk-list"></div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px">
+          <button class="primary" id="sk-new" data-i18n="sk_new">新建</button>
+          <button id="sk-import" data-i18n="sk_import">导入文件夹</button><input type="file" id="sk-import-in" webkitdirectory multiple style="display:none">
+          <span class="muted" id="sk-root"></span></div></div>
+      <div class="card" id="sk-edit" hidden>
+        <div class="card-title"><span data-i18n="sk_edit">SKILL.md</span><span id="sk-title" style="text-transform:none;letter-spacing:0;margin-left:6px"></span></div>
+        <div style="display:flex;gap:10px;align-items:center;margin-bottom:6px" id="sk-name-row" hidden><input id="sk-name" data-i18n-ph="sk_name_ph" style="flex:1" spellcheck="false" autocapitalize="off"></div>
+        <div class="muted" data-i18n="sk_edit_sub"></div>
+        <textarea class="memtxt" id="sk-md" spellcheck="false"></textarea>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button class="primary" id="sk-save" data-i18n="save">保存</button><button id="sk-del" class="danger" data-i18n="sk_delete">删除</button><span class="muted" id="sk-path"></span></div>
+        <div class="card-title" style="margin-top:16px" data-i18n="sk_files">文件</div><div class="muted" data-i18n="sk_files_sub" style="margin-bottom:8px"></div>
+        <div id="sk-files" class="sk-files"></div>
+        <div style="margin-top:8px"><button id="sk-addfile" data-i18n="sk_addfile">添加文件</button><input type="file" id="sk-addfile-in" multiple style="display:none"></div>
+      </div>
     </div>
   </section>
 
@@ -698,6 +785,21 @@
   </section>
 
   <!-- ============ 更多(app 外壳底栏第四格: 记忆/活动/语料/记录/API/监控 + 语言/安装/退出; 列表由 renderMore 按 MORE 生成) ============ -->
+  <!-- ============ 云手机(危险模式开着且手机 ready 才显示; 视频流 WebCodecs 解, 不支持就退回每秒一张截图; 脚本见 "云手机" 段) ============ -->
+  <section class="view" id="v-phone">
+    <div class="empty" id="ph-empty"><h2 data-i18n="ph_off_t">云手机没开</h2><div data-i18n="ph_off"></div></div>
+    <div class="phwrap" id="ph-body" style="display:none">
+      <div class="phscreen" id="ph-screen"><canvas id="ph-canvas" width="720" height="1280"></canvas><img id="ph-img" alt="" hidden><button id="ph-exit" title="exit">✕</button></div>
+      <div class="phside">
+        <div class="phkeys"><button data-key="back" title="back">◀</button><button data-key="home" title="home">●</button><button data-key="recents" title="recents">■</button><button data-key="enter" title="enter">⏎</button><button data-key="delete" title="delete">⌫</button><button id="ph-full" title="fullscreen">⛶</button></div>
+        <div class="phtype"><input id="ph-text" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="200" placeholder="ASCII"><button id="ph-send" data-i18n="ph_type">输入</button></div>
+        <div class="phapps" id="ph-apps"></div>
+        <div class="srow"><button id="ph-apk" data-i18n="ph_install">安装 APK</button><input type="file" id="ph-apk-file" accept=".apk,application/vnd.android.package-archive" hidden><span class="muted" id="ph-info"></span></div>
+        <div class="muted" id="ph-note"></div>
+        <div class="serr" id="ph-err"></div>
+      </div>
+    </div>
+  </section>
   <section class="view" id="v-more"><div class="wrap">
     <div class="mhead"><img src="/logo.jpg" alt=""><div><b>YoungAi</b><div class="st"><span class="dot" id="more-dot"></span><span id="more-eng"></span></div></div></div>
     <div id="more-list"></div>
@@ -706,6 +808,7 @@
 <!-- app 外壳的底栏(desk 外壳隐藏): 不用 <nav>, 免得被侧栏导航的选择器(nav a[data-tab])一并点亮/绑定 -->
 <div class="tabbar">
   <a data-tab="chat"><svg class="i" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg><span data-i18n="tab_chat">助理</span></a>
+  <a data-tab="phone" id="tab-phone" hidden><svg class="i" viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M11 18h2"/></svg><span data-i18n="tab_phone">云手机</span></a>
   <a data-tab="models"><svg class="i" viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg><span data-i18n="tab_models">模型</span><span class="tpct" id="tab-dl"></span></a>
   <a data-tab="train"><svg class="i" viewBox="0 0 24 24"><path d="M3 17l5-5 4 4 8-9"/><path d="M14 7h6v6"/></svg><span data-i18n="tab_train">训练</span><span class="tdot" id="tab-train-dot" hidden></span></a>
   <a data-tab="more"><svg class="i" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg><span data-i18n="tab_more">更多</span></a>
@@ -769,6 +872,13 @@
     <div class="sgrid"><label class="f"><span data-i18n="set_amap_key">Key</span><input id="set-amap" type="password" autocomplete="off" maxlength="64" spellcheck="false"></label></div>
     <div class="serr" id="amap-err"></div>
     <div class="srow"><div class="spacer"></div><button class="danger" id="amap-del" data-i18n="set_amap_del">删除</button><button class="primary" id="amap-save" data-i18n="set_save">保存</button></div>
+  </div>
+  <!-- 危险模式 = 云手机(服务端 src/train/train_phone.c + src/assistant/asst_phone.c; 方案稿 docs/assistant_phone.md) -->
+  <div class="ssec" id="danger-sec">
+    <div class="srow"><div class="card-title" style="color:#fca5a5" data-i18n="set_danger">危险模式(云手机)</div><div class="spacer"></div><label class="switch"><input type="checkbox" id="set-danger" disabled><span class="knob"></span></label></div>
+    <div class="muted" data-i18n="set_danger_sub"></div>
+    <div class="tunst" id="danger-st"></div>
+    <div class="serr" id="danger-err"></div>
   </div>
 </div></div>
 
@@ -879,6 +989,14 @@ const I18N = {
     pl_after: "这条回答结束后切换", pl_fail: "切换失败: {0}", pl_on: "挂着: {0}", pl_newer: "(有更新的: {0}, 关再开换上)", pl_can: "可挂: {0}", pl_tip: "挂/卸自己训出来的后训练件",
     pl_switching: "切换中…", pl_err: "侧车没切成: {0}",
     tab_mem: "记忆", tab_act: "活动", hint_chat: "住在这台机器上的个人助理: 记忆是你能改的纯文本, 每次动手都在沙盒里, 越界先问你", hint_mem: "助理记得的事与你给它的规矩(新开的对话生效)", hint_act: "沙盒、允许的目录、永久授权、每一次工具调用",
+    tab_tasks: "任务", hint_tasks: "一句话交给助理持续跟着的事: 它到点自己再看一遍, 进展都在这里",
+    tk_new: "新任务", tk_new_sub: "一句话说清要持续跟的事(盯一个价格、追一件事的进展、每天整理一份东西…)。助理马上做第一遍, 之后什么时候再看由它自己定, 做完了会收口。", tk_ph: "例如: 盯着 DGX Spark 的价格, 降到 3 万以下告诉我", tk_add: "创建",
+    tk_list: "任务", tk_list_sub: "每个任务有自己的对话, 点\"打开\"能看它每一次做了什么。", tk_empty: "还没有任务。",
+    tk_open: "打开", tk_pause: "暂停", tk_resume: "继续", tk_run: "现在跟进", tk_done: "完成", tk_del: "删除", tk_del_confirm: "删除这个任务和它的对话? (挪进 ~/.ds4/assistant/trash/, 盘上还能找回)",
+    tk_runs: "跟进 {0} 次", tk_next: "下次 {0}", tk_running: "进行中", tk_queued: "排队中", tk_waiting: "等你批准", tk_paused: "已暂停", tk_done_s: "已完成", tk_err: "上次出错", tk_note: "助理的话: {0}", tk_created: "创建于 {0}",
+    nt_title: "通知", nt_sub: "任务做完、跑了很久的回答好了、助理安排的提醒到点, 推到开了通知的设备上(手机装成 App 也收得到)。正开着页面在看时不推, 直接在页面里弹。", nt_switch: "在这台设备上接收通知", nt_test: "发一条测试",
+    nt_devices: "已开通知的设备: {0} 台 {1}", nt_unsupported: "这个浏览器或打开方式不支持推送(要 https 或 localhost 打开)", nt_ios: "iPhone 上要先\"添加到主屏幕\", 从主屏幕打开才能开通知", nt_denied: "通知权限被拒绝了, 到浏览器设置里允许后再开", nt_on: "已打开", nt_sent: "测试通知已发, 看设备", nt_subfail: "开不了: {0}",
+    rm_title: "定时提醒", rm_sub: "助理用 notify 工具安排的: 到点推到设备(页面开着就在页面里弹)。不想要的删掉。", rm_empty: "没有待发的提醒", rm_del: "删除", rm_open: "打开", rm_at: "{0} · 来自对话",
     au_setup_t: "首次使用: 设置用户名和密码", au_setup_sub: "以后打开工作台都要用它登录。只以单向哈希存在运行工作台的那台机器上({0}); 忘了就删掉这个文件, 刷新页面重新设置。",
     au_login_t: "登录", au_login_sub: "登录后这个浏览器 30 天内免登, 常用会自动续期。", au_broken_t: "登录文件读不懂",
     au_user: "用户名", au_pass: "密码", au_pass2: "再输一次密码", au_rule: "用户名 3–32 位, 只用字母、数字和 _ . -; 密码 8–64 位, 字母、数字、符号里至少占两类, 不能和用户名一样。",
@@ -898,6 +1016,12 @@ const I18N = {
     act_copy_text: "复制", act_share: "分享", act_open_url: "打开", act_navigate: "导航", act_call: "拨打", act_open_app: "打开",
     mem_profile: "关于你", mem_profile_sub: "助理用 remember 记下的事, 每行一条, 方括号里是记下的日期和会话号。删掉一行 = 让它忘掉; 改完点保存, 新开的对话生效。",
     mem_rules: "规矩", mem_rules_sub: "你给助理定的规矩, 只有你能写, 优先于一切。例如: 回复用中文; 不要碰 ~/Documents/财务。新开的对话生效。", save: "保存", saved: "已保存", mem_path: "文件: {0}",
+    tab_skills: "技能", hint_skills: "教助理某类活怎么干: 一个文件夹一个技能, SKILL.md 写步骤, 旁边放脚本和资料; 任务对上了它自己会去读",
+    sk_list: "已装技能", sk_list_sub: "助理只在工具表里看到每个技能的名字和一句描述, 任务对上了才读全文(省上下文)。Claude Code 等别处写好的技能文件夹原样导入就能用。",
+    sk_new: "新建", sk_import: "导入文件夹", sk_name_ph: "技能名: 小写字母、数字、连字符, 如 weekly-report", sk_edit: "SKILL.md", sk_edit_sub: "开头 --- 之间的 description 是助理决定\"要不要用这个技能\"的唯一依据, 写清楚什么任务用它; 正文写步骤、用哪些工具、脚本怎么跑(路径相对技能文件夹)。",
+    sk_delete: "删除", sk_delete_confirm: "删除技能 {0}? 文件夹会挪进回收目录, 不真删。", sk_files: "文件", sk_files_sub: "模板、示例、参考资料。只收 md / txt / csv / json / yaml / 图片 / pdf / docx / xlsx / pptx; 脚本文件装不进来, md 和 txt 里也不能有命令或代码块(整份会被拒并指出第几行)。助理读得到、改不了。", sk_addfile: "添加文件",
+    sk_empty: "还没有技能。点\"新建\"写一个, 或\"导入文件夹\"选一个带 SKILL.md 的技能文件夹。", sk_path: "文件夹: {0}", sk_bad_name: "技能名只能是 1~64 位小写字母、数字、连字符", sk_imported: "已导入 {0}: {1} 个文件", sk_import_nomd: "选的文件夹里没有 SKILL.md(直接选技能文件夹本身, 不是上一级)", sk_files_n: "{0} 个文件", sk_import_fail: "{0} 没进来: {1}",
+    sk_tpl: "---\nname: {0}\ndescription: 一句话说清什么任务该用这个技能(助理只凭这句决定要不要读全文)\n---\n\n# {0}\n\n## 什么时候用\n\n\n## 步骤(用助理自己的工具, 不写命令、不放脚本)\n\n1. \n2. \n\n## 结果应该长什么样\n\n\n## 参考\n\n- reference/ 放模板和示例, 助理用 read_file 读\n",
     act_sec: "安全", act_info: "沙盒: {0} · 浏览器: {1} · 工作区: {2}", act_nobrowser: "本机没有火狐", act_run: "允许在沙盒里跑程序(run: 没有网络, 只能写工作区, 不逐次审批)", act_toolbox: "工具箱: 已有 {0} · 缺 {1}", act_toolbox_none: "(没有)",
     act_dirs: "允许的目录", act_dirs_sub: "助理可以直接读这些目录(勾了可写还能直接写), 不再逐次问你。不能加包含助理自己数据目录的上级目录(比如整个家目录): 那等于让它能改自己的权限。", act_dir_ph: "目录路径, 例如 ~/Documents",
     act_write: "可写", act_add: "添加", act_del: "移除", act_rw: "读写", act_ro: "只读", act_appr: "永久授权", act_appr_sub: "你在审批卡上点过\"总是允许\"的目标; 上过网之后写工作区外仍会逐次问。", act_revoke: "撤销",
@@ -920,6 +1044,11 @@ const I18N = {
     set_cert: "HTTPS 证书", set_cert_sub: "传域名证书的 zip(阿里云 / 腾讯云下载的证书包直接传, 选 Nginx 版也行)。装上后公网地址变成 https, 手机就能装成 App。域名要解析到上面那台云服务器。",
     set_cert_up: "上传证书压缩包", set_cert_del: "删除证书", set_cert_none: "还没有证书: 现在公网地址是 http, 能打开但装不了 App", set_cert_del_q: "删除证书? 公网地址会退回 http。",
     set_amap: "地图(高德 Web 服务 Key)", set_amap_sub: "助理回答\"附近有什么\"用的。到 lbs.amap.com 注册, 建一个\"Web 服务\"类型的 Key 填进来; 只存在本机助理目录(0600), 发请求时由程序填进去, 模型看不到它。不填也能把坐标翻成\"××区××路附近\", 但列不出附近的店。",
+    tab_phone: "云手机", hint_phone: "模型在这部虚拟安卓手机上干活, 你看到的是实况; 你自己也能点、滑、打字、装 app",
+    set_danger: "危险模式(云手机)", set_danger_sub: "打开后起一部虚拟安卓手机(Android 13, 没有 SIM、没有账号、没有应用商店), 模型可以自主在上面点击、滑动、输入、安装和打开 app, 没有人逐步确认。你在手机里登录的账号、装的 app 它都能用 —— 可能发消息、下单、付款、删东西, 后果由打开开关的人承担。只在 Linux 主机上有。",
+    ph_confirm: "确定打开危险模式? 模型将自主操作一部虚拟手机, 可能发消息、下单、付款。", ph_on: "打开", ph_st_off: "已关", ph_st_starting: "启动中…", ph_st_ready: "运行中", ph_st_stopping: "停止中…", ph_st_error: "出错",
+    ph_mem: "内存 {0} / {1} MB", ph_off_t: "云手机没开", ph_off: "在设置里打开危险模式, 手机起来后这里就是它的屏幕", ph_type: "输入", ph_install: "安装 APK", ph_installing: "安装中…", ph_installed: "已装: {0}",
+    ph_info: "内存 {0}/{1} MB · {2} 人在看", ph_novideo: "这个浏览器不支持视频流(WebCodecs), 退回每秒一张截图", ph_apps: "打开 app:", ph_busy: "手机忙, 稍后再试", ph_secure: "这个页面禁止截屏(登录/支付类页面), 系统不给画面; 控件和点击照常",
     set_amap_key: "Key", set_amap_del: "删除", set_amap_on: "已保存: 附近搜索与门牌级地址反查已开", set_amap_off: "没有 Key: 地址反查走高德网页版接口(免 Key, 到路名), 附近店铺搜索要 Key", set_amap_nobrowser: "这台机器没有火狐(请求经火狐走 https): 地址反查与附近搜索都用不了",
     set_cert_ok: "证书已装上", set_cert_info: "{0} · {1} 到期 · {2} 张证书链", set_cert_files: "来自压缩包里的 {0} 与 {1}", set_cert_expired: "已过期",
     tun_off: "未开启", tun_busy: "部署中", tun_up: "已连通", tun_reconn: "连接断了, frpc 正在重连", tun_err: "出错了", tun_open: "打开", tun_http_note: "现在是 http: 能访问, 但浏览器只在 https 下给装 App —— 下面传一个证书",
@@ -1020,6 +1149,14 @@ const I18N = {
     pl_after: "Will switch after this answer finishes", pl_fail: "Switch failed: {0}", pl_on: "Attached: {0}", pl_newer: " (newer one available: {0}; toggle off and on to use it)", pl_can: "Available: {0}", pl_tip: "Attach / detach the post-train file you trained",
     pl_switching: "Switching…", pl_err: "Sidecar switch failed: {0}",
     tab_mem: "Memory", tab_act: "Activity", hint_chat: "A personal assistant living on this machine: memory is plain text you can edit, every action runs in a sandbox, anything outside asks you first", hint_mem: "What the assistant remembers and the rules you give it (new conversations pick up changes)", hint_act: "Sandbox, allowed folders, standing approvals, every tool call",
+    tab_tasks: "Tasks", hint_tasks: "Things you hand to the assistant in one sentence and it keeps following: it comes back on its own, progress shows here",
+    tk_new: "New task", tk_new_sub: "One sentence for something to keep following (watch a price, track how something is going, tidy something up every day…). The assistant does a first pass right away, decides itself when to look again, and closes the task when it is done.", tk_ph: "e.g. Watch the DGX Spark price and tell me when it drops below $3,000", tk_add: "Create",
+    tk_list: "Tasks", tk_list_sub: "Every task has its own conversation; Open shows what it did each time.", tk_empty: "No tasks yet.",
+    tk_open: "Open", tk_pause: "Pause", tk_resume: "Resume", tk_run: "Follow up now", tk_done: "Done", tk_del: "Delete", tk_del_confirm: "Delete this task and its conversation? (moved to ~/.ds4/assistant/trash/, still recoverable on disk)",
+    tk_runs: "{0} follow-ups", tk_next: "next {0}", tk_running: "Running", tk_queued: "Queued", tk_waiting: "Waiting for you", tk_paused: "Paused", tk_done_s: "Done", tk_err: "Last run failed", tk_note: "Assistant's note: {0}", tk_created: "created {0}",
+    nt_title: "Notifications", nt_sub: "A finished task, a long answer that is ready, a reminder the assistant scheduled: pushed to the devices that turned notifications on (an installed phone app gets them too). While a page is open and visible nothing is pushed; it pops up in the page instead.", nt_switch: "Receive notifications on this device", nt_test: "Send a test",
+    nt_devices: "Devices with notifications on: {0} {1}", nt_unsupported: "This browser or way of opening does not support push (open over https or localhost)", nt_ios: "On iPhone, add to the home screen first and open from there to turn notifications on", nt_denied: "Notification permission was denied; allow it in the browser settings, then turn on", nt_on: "On", nt_sent: "Test sent, check the device", nt_subfail: "Could not turn on: {0}",
+    rm_title: "Scheduled reminders", rm_sub: "Scheduled by the assistant with the notify tool: pushed to your devices at the time (shown in the page if it is open). Delete the ones you do not want.", rm_empty: "No pending reminders", rm_del: "Delete", rm_open: "Open", rm_at: "{0} · from a conversation",
     au_setup_t: "First run: set a username and password", au_setup_sub: "You'll sign in with these every time. Only a one-way hash is stored, on the machine running the studio ({0}); if you forget, delete that file and reload to set them again.",
     au_login_t: "Sign in", au_login_sub: "This browser stays signed in for 30 days, renewed while you keep using it.", au_broken_t: "Login file unreadable",
     au_user: "Username", au_pass: "Password", au_pass2: "Repeat password", au_rule: "Username: 3–32 characters, letters, digits and _ . - only. Password: 8–64 bytes, at least two of letters / digits / symbols, not the same as the username.",
@@ -1039,6 +1176,12 @@ const I18N = {
     act_copy_text: "Copy", act_share: "Share", act_open_url: "Open", act_navigate: "Directions", act_call: "Call", act_open_app: "Open",
     mem_profile: "About you", mem_profile_sub: "Things the assistant saved with remember, one per line; the brackets show the date and conversation. Delete a line to make it forget; save, and new conversations pick it up.",
     mem_rules: "Rules", mem_rules_sub: "Rules you give the assistant; only you write them, and they override everything. E.g.: reply in English; never touch ~/Documents/finance. New conversations pick them up.", save: "Save", saved: "Saved", mem_path: "File: {0}",
+    tab_skills: "Skills", hint_skills: "Teach the assistant how a kind of task is done: one folder per skill, steps in SKILL.md, scripts and references beside it; it reads the skill itself when a task matches",
+    sk_list: "Installed skills", sk_list_sub: "The assistant only sees each skill's name and one-line description in its tool list and reads the full text when a task matches (saves context). Skill folders written elsewhere (Claude Code etc.) import as they are.",
+    sk_new: "New", sk_import: "Import folder", sk_name_ph: "Skill name: lowercase letters, digits, hyphens, e.g. weekly-report", sk_edit: "SKILL.md", sk_edit_sub: "The description between the leading --- lines is the only thing the assistant uses to decide whether this skill applies, so say which tasks it is for; the body holds the steps, the tools to use and how to run the scripts (paths relative to the skill folder).",
+    sk_delete: "Delete", sk_delete_confirm: "Delete skill {0}? The folder moves to the trash folder, nothing is destroyed.", sk_files: "Files", sk_files_sub: "Templates, examples, references. Only md / txt / csv / json / yaml / images / pdf / docx / xlsx / pptx; script files are refused, and md or txt files may not contain commands or code blocks (the whole file is rejected with the line number). The assistant can read them, never change them.", sk_addfile: "Add files",
+    sk_empty: "No skills yet. Click New to write one, or Import folder to pick a skill folder that contains SKILL.md.", sk_path: "Folder: {0}", sk_bad_name: "A skill name is 1-64 lowercase letters, digits or hyphens", sk_imported: "Imported {0}: {1} files", sk_import_nomd: "That folder has no SKILL.md (pick the skill folder itself, not its parent)", sk_files_n: "{0} files", sk_import_fail: "{0} was not imported: {1}",
+    sk_tpl: "---\nname: {0}\ndescription: One sentence saying which tasks this skill is for (the assistant decides from this line alone whether to read the rest)\n---\n\n# {0}\n\n## When to use\n\n\n## Steps (with the assistant's own tools; no commands, no scripts)\n\n1. \n2. \n\n## What the result should look like\n\n\n## Reference\n\n- reference/ holds templates and examples, read with read_file\n",
     act_sec: "Security", act_info: "Sandbox: {0} · Browser: {1} · Workspace: {2}", act_nobrowser: "no Firefox on this machine", act_run: "Allow running programs in the sandbox (run: no network, writes only in the workspace, no per-call approval)", act_toolbox: "Toolbox: have {0} · missing {1}", act_toolbox_none: "(none)",
     act_dirs: "Allowed folders", act_dirs_sub: "The assistant may read these folders (and write them if writable) without asking each time. A folder containing the assistant's own data (e.g. your whole home folder) can't be added: that would let it change its own permissions.", act_dir_ph: "Folder path, e.g. ~/Documents",
     act_write: "Writable", act_add: "Add", act_del: "Remove", act_rw: "read-write", act_ro: "read-only", act_appr: "Standing approvals", act_appr_sub: "Targets you approved with \"Always allow\"; after reading the web, writes outside the workspace still ask every time.", act_revoke: "Revoke",
@@ -1061,6 +1204,11 @@ const I18N = {
     set_cert: "HTTPS certificate", set_cert_sub: "Upload your domain certificate as a zip (the bundle downloaded from your CA / cloud console; the Nginx variant works). The public address then becomes https and phones can install the app. The domain must point to the cloud server above.",
     set_cert_up: "Upload certificate zip", set_cert_del: "Delete certificate", set_cert_none: "No certificate: the public address is http, it opens but cannot be installed as an app", set_cert_del_q: "Delete the certificate? The public address falls back to http.",
     set_amap: "Maps (Amap web-service key)", set_amap_sub: "Used for \"what's nearby\". Register at lbs.amap.com, create a \"Web Service\" key and paste it here; it is stored only in the assistant folder on this machine (0600), inserted by the program at request time, never shown to the model. Without it coordinates still become \"district, street\", but nearby places cannot be listed.",
+    tab_phone: "Phone", hint_phone: "The model works on this virtual Android phone; what you see is live. You can tap, swipe, type and install apps yourself too",
+    set_danger: "Danger mode (virtual phone)", set_danger_sub: "Starts a virtual Android phone (Android 13, no SIM, no accounts, no app store). The model can tap, swipe, type, install and open apps on it on its own, with nobody confirming each step. Any account you sign into and any app you install there, it can use: it may send messages, place orders, pay or delete things. Whoever turns this on bears the consequences. Linux hosts only.",
+    ph_confirm: "Turn on danger mode? The model will operate a virtual phone on its own and may send messages, order or pay.", ph_on: "Turn on", ph_st_off: "off", ph_st_starting: "starting…", ph_st_ready: "running", ph_st_stopping: "stopping…", ph_st_error: "error",
+    ph_mem: "memory {0} / {1} MB", ph_off_t: "The phone is off", ph_off: "Turn on danger mode in Settings; once the phone is up, its screen shows here", ph_type: "Type", ph_install: "Install APK", ph_installing: "Installing…", ph_installed: "Installed: {0}",
+    ph_info: "memory {0}/{1} MB · {2} watching", ph_novideo: "This browser has no WebCodecs; falling back to one screenshot per second", ph_apps: "Open app:", ph_busy: "The phone is busy, try again", ph_secure: "This screen forbids capture (login/payment pages); no picture, but elements and taps still work",
     set_amap_key: "Key", set_amap_del: "Delete", set_amap_on: "Saved: nearby search and street-number address lookup are on", set_amap_off: "No key: address lookup uses Amap's web endpoint (free, to street level); nearby place search needs a key", set_amap_nobrowser: "No Firefox on this machine (requests go through it for https): neither address lookup nor nearby search works",
     set_cert_ok: "Certificate installed", set_cert_info: "{0} · expires {1} · chain of {2}", set_cert_files: "from {0} and {1} in the zip", set_cert_expired: "expired",
     tun_off: "Off", tun_busy: "Setting up", tun_up: "Connected", tun_reconn: "Connection lost, frpc is reconnecting", tun_err: "Error", tun_open: "Open", tun_http_note: "This is http: reachable, but browsers only install apps over https — upload a certificate below",
@@ -1114,8 +1262,8 @@ async function getJSON(url, opt) { const r = await fetch(url, Object.assign({ ca
 
 /* ---------------- 状态 ---------------- */
 let status = null, runs = [], detail = null, selected = null, userPicked = false, switching = 0, failCount = 0;
-const TABS = ["chat", "mem", "act", "models", "train", "data", "runs", "api", "monitor", "more"];   /* 标题 = t("tab_<名>"), 副标题 = t("hint_<名>")(没有就空) */
-const SUB = ["mem", "act", "data", "runs", "api", "monitor"];   /* app 外壳里这几页从"更多"进: 底栏点亮"更多", 顶栏左键是返回 */
+const TABS = ["chat", "tasks", "mem", "skills", "act", "models", "train", "data", "runs", "api", "monitor", "phone", "more"];   /* 标题 = t("tab_<名>"), 副标题 = t("hint_<名>")(没有就空) */
+const SUB = ["tasks", "mem", "skills", "act", "data", "runs", "api", "monitor"];   /* app 外壳里这几页从"更多"进: 底栏点亮"更多", 顶栏左键是返回 */
 const isApp = () => document.documentElement.dataset.shell === "app";
 /* 没有 #hash(直接开 http://host:8000/)时答"正显示的那页"(showTab 记下的): 曾经答 null, 页面明明在聊天页,
    poll 却以为不在、不再拉 /api/models/list, 后训练开关一切换就永远卡在"切换中…"且按钮灰掉(10-11 实撞)。
@@ -1129,7 +1277,7 @@ function showTab(tab) {
   text("page-title", t("tab_" + tab)); $("page-hint").textContent = I18N.zh["hint_" + tab] ? t("hint_" + tab) : "";
   syncShell(tab);
   /* 手机上程序聚焦输入框会直接弹键盘, 盖住半屏: app 外壳不自动聚焦, 用户点输入框才弹 */
-  if (tab === "train") { loadDetail(); if (isApp() && !trainPane) setTrainPane(training() || runs.length ? "prog" : "cfg"); } if (tab === "data") loadData(); if (tab === "chat") { if (!isApp()) inputEl.focus(); loadSessions(); } if (tab === "models") loadModels(); if (tab === "mem") loadMem(true); if (tab === "act") loadAct(); if (tab === "api") loadApi(); if (tab === "monitor") syncMonitor(); if (tab === "more") renderMore();
+  if (tab === "train") { loadDetail(); if (isApp() && !trainPane) setTrainPane(training() || runs.length ? "prog" : "cfg"); } if (tab === "data") loadData(); if (tab === "chat") { if (!isApp()) inputEl.focus(); loadSessions(); } if (tab === "tasks") loadTasks(); if (tab === "models") loadModels(); if (tab === "mem") loadMem(true); if (tab === "skills") loadSkills(); if (tab === "act") loadAct(); if (tab === "api") loadApi(); if (tab === "monitor") syncMonitor(); if (tab === "more") renderMore(); phView(tab === "phone");
 }
 document.querySelectorAll("nav a[data-tab], .tabbar a[data-tab]").forEach(a => a.onclick = () => { location.hash = a.dataset.tab; });
 
@@ -1177,7 +1325,7 @@ function labelRows(tb) {
   document.querySelectorAll("table.cards tbody").forEach(tb => { mo.observe(tb, { childList: true }); labelRows(tb); }); }
 
 /* ---------------- 更多(app 外壳的第四格) ---------------- */
-const MORE = [["more_g_asst", ["mem", "act"]], ["more_g_train", ["data", "runs"]], ["more_g_dev", ["api", "monitor"]]];
+const MORE = [["more_g_asst", ["tasks", "mem", "skills", "act"]], ["more_g_train", ["data", "runs"]], ["more_g_dev", ["api", "monitor"]]];   /* 云手机不在这: 它是底栏第二格(手机 ready 才显示) */
 let installEvt = null;   /* 安卓 Chrome 判定能装时发 beforeinstallprompt: 留着, 用户在"更多"里点安装时再弹系统框 */
 window.addEventListener("beforeinstallprompt", e => { installEvt = e; if (curTab() === "more") renderMore(); });
 window.addEventListener("appinstalled", () => { installEvt = null; if (curTab() === "more") renderMore(); });
@@ -1246,7 +1394,7 @@ async function poll() {
     if (curTab() === "train" || curTab() === "chat") await loadDetail();
     if (curTab() === "models" || st.downloading || !mdata) loadModels();   /* 下载中也拉: 侧栏"模型"旁的百分比要跟着走 */
     else if (curTab() === "chat") loadModels(true);   /* 聊天页的侧车下拉与切换状态 */
-    loadSessions(); if (curTab() === "act") loadAct();   /* 对话列表在侧栏、每页都看得见 */   /* 会话状态点 / 审计流水跟着走 */
+    loadSessions(); if (curTab() === "act") loadAct(); if (curTab() === "tasks") loadTasks(); pollNotices();   /* 对话列表在侧栏、每页都看得见 */   /* 会话状态点 / 审计流水 / 任务进展 / 页内通知与在场心跳跟着走 */
   } catch (e) { status = null; failCount++; renderEngine(); }
 }
 async function act(url, body, okMsg, sw) {
@@ -1938,6 +2086,143 @@ devNote();
   inputEl.value = txt + "\n"; autosize(); if (!isApp()) inputEl.focus();
 })();
 
+/* ---------------- 任务 ----------------
+   GET /api/assistant/tasks → {tasks:[{id, session, state, end, next, runs, text, last, note, run_state}]}; 操作 POST tasks {op, id, text}。
+   行 = 状态点(跟会话状态走) + 那句话 + 一行状态(跟进几次 · 下次几点 / 进行中 / 已暂停 / 已完成) + 助理留的话 + 上次进展头部; 按钮按状态出。
+   侧栏"任务"旁的小字 = 没完成的任务数(2.5 s 一轮的 poll 只在任务页拉; 别的页用 loadSessions 顺带的那次不拉, 够用)。 */
+let tasks = [];
+const whenOf = ts => { const d = new Date(ts * 1000), n = new Date(); return d.toDateString() === n.toDateString() ? d.toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" }) : d.toLocaleString(locale(), { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }); };
+async function loadTasks() {
+  const r = await aFetch("tasks"); if (r.error) { toast(t("fail", r.error), true); return; }
+  tasks = r.tasks || []; renderTasks();
+  loadPush(); loadReminders();
+}
+
+/* ---------------- 通知(10-14 用户: "使用 pwa 推送; 在当前页面肯定不通知") ----------------
+   开关 = 这台浏览器向推送服务订阅(pushManager.subscribe, 用服务端的 VAPID 公钥), 订阅交给 POST /api/assistant/push {op:subscribe}; 关 = 两边都退订。
+   密码学全在服务端 C 里(src/push), 浏览器只做它原生会做的事。
+   在场心跳: 页面可见时每 20 s POST presence {visible:true}, 切后台/关页立刻报 false(keepalive) —— 服务端看到有页面在看就不推设备, 改落 notices, 这里 poll 拉来当场弹 toast, 点了进那个对话。
+   通知点开: service worker 把 url 递过来(message), 或新开窗口带 ?session=, 两条路都走 gotoNotice。 */
+let pushKey = "", pushSub = null, lastNotice = Math.floor(Date.now() / 1000), presenceT = 0;
+const pushSupported = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window && window.isSecureContext;
+const b64uToU8 = s => { const b = atob(s.replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from(b, c => c.charCodeAt(0)); };
+const deviceLabel = () => (isIOS() ? "iPhone" : /Android/i.test(navigator.userAgent) ? "Android" : /Mac/.test(navigator.platform) ? "Mac" : "PC") + (document.documentElement.dataset.standalone === "1" ? " App" : " " + (lang === "zh" ? "浏览器" : "browser"));
+async function loadPush() {
+  const r = await aFetch("push"); if (r.error) return;
+  pushKey = r.key; const devs = r.devices || [];
+  $("nt-devices").textContent = t("nt_devices", devs.length, devs.length ? "(" + devs.map(d => d.label || d.id).join(", ") + ")" : "");
+  $("nt-test").disabled = !devs.length;
+  const sw = $("nt-on"), st = $("nt-state");
+  if (!pushSupported()) { sw.disabled = true; sw.checked = false; st.textContent = t(isIOS() && document.documentElement.dataset.standalone !== "1" ? "nt_ios" : "nt_unsupported"); return; }
+  try { const reg = await navigator.serviceWorker.ready; pushSub = await reg.pushManager.getSubscription(); } catch (e) { pushSub = null; }
+  sw.disabled = false; sw.checked = !!pushSub;
+  st.textContent = Notification.permission === "denied" ? t("nt_denied") : pushSub ? t("nt_on") : "";
+}
+$("nt-on").onchange = async () => {
+  const sw = $("nt-on"); sw.disabled = true;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    if (sw.checked) {
+      if ((await Notification.requestPermission()) !== "granted") throw new Error(t("nt_denied"));
+      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64uToU8(pushKey) });
+      const r = await aFetch("push", { op: "subscribe", sub: sub.toJSON(), label: deviceLabel(), origin: location.origin });
+      if (r.error) { await sub.unsubscribe().catch(() => {}); throw new Error(r.error); }
+    } else {
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) { await aFetch("push", { op: "unsubscribe", endpoint: sub.endpoint }); await sub.unsubscribe().catch(() => {}); }
+    }
+  } catch (e) { toast(t("nt_subfail", e.message || String(e)), true); }
+  await loadPush();
+};
+$("nt-test").onclick = async () => { const r = await aFetch("push", { op: "test", lang }); r.error ? toast(t("fail", r.error), true) : toast(t("nt_sent")); };
+let reminders = [];
+async function loadReminders() {
+  const r = await aFetch("reminders"); if (r.error) return;
+  reminders = r.reminders || []; renderReminders();
+}
+function renderReminders() {
+  const box = $("rm-list"); box.replaceChildren();
+  if (!reminders.length) { box.appendChild(node("div", "muted", t("rm_empty"))); return; }
+  reminders.forEach(x => {
+    const row = node("div", "row"), tx = node("div", "tx");
+    tx.appendChild(node("b", null, x.title || "")); tx.appendChild(node("small", null, x.text || "")); tx.appendChild(node("small", null, t("rm_at", whenOf(x.at))));
+    row.appendChild(tx);
+    const ops = node("div", "ops"), o = node("button", "ghost", t("rm_open")), d = node("button", "ghost", t("rm_del"));
+    o.onclick = () => selectSession(x.session);
+    d.onclick = async () => { const r = await aFetch("reminders", { op: "delete", id: x.id }); if (r.error) { toast(t("fail", r.error), true); return; } reminders = r.reminders || []; renderReminders(); };
+    ops.appendChild(o); ops.appendChild(d); row.appendChild(ops); box.appendChild(row);
+  });
+}
+function gotoNotice(url) {   /* 通知里的 url: /?session=<id>#chat → 不刷新, 直接进那个对话 */
+  try { const u = new URL(url, location.origin), s = u.searchParams.get("session"); if (s && /^[0-9a-f]{12}$/.test(s)) { selectSession(s); return; } if (u.hash) location.hash = u.hash; } catch (_) {}
+}
+function presence(visible) {
+  const body = JSON.stringify({ client: clientId, visible });
+  fetch("/api/assistant/presence", { method: "POST", headers: aHeaders(true), body, keepalive: true }).catch(() => {});
+}
+async function pollNotices() {
+  if (document.visibilityState !== "visible") return;
+  const now = Date.now();
+  if (now - presenceT > 20000) { presenceT = now; presence(true); }
+  const r = await aFetch("notices?after=" + lastNotice).catch(() => null); if (!r || !r.notices) return;
+  for (const n of r.notices) {
+    lastNotice = Math.max(lastNotice, n.t);
+    toast((n.title ? n.title + " · " : "") + (n.body || "")); $("toast").onclick = () => { $("toast").className = ""; gotoNotice(n.url || "/"); };
+  }
+  if (curTab() === "tasks" && r.notices.length) loadReminders();
+}
+document.addEventListener("visibilitychange", () => { presenceT = 0; if (document.visibilityState === "hidden") presence(false); else pollNotices(); });
+window.addEventListener("pagehide", () => presence(false));
+if ("serviceWorker" in navigator) navigator.serviceWorker.addEventListener("message", e => { if (e.data && e.data.notice) gotoNotice(e.data.notice); });
+(function openFromNotice() {   /* 通知点开时新开的窗口: /?session=<id>#chat */
+  const q = new URLSearchParams(location.search), s = q.get("session");
+  if (!s) return;
+  history.replaceState(null, "", location.pathname + "#chat");
+  if (/^[0-9a-f]{12}$/.test(s)) { curSid = s; lsSet("ds4.asst.sid", s); }
+})();
+function taskStatus(x) {   /* 一句状态: 会话在跑 > 任务态 > 下次时间 */
+  if (x.run_state === "running" || x.run_state === "waiting_device") return ["running", t("tk_running")];
+  if (x.run_state === "waiting_approval") return ["waiting_approval", t("tk_waiting")];
+  if (x.run_state === "queued") return ["queued", t("tk_queued")];
+  if (x.state === "done") return ["", t("tk_done_s")];
+  if (x.state === "paused") return ["", t("tk_paused")];
+  return ["", x.next ? t("tk_next", whenOf(x.next)) : t("tk_queued")];
+}
+function renderTasks() {
+  const box = $("tk-list"); box.replaceChildren();
+  if (!tasks.length) box.appendChild(node("div", "muted", t("tk_empty")));
+  tasks.forEach(x => {
+    const row = node("div", "row" + (x.state === "done" ? " done" : "")), [dot, st] = taskStatus(x);
+    row.appendChild(node("span", "sdot " + dot, ""));
+    const tx = node("div", "tx"); tx.appendChild(node("b", null, x.text));
+    const meta = [st, t("tk_runs", x.runs)]; if (x.end === "error" && x.run_state === "idle") meta.push(t("tk_err")); meta.push(t("tk_created", whenOf(x.created)));
+    tx.appendChild(node("small", null, meta.join(" · ")));
+    if (x.note) tx.appendChild(node("small", null, t("tk_note", x.note)));
+    if (x.last) tx.appendChild(node("small", "last", x.last));
+    row.appendChild(tx);
+    const ops = node("div", "ops"), op = async (o, confirm) => {
+      if (confirm && !(await ask(t("tk_del_confirm"), true, t("tk_del")))) return;
+      const r = await aFetch("tasks", { op: o, id: x.id }); if (r.error) { toast(t("fail", r.error), true); return; }
+      tasks = r.tasks || []; renderTasks();
+    };
+    const btn = (k, fn) => { const b = node("button", "ghost", t(k)); b.onclick = fn; ops.appendChild(b); };
+    btn("tk_open", () => selectSession(x.session));
+    if (x.state === "active") { if (x.run_state === "idle") btn("tk_run", () => op("run")); btn("tk_pause", () => op("pause")); btn("tk_done", () => op("done")); }
+    if (x.state === "paused") btn("tk_resume", () => op("resume"));
+    btn("tk_del", () => op("delete", true));
+    row.appendChild(ops); box.appendChild(row);
+  });
+  const open = tasks.filter(x => x.state !== "done").length; text("nav-tasks", open ? String(open) : "");
+}
+$("tk-add").onclick = async () => {
+  const txt = $("tk-text").value.trim(); if (!txt) { $("tk-text").focus(); return; }
+  $("tk-add").disabled = true;
+  const r = await aFetch("tasks", { op: "add", text: txt }); $("tk-add").disabled = false;
+  if (r.error) { toast(t("fail", r.error), true); return; }
+  $("tk-text").value = ""; tasks = r.tasks || []; renderTasks();
+};
+$("tk-text").onkeydown = e => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); $("tk-add").click(); } };
+
 /* ---------------- 记忆 ----------------
    两个纯文本文件(~/.ds4/assistant/memory/profile.md / rules.md), 这里就是它们的编辑框; 改完对新开的对话生效(进行中的对话 system 已冻结, 为了 KV 前缀复用)。 */
 let memLoaded = false;
@@ -1950,6 +2235,87 @@ async function loadMem(force) {
 }
 $("mem-save1").onclick = async () => { const r = await aFetch("memory", { profile: $("mem-profile").value }); r.error ? toast(t("fail", r.error), true) : toast(t("saved")); };
 $("mem-save2").onclick = async () => { const r = await aFetch("memory", { rules: $("mem-rules").value }); r.error ? toast(t("fail", r.error), true) : toast(t("saved")); };
+
+/* ---------------- 技能 ----------------
+   GET /api/assistant/skills 一份(名字/描述/SKILL.md 原文/文件表); 保存与删除 POST skills {op}; 随附文件逐个 POST skill_file 原始体。
+   "导入文件夹"用 webkitdirectory: 浏览器给每个文件带 webkitRelativePath(顶层是所选文件夹名), 去掉顶层就是技能内相对路径, 技能名 = 顶层文件夹名(净化成小写连字符)。 */
+let skills = [], skSel = null, skNew = false, skRoot = "";
+const skName = s => s.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64);
+async function loadSkills() {
+  const r = await aFetch("skills"); if (r.error) { toast(t("fail", r.error), true); return; }
+  skills = r.skills; skRoot = r.root; $("sk-root").textContent = t("sk_path", r.root);
+  if (skSel && !skills.some(s => s.name === skSel)) skSel = null;
+  renderSkills();
+}
+function renderSkills() {
+  const box = $("sk-list"); box.replaceChildren();
+  if (!skills.length) box.appendChild(node("div", "muted", t("sk_empty")));
+  skills.forEach(s => {
+    const row = node("div", "row" + (s.name === skSel && !skNew ? " sel" : "")), tx = node("div"); tx.style.flex = "1";
+    tx.appendChild(node("b", null, s.name)); tx.appendChild(node("small", null, s.description || "—"));
+    row.appendChild(tx); row.appendChild(node("span", "n", t("sk_files_n", s.files.length)));
+    row.onclick = () => { skNew = false; skSel = s.name; renderSkills(); renderSkillEdit(); };
+    box.appendChild(row);
+  });
+  renderSkillEdit();
+}
+function renderSkillEdit() {
+  const s = skills.find(x => x.name === skSel), ed = $("sk-edit");
+  ed.hidden = !s && !skNew;
+  if (ed.hidden) return;
+  $("sk-name-row").hidden = !skNew; $("sk-del").hidden = skNew; $("sk-addfile").disabled = skNew;
+  $("sk-title").textContent = skNew ? "" : s.name;
+  if (skNew) { $("sk-md").value = $("sk-md").dataset.tpl || ""; $("sk-path").textContent = ""; $("sk-files").replaceChildren(); return; }
+  $("sk-md").value = s.md; $("sk-path").textContent = t("sk_path", skRoot + "/" + s.name);
+  const fl = $("sk-files"); fl.replaceChildren();
+  s.files.forEach(f => { const d = node("div", "f"); d.appendChild(node("span", null, f.path)); d.appendChild(node("span", null, fmtBytes(f.size))); fl.appendChild(d); });
+}
+function fmtBytes(n) { return n < 1024 ? n + " B" : n < 1048576 ? (n / 1024).toFixed(1) + " KB" : (n / 1048576).toFixed(1) + " MB"; }
+$("sk-new").onclick = () => { skNew = true; skSel = null; $("sk-md").dataset.tpl = t("sk_tpl", ""); renderSkills(); $("sk-name").value = ""; $("sk-name").focus(); };
+$("sk-name").oninput = () => { const n = skName($("sk-name").value); $("sk-md").value = t("sk_tpl", n || "my-skill"); };
+$("sk-save").onclick = async () => {
+  const name = skNew ? skName($("sk-name").value) : skSel;
+  if (!name) { toast(t("sk_bad_name"), true); return; }
+  const r = await aFetch("skills", { op: "save", name, md: $("sk-md").value });
+  if (r.error) { toast(t("fail", r.error), true); return; }
+  toast(t("saved")); skNew = false; skSel = name; skills = r.skills; renderSkills();
+};
+$("sk-del").onclick = async () => {
+  if (!skSel || !(await ask(t("sk_delete_confirm", skSel), true, t("sk_delete")))) return;
+  const r = await aFetch("skills", { op: "delete", name: skSel });
+  if (r.error) { toast(t("fail", r.error), true); return; }
+  skSel = null; skills = r.skills; renderSkills();
+};
+async function skPut(name, rel, file) {
+  const r = await fetch(`/api/assistant/skill_file?name=${encodeURIComponent(name)}&path=${encodeURIComponent(rel)}`, { method: "POST", headers: aHeaders(false), body: file });
+  const j = await r.json().catch(() => ({ error: "HTTP " + r.status }));
+  if (!r.ok) throw new Error(j.error || "HTTP " + r.status);
+}
+$("sk-import").onclick = () => $("sk-import-in").click();
+$("sk-import-in").onchange = async () => {
+  const files = [...$("sk-import-in").files]; $("sk-import-in").value = "";
+  if (!files.length) return;
+  const top = (files[0].webkitRelativePath || "").split("/")[0], name = skName(top);
+  if (!name) { toast(t("sk_bad_name"), true); return; }
+  const rels = files.map(f => [f, (f.webkitRelativePath || f.name).split("/").slice(1).join("/")]).filter(([, r]) => r && !r.split("/").some(seg => seg.startsWith(".")));
+  if (!rels.some(([, r]) => r === "SKILL.md")) { toast(t("sk_import_nomd"), true); return; }
+  /* SKILL.md 先传: 它被拒(含脚本语句)整个技能就不装, 别留下一个没有 SKILL.md 的半拉子文件夹; 随附文件哪个被拒(脚本/代码)就跳过哪个, 其余照装 */
+  rels.sort(([, a], [, b]) => (a === "SKILL.md" ? 0 : 1) - (b === "SKILL.md" ? 0 : 1));
+  let n = 0;
+  for (const [f, r] of rels) {
+    try { await skPut(name, r, f); n++; }
+    catch (e) { toast(t("sk_import_fail", r, e.message), true); if (r === "SKILL.md") return; }
+  }
+  if (n) toast(t("sk_imported", name, n));
+  skNew = false; skSel = name; await loadSkills();
+};
+$("sk-addfile").onclick = () => $("sk-addfile-in").click();
+$("sk-addfile-in").onchange = async () => {
+  const files = [...$("sk-addfile-in").files]; $("sk-addfile-in").value = "";
+  if (!skSel || !files.length) return;
+  try { for (const f of files) await skPut(skSel, f.name, f); toast(t("saved")); } catch (e) { toast(t("fail", e.message), true); }
+  await loadSkills();
+};
 
 /* ---------------- 活动 ----------------
    沙盒状态 / 工具箱 / run 开关 / 允许的目录 / 永久授权 / 审计流水: 全是 GET /api/assistant/activity 一份, 改动走 POST /api/assistant/policy。 */
@@ -2633,7 +2999,7 @@ function openSettings() {
   drawer(false); $("settings").classList.add("on");
   for (const id of ["set-host", "set-port", "set-user", "set-pass", "set-pub"]) delete $(id).dataset.dirty;
   $("set-pass").value = ""; $("set-err").textContent = $("cert-err").textContent = "";
-  loadNet(); loadAmap(); clearInterval(netT); netT = setInterval(loadNet, 1500);
+  loadNet(); loadAmap(); loadPhone(); clearInterval(netT); netT = setInterval(() => { loadNet(); loadPhone(); }, 1500);
 }
 function closeSettings() { $("settings").classList.remove("on"); clearInterval(netT); netT = 0; }
 /* 高德 key: 存在助理的 secrets/(POST /api/assistant/secret), 页面只知道有没有 */
@@ -2653,6 +3019,159 @@ $("btn-set").onclick = openSettings;
 $("set-close").onclick = closeSettings;
 $("settings").onclick = e => { if (e.target === $("settings")) closeSettings(); };   /* 点遮罩关 */
 window.addEventListener("keydown", e => { if (e.key === "Escape" && netT) closeSettings(); });
+/* ---------------- 云手机(服务端 src/train/train_phone.c; 方案稿 docs/assistant_phone.md §3.1/§3.2) ----------------
+   GET /api/phone/status 每 5 s 一份(设置弹窗开着 1.5 s); 开关 = POST enable|disable; 画面 = GET /api/phone/video 的 H.264 Annex-B 裸流,
+   页面自己切 NAL 喂 WebCodecs 的 VideoDecoder 画到 canvas; 浏览器没有 WebCodecs / 解码器报错 → 退回 GET /api/phone/screen 每秒一张。
+   点一下 = tap, 按住拖 = swipe(坐标按 720×1280 换算); 三键 / 输入 / 打开 app / 装 apk 都是同一张 REST 表, 模型的工具也只走它。 */
+let ph = null, phOn = false, phAbort = null, phDec = null, phPollT = 0, phApps = null;
+function phReady() { return !!(ph && ph.enabled && ph.state === "ready"); }
+async function phFetch(op, body, raw) {
+  const opt = body === undefined ? { cache: "no-store" } : raw ? { method: "POST", headers: { "Content-Type": "application/vnd.android.package-archive" }, body }
+    : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
+  try { const r = await fetch("/api/phone/" + op, opt); if (op === "screen") return r.ok ? r : { error: "HTTP " + r.status }; const j = await r.json().catch(() => ({ error: "HTTP " + r.status })); if (!r.ok && !j.error) j.error = "HTTP " + r.status; return j; }
+  catch (e) { return { error: e.message }; }
+}
+function renderPhone() {
+  const ready = phReady();
+  $("nav-phone").hidden = $("tab-phone").hidden = !ready;
+  const sw = $("set-danger"); sw.disabled = !ph || !ph.supported || ph.state === "starting" || ph.state === "stopping";
+  if (document.activeElement !== sw) sw.checked = !!(ph && ph.enabled);
+  const st = $("danger-st"); st.replaceChildren();
+  if (ph) {
+    const s = ph.enabled ? ph.state : "off";
+    st.appendChild(node("span", "dot " + { off: "", starting: "switching", stopping: "switching", ready: "serving", error: "error" }[s]));
+    st.appendChild(node("span", null, t("ph_st_" + s)));
+    if (ready) st.appendChild(node("span", "muted", t("ph_mem", ph.mem_mb, ph.cap_mb)));
+    $("danger-err").textContent = ph.err && (!ph.supported || !ph.prepared || ph.state === "error") ? ph.err : "";
+  }
+  $("ph-empty").style.display = ready ? "none" : ""; $("ph-body").style.display = ready ? "" : "none";
+  if (ready) { $("ph-info").textContent = t("ph_info", ph.mem_mb, ph.cap_mb, ph.viewers); if (phOn) phLayout(); }
+}
+async function loadPhone() {
+  const j = await phFetch("status");
+  if (!j.error) ph = j; else if (!ph) ph = { supported: false, err: j.error };
+  renderPhone();
+  if (phOn && phReady() && !phAbort && !phPollT) phStart();
+  if (phOn && !phReady()) phStop();
+  if (phOn && phReady() && !phApps) loadPhoneApps();
+}
+/* 盒子尺寸: 全屏 = 按屏幕高; 手机壳 = 按容器宽; 桌面 = 不超过容器宽、也不超过窗口高减去顶栏和边距, 取小的那个; 高 = 宽 × 16/9 */
+function phLayout() {
+  const scr = $("ph-screen"), wrap = $("ph-body");
+  let w;
+  if (document.fullscreenElement === scr || document.documentElement.dataset.immersive) w = Math.min(document.documentElement.clientWidth, innerHeight * 9 / 16);   /* clientWidth 不含滚动条 */
+  else if (isApp()) {   /* 手机上: 画面吃满顶栏到底栏之间的整个高度(10-13 用户: "手机端还不是全屏"), 宽按 9:16 算, 比容器还宽就按容器宽 */
+    const tb = document.querySelector(".tabbar"), tbh = tb && getComputedStyle(tb).display !== "none" ? tb.getBoundingClientRect().height : 0;
+    const top = wrap.getBoundingClientRect().top, avail = innerHeight - top - tbh - 8;
+    w = Math.max(100, Math.min(wrap.clientWidth - 2, avail * 9 / 16));
+  } else w = Math.max(160, Math.min(wrap.clientWidth - 2, (innerHeight - 150) * 9 / 16));
+  scr.style.width = Math.round(w) + "px"; scr.style.height = Math.round(w * 16 / 9) + "px";
+}
+window.addEventListener("resize", () => { if (phOn) phLayout(); });
+document.addEventListener("fullscreenchange", () => { if (phOn) phLayout(); });
+function phView(on) { phOn = on; if (on) { phLayout(); loadPhone(); if (phReady()) { phStart(); loadPhoneApps(); } } else { phStop(); delete document.documentElement.dataset.immersive; } }
+$("set-danger").onchange = async e => {
+  const on = e.target.checked; e.target.disabled = true;
+  if (on && !(await ask(t("ph_confirm"), true, t("ph_on")))) { e.target.checked = false; e.target.disabled = false; return; }
+  const j = await phFetch(on ? "enable" : "disable", {});
+  if (j.error) { $("danger-err").textContent = j.error; e.target.checked = !on; } else ph = j;
+  renderPhone();
+};
+/* ---- 视频流: fetch 读流 → 切 NAL → VideoDecoder; SPS/PPS 记着, 关键帧前面带上 ---- */
+function nalStarts(b) { const s = []; for (let i = 0; i + 3 < b.length; i++) if (!b[i] && !b[i + 1] && (b[i + 2] === 1 || (!b[i + 2] && b[i + 3] === 1))) { s.push(i); i += b[i + 2] === 1 ? 2 : 3; } return s; }
+function phStart() {
+  if (phAbort || phPollT) return;
+  if (!("VideoDecoder" in window)) { phPollStart(); return; }
+  const canvas = $("ph-canvas"), ctx = canvas.getContext("2d"); canvas.hidden = false; $("ph-img").hidden = true;
+  let sps = null, pps = null, key = false, ts = 0, drawn = 0;
+  /* screenrecord 只在屏幕变化时出帧: 桌面静止着, 新看客要等到有东西动才有第一帧(10-13 实撞 7 s 全黑)。先画一张截图垫底, 视频帧一到就盖掉 */
+  phFetch("screen").then(async r => { if (r && r.blob && !drawn) { const bm = await createImageBitmap(await r.blob()); if (!drawn) ctx.drawImage(bm, 0, 0, canvas.width, canvas.height); bm.close(); } }).catch(() => {});
+  phDec = new VideoDecoder({ output: f => { ctx.drawImage(f, 0, 0, canvas.width, canvas.height); f.close(); drawn++; }, error: () => { phStop(); phPollStart(); } });
+  try { phDec.configure({ codec: "avc1.42E01E", optimizeForLatency: true, avc: { format: "annexb" } }); } catch (e) { phStop(); phPollStart(); return; }
+  const dec = phDec, ac = phAbort = new AbortController();
+  const feed = nal => {
+    const sc = nal[2] === 1 ? 3 : 4, type = nal[sc] & 0x1f;
+    if (type === 7) sps = nal; else if (type === 8) pps = nal;
+    else if (type === 5 || (type === 1 && key)) {
+      if (dec.state !== "configured") return;
+      if (type === 1 && dec.decodeQueueSize > 8) return;   /* 落后了就丢中间帧, 下一关键帧追上; 实况要的是新, 不是全 */
+      let data = nal;
+      if (type === 5) { if (!sps || !pps) return; data = new Uint8Array(sps.length + pps.length + nal.length); data.set(sps); data.set(pps, sps.length); data.set(nal, sps.length + pps.length); key = true; }
+      dec.decode(new EncodedVideoChunk({ type: type === 5 ? "key" : "delta", timestamp: ts, data })); ts += 33333;
+    }
+  };
+  (async () => {
+    let r; try { r = await fetch("/api/phone/video", { signal: ac.signal, cache: "no-store" }); } catch (e) { return; }
+    if (!r.ok || !r.body) { if (phAbort === ac) { phStop(); if (r.status !== 503) phPollStart(); } return; }
+    const rd = r.body.getReader(); let buf = new Uint8Array(0);
+    for (;;) {
+      let c; try { c = await rd.read(); } catch (e) { break; }
+      if (c.done) break;
+      const nb = new Uint8Array(buf.length + c.value.length); nb.set(buf); nb.set(c.value, buf.length); buf = nb;
+      const st = nalStarts(buf); if (st.length < 2) continue;
+      for (let i = 0; i + 1 < st.length; i++) feed(buf.subarray(st[i], st[i + 1]));
+      buf = buf.slice(st[st.length - 1]);
+    }
+    if (phAbort === ac) { phStop(); if (phOn) setTimeout(() => { if (phOn && phReady()) phStart(); }, 1500); }   /* 连接断了(手机重起/网络): 还在这页就重连 */
+  })();
+}
+function phStop() {
+  if (phAbort) { const a = phAbort; phAbort = null; a.abort(); }
+  if (phDec) { try { phDec.close(); } catch (e) {} phDec = null; }
+  clearInterval(phPollT); phPollT = 0;
+}
+function phPollStart() {   /* 退路: 每秒一张 PNG */
+  if (phPollT) return;
+  $("ph-note").textContent = t("ph_novideo"); $("ph-canvas").hidden = true; $("ph-img").hidden = false;
+  const tick = async () => {
+    const r = await phFetch("screen");
+    if (r && r.blob) { const u = URL.createObjectURL(await r.blob()); const img = $("ph-img"); const old = img.src; img.src = u; if (old) URL.revokeObjectURL(old); $("ph-note").textContent = t("ph_novideo"); }
+    else if (r && r.error) $("ph-note").textContent = /no PNG/.test(r.error) ? t("ph_secure") : r.error;   /* 登录/支付页带 FLAG_SECURE: 系统禁止截屏, 不是坏了 */
+  };
+  tick(); phPollT = setInterval(tick, 1000);
+}
+/* ---- 输入: 指针按下/抬起 → tap / swipe ---- */
+{
+  const scr = $("ph-screen"); let down = null;
+  const pos = e => { const r = scr.getBoundingClientRect(); return { x: Math.round((e.clientX - r.left) * 720 / r.width), y: Math.round((e.clientY - r.top) * 1280 / r.height), t: performance.now() }; };
+  scr.onpointerdown = e => { down = pos(e); scr.setPointerCapture(e.pointerId); e.preventDefault(); };
+  scr.onpointerup = async e => {
+    if (!down) return; const up = pos(e), d = down; down = null;
+    const dist = Math.hypot(up.x - d.x, up.y - d.y);
+    /* 点 / 拖的分界 = 安卓自己的触摸容差(8 dp = 320 dpi 下 16 px)的两倍: 手指按下和抬起差几个像素是常态(手机上 1 CSS px ≈ 2 手机 px),
+       之前 12 px 的阈值把大半手指点击当成了拖动, 发成 input swipe 还带上按压时长 ⇒ 安卓看到的是滚动或长按, 点不中(10-14 用户: "灵敏度有问题") */
+    const j = dist < 32 ? await phFetch("tap", { x: d.x, y: d.y }) : await phFetch("swipe", { x1: d.x, y1: d.y, x2: up.x, y2: up.y, ms: Math.min(2000, Math.max(80, Math.round(up.t - d.t))) });
+    if (j.error) $("ph-err").textContent = j.error === "phone_off" ? t("ph_off_t") : j.error; else $("ph-err").textContent = "";
+  };
+  scr.onpointercancel = () => { down = null; };
+  document.querySelectorAll(".phkeys button[data-key]").forEach(b => b.onclick = async () => { const j = await phFetch("key", { key: b.dataset.key }); if (j.error) $("ph-err").textContent = j.error; });
+  /* 全屏: 有元素全屏接口就用它(桌面 Chrome/Firefox/安卓 Chrome); 没有(iOS Safari/PWA)就走沉浸模式(藏栏 + 画面吃满窗口); 两种都用角上的 ✕ 或再按 ⛶ 退出 */
+  const immersive = on => { if (on) document.documentElement.dataset.immersive = "1"; else delete document.documentElement.dataset.immersive; phLayout(); };
+  $("ph-full").onclick = () => {
+    if (document.fullscreenElement) { document.exitFullscreen(); return; }
+    if (document.documentElement.dataset.immersive) { immersive(false); return; }
+    if (scr.requestFullscreen) scr.requestFullscreen().catch(() => immersive(true)); else immersive(true);
+  };
+  $("ph-exit").onclick = e => { e.stopPropagation(); if (document.fullscreenElement) document.exitFullscreen(); else immersive(false); };
+  $("ph-exit").onpointerdown = e => e.stopPropagation();   /* 别当成在手机上点了一下 */
+  const send = async () => { const v = $("ph-text").value; if (!v) return; const j = await phFetch("text", { text: v }); if (j.error) { $("ph-err").textContent = j.error; return; } $("ph-err").textContent = ""; $("ph-text").value = ""; };
+  $("ph-send").onclick = send; $("ph-text").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); send(); } };
+  $("ph-apk").onclick = () => $("ph-apk-file").click();
+  $("ph-apk-file").onchange = async () => {
+    const f = $("ph-apk-file").files[0]; if (!f) return;
+    $("ph-apk").disabled = true; $("ph-note").textContent = t("ph_installing"); $("ph-err").textContent = "";
+    const j = await phFetch("install", await f.arrayBuffer(), true);
+    $("ph-apk").disabled = false; $("ph-apk-file").value = "";
+    if (j.error) { $("ph-note").textContent = ""; $("ph-err").textContent = j.error; return; }
+    $("ph-note").textContent = t("ph_installed", j.package || f.name); toast(t("ph_installed", j.package || f.name)); phApps = null; loadPhoneApps();
+  };
+}
+async function loadPhoneApps() {
+  const j = await phFetch("apps"); if (j.error) return;
+  phApps = j.apps || []; const box = $("ph-apps"); box.replaceChildren(); box.appendChild(node("span", "muted", t("ph_apps")));
+  for (const p of phApps) { const b = node("button", "ghost", p.replace(/^com\.android\./, "").replace(/^org\.chromium\./, "")); b.title = p; b.onclick = async () => { const j = await phFetch("open", { package: p }); $("ph-err").textContent = j.error || ""; }; box.appendChild(b); }
+}
+
 for (const id of ["set-host", "set-port", "set-user", "set-pub"]) $(id).oninput = () => { $(id).dataset.dirty = "1"; };   /* 改了一半别被轮询刷回去 */
 $("set-save").onclick = async () => {
   const body = { host: $("set-host").value.trim(), port: $("set-port").value.trim() || "22", user: $("set-user").value.trim() || "root", password: $("set-pass").value, pub: $("set-pub").value.trim() };
@@ -2691,7 +3210,7 @@ $("cert-del").onclick = async () => {
 if ("serviceWorker" in navigator && window.isSecureContext) navigator.serviceWorker.register("/sw.js").catch(e => console.warn("service worker 没注册上:", e));
 applyI18n();
 authBoot().then(() => {
-  renderChat(); autosize(); loadSessions(); if (curSid) openStream(curSid); loadData(); poll(); setInterval(poll, 2500); setInterval(loadData, 20000);
+  renderChat(); autosize(); loadSessions(); if (curSid) openStream(curSid); loadData(); poll(); setInterval(poll, 2500); setInterval(loadData, 20000); loadPhone(); setInterval(loadPhone, 5000);
   (async () => { for (let i = 0; i < 20 && !status && failCount < 4; i++) await new Promise(r => setTimeout(r, 300));
     showTab(curTab() || (status && status.busy ? "train" : "chat")); })();
 });

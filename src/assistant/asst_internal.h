@@ -133,7 +133,56 @@ void asst_memory_json(ds4_buf *b);     /* {profile, rules} */
 bool asst_memory_save(const char *body, char *err, size_t errn);
 
 /* ---------------- 工具(asst_tools.c): 一张注册表(总纲 docs/assistant_arch.md §2) + 浏览器(asst_browser.c) ---------------- */
-typedef struct { const char *caps, *apps; } asst_tctx;   /* 这条消息的上下文: 页面报的设备能力(逗号表) + 能打开的 app(逗号表); 工具表按它筛 */
+typedef struct { const char *caps, *apps, *task; } asst_tctx;   /* 这条消息的上下文: 页面报的设备能力(逗号表) + 能打开的 app(逗号表) + 任务 id(任务会话才有, 否则 NULL); 工具表按它筛 */
+
+/* ---------------- 任务(asst_task.c, 2026-10-14): 一句话 + 专属会话 + 下次跟进时间; 调度线程到点往会话里发"继续这个任务", 周期由模型用 task_check_in 定 ---------------- */
+void asst_task_start(void);                                   /* ds4-train 起时: 建 tasks/ 并开调度线程 */
+bool asst_task_of(const char *sid, char tid[ASST_ID_LEN + 1]);   /* 这个会话是任务的吗(meta.task) */
+char *asst_task_fact_line(const char *tid, bool zh);          /* "[任务: 第 N 次跟进 · 创建于 … · 上次结束 … · 你上次留的话: …]"(malloc); 放在用户文本前, 页面不显示 */
+bool asst_task_tool(const char *name);                        /* task_check_in / task_done */
+bool asst_task_build_checkin(const asst_tctx *c, ds4_buf *b);   /* 两个工具的 schema: 只在任务会话里进工具表 */
+bool asst_task_build_done(const asst_tctx *c, ds4_buf *b);
+char *asst_task_tool_exec(const char *sid, const char *tool, const char *args, int *ok);   /* 主进程直接改任务文件, 不进沙盒 */
+void asst_task_run_end(const char *tid, const char *end, const char *last_text);   /* 运行收尾: 次数、上次进展、没定下次就一小时后 */
+bool asst_task_add(const char *text, char tid[ASST_ID_LEN + 1], char *err, size_t errn);   /* 建任务 + 会话 + 立刻跑第一次 */
+bool asst_task_op(const char *body, char *err, size_t errn);  /* 页面: {op: add|pause|resume|done|run|delete, id, text} */
+void asst_tasks_json(ds4_buf *b);                             /* {follow_s, tasks:[{id, session, state, end, created, updated, next, runs, text, last, note, run_state}]} 没完的在前 */
+bool asst_task_due(long now, char tid[ASST_ID_LEN + 1], char sid[ASST_ID_LEN + 1], char *text, size_t tn);   /* 调度用: 一个到期且会话空闲的任务 */
+bool asst_task_info(const char *tid, char *state, size_t sn, char *text, size_t tn);   /* 状态 + 那句话(截到 tn) */
+
+/* ---------------- 推送(asst_push.c, Web Push; 密码学在 src/push) + 通知规则(asst_notify.c), 2026-10-14 ---------------- */
+void asst_push_init(void);                     /* push/vapid.json 没有就生成; ds4-train 起时调 */
+const char *asst_push_key(void);               /* VAPID 公钥 base64url(页面订阅用); 没初始化 = "" */
+void asst_push_json(ds4_buf *b);               /* {key, devices:[{id, label, origin, created}]} */
+bool asst_push_op(const char *body, char *err, size_t errn);   /* {op: subscribe|unsubscribe|test, sub, label, origin, endpoint, id, lang} */
+int asst_push_devices(void);                   /* 开了通知的设备数 */
+int asst_push_send_sync(const char *title, const char *body, const char *url);   /* 推给全部设备, 返回送达数(2xx); 404/410 的订阅当场删 */
+void asst_push_send(const char *title, const char *body, const char *url);       /* 异步版: 起线程, 立刻返回 */
+bool asst_notify_tool(const char *name);       /* notify */
+bool asst_notify_build(const asst_tctx *c, ds4_buf *b);
+char *asst_notify_tool_exec(const char *sid, const char *args, int *ok);
+void asst_reminders_json(ds4_buf *b);          /* {reminders:[{id, at, created, session, title, text}]} 按时间 */
+bool asst_reminder_op(const char *body, char *err, size_t errn);   /* {op: delete, id} */
+int asst_notify_tick(long now);                /* 到点的提醒发出去; 返回发了几条 */
+void asst_notify_run_end(const char *sid, const char *end, const char *last_text, double secs);   /* 运行收尾: 任务做完 / 跑了很久 → 推一条 */
+void asst_presence_set(const char *client, bool visible);   /* 页面报"我在看/我走了" */
+bool asst_presence_visible(long now);                       /* 有页面正开着在看(ASST_PRESENCE_S 内报过 visible) → 不推设备, 落 notices */
+void asst_notice_add(const char *title, const char *body, const char *url);   /* push/notices.jsonl 追加一条(页面 poll 拉走弹出) */
+void asst_notices_json(ds4_buf *out, long after);           /* {notices:[{t,title,body,url}]} t > after */
+
+/* ---------------- 技能(asst_skill.c, 方案稿 docs/assistant_skills.md): skills/<名>/SKILL.md + 随附文件; 工具只读, 页面"技能"tab 增删改 ---------------- */
+#define ASST_SKILL_NAME_MAX 64
+#define ASST_SKILL_MD_MAX (64u << 10)   /* use_skill 一次给模型的正文上限(≈2 万 token); 更长的指路 read_file 分页 */
+#define ASST_SKILL_FILES 200            /* 文件表最多列这么多条 */
+extern char asst_skills[ASST_PATH];     /* asst_root/skills(asst_init 建) */
+bool asst_skill_name_ok(const char *name);
+int asst_skill_count(void);
+bool asst_skill_build_tool(const asst_tctx *c, ds4_buf *b);   /* use_skill 的 schema: 描述里列已装技能(名字: 描述), name 枚举; 一个没装 → false(工具表里没这行) */
+char *asst_skill_load(const char *name);                       /* use_skill 的执行: 文件夹路径 + 文件表 + 正文(malloc) */
+void asst_skills_json(ds4_buf *b);                             /* 页面: {root, skills:[{name, description, md, files:[{path,size}]}]} */
+bool asst_skill_op(const char *body, char *err, size_t errn);  /* 页面: {op: save|delete, name, md}; save 先过 asst_skill_check */
+bool asst_skill_check(const char *text, char *why, size_t n); /* ★技能不许带脚本★: 围栏代码块 / #! / <script> / 命令行 / 行内代码里的命令或脚本文件名 → false + 第几行什么 */
+char *asst_skill_put_file(const char *name, const char *rel, const char *data, size_t n);   /* 页面上传随附文件; NULL = 成功, 否则原因(malloc) */
 char *asst_tools_json(const asst_tctx *ctx);   /* OpenAI tools 数组(malloc): 注册表里 avail 为真的行 */
 char *asst_tool_exec(const char *session, const char *tool, const char *args, const asst_gres *g, int *ok);   /* 已过守门; 在沙盒里跑 */
 char *asst_tool_post(const char *session, const char *tool, const char *result);   /* 设备工具交回结果后的收尾(locate → 反查地址 + 记进会话); 返回新结果(malloc)或 NULL = 原样 */
@@ -153,6 +202,49 @@ void asst_browser_shutdown(void);
 bool asst_ff_tab_open(int w, int h, const char *preload_fn, char *ctx, size_t ctxn, char *script, size_t sn, char *err, size_t errn);
 char *asst_ff_call(const char *method, const char *params, char *err, size_t errn);   /* BiDi 命令 → result 原文(malloc); 失败 NULL, 读超时会杀掉火狐 */
 void asst_ff_tab_close(const char *ctx, const char *script);
+
+/* ---------------- 云手机(方案稿 docs/assistant_phone.md): asst_adb.c = adb 线协议客户端(直连手机里的 adbd, 不装 adb 命令) ---------------- */
+#define ADB_OUT_MAX (64u << 20)   /* 一条 exec 的输出上限 64 MB: 截图 PNG ~1 MB, 这是防对端发疯 */
+typedef struct { int fd, timeout_ms; uint32_t next_id, maxdata; char banner[256]; } adb_conn;
+typedef bool (*adb_sink)(const void *data, size_t n, void *ud);   /* 返回 false = 不要了(流就此关掉) */
+bool adb_connect(adb_conn *c, const char *ip, int port, int timeout_ms, char *err, size_t errn);
+void adb_close(adb_conn *c);
+bool adb_stream(adb_conn *c, const char *service, const void *in, size_t inlen, adb_sink sink, void *ud, char *err, size_t errn);   /* 一条服务流: in = 喂给 stdin 的字节(可 NULL), 输出逐包给 sink */
+bool adb_exec(adb_conn *c, const char *cmd, const void *in, size_t inlen, ds4_buf *out, char *err, size_t errn);   /* "exec:<cmd>" 收满到 out */
+char *adb_shell(const char *ip, int port, const char *cmd, int timeout_ms, char *err, size_t errn);   /* 连-跑-关, 文本结果(malloc, 去尾换行); 失败 NULL */
+
+/* asst_phone.c: 危险模式开关(~/.ds4/studio/danger) + 手机生命周期(sudo -n <仓库根>/ds4-phone start|stop|status) + 内存门 */
+#define ASST_PHONE_IP "172.31.250.2"     /* ds4-phone 的固定布局(src/phone/phone_internal.h) */
+#define ASST_PHONE_PORT 5555
+#define ASST_PHONE_MIN_AVAIL_MB 3072     /* 起手机前: MemAvailable − 手机最小顶 ≥ 这个数(和火狐同一条尺; = src/phone PH_MEM_HEADROOM_MB) */
+#define ASST_PHONE_MIN_CAP_MB 2048       /* 手机的最小内存顶(= src/phone PH_MEM_MIN_MB); 真正的顶由 ds4-phone 起时按宿主可用内存定, 状态里 cap_mb 是它 */
+typedef struct {
+    bool supported, prepared, enabled, running, adb;
+    char state[16];                      /* off | starting | ready | stopping | error */
+    char err[256];
+    long mem_mb, peak_mb, cap_mb, mem_avail_mb, uptime_s;
+    int pids, width, height, viewers;
+} asst_phone_st;
+void asst_phone_init(void);              /* ds4-train 起时: 开关开着就接上已在跑的 / 拉起; 关着就把残留停掉 */
+void asst_phone_status(asst_phone_st *st);
+bool asst_phone_enable(char *err, size_t errn);
+bool asst_phone_disable(char *err, size_t errn);
+bool asst_phone_on(void);                /* 开关开 && 手机 ready: 工具表与守门都看它 */
+char *asst_phone_shell(const char *cmd, int timeout_ms, char *err, size_t errn);
+bool asst_phone_screencap(ds4_buf *png, char *err, size_t errn);
+bool asst_phone_install(const void *apk, size_t n, char *pkg, size_t pn, char *err, size_t errn);
+const char *asst_phone_apps(void);       /* 逗号表: 已装第三方包 + 常用系统 app; 手机 ready / 装卸后刷新 */
+void asst_phone_apps_refresh(void);
+/* asst_phone_video.c: screenrecord 的 H.264 裸流 → 每个看客一条 HTTP 连接(接管 fd); 没人看 5 s 后停录 */
+void asst_phone_video_attach(int fd);
+int asst_phone_video_viewers(void);
+size_t asst_phone_nal_split(const unsigned char *p, size_t n, size_t *starts, size_t max);   /* 起始码位置表(最后一个可能不完整, 调用方自己留尾); 单测用 */
+/* asst_phone_tools.c: 模型的六个 phone_* 工具 */
+bool asst_phone_tool(const char *name);
+bool asst_phone_build_open(const asst_tctx *c, ds4_buf *b);   /* phone_open 的 schema(app 枚举随手机变) */
+char *asst_phone_tool_exec(const char *sid, const char *tool, const char *args, int *ok);
+char *asst_phone_ui_text(const char *xml);   /* uiautomator 的 XML → 给模型看的元素表(单测用) */
+char *asst_phone_ui_json(const char *xml);   /* → REST 的 {elements:[…]} */
 
 /* ---------------- 视频(asst_video.c + asst_video_srv.c, 方案稿 docs/assistant_video.md) ---------------- */
 char *asst_video_exec(const char *args, const asst_gres *g, const char *trash, int *ok);   /* 已过守门(g->path = .mp4 绝对路径) */

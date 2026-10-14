@@ -59,7 +59,7 @@
 - 鉴权多两条：所有 POST 必须带 `X-DS4-Assistant: 1` 头，挡你自己浏览器里恶意网页发起的 CSRF；本机请求还要校验 Host 头是 localhost，挡 DNS 重绑定。
 - 删会话 = 挪进 `~/.ds4/assistant/trash/sessions/`，不真删。
 
-还没做的：阶段 2 全部（定时任务、收件箱、日记、压缩、memory_search、deliver_file）和阶段 3 全部。
+还没做的：阶段 2 里的收件箱、日记、压缩、memory_search、deliver_file（任务 10-14 已落地，见 §6）和阶段 3 全部。
 
 ## 1. 对标：Muse 有什么、nanoMuse 怎么做、我们手里有什么
 
@@ -92,6 +92,7 @@
   approvals.jsonl                 你做过的审批决定(含作用域, §4.3)
   policy.json                     守门配置: 禁用的工具、允许写的目录、bash 开关
   secrets/<name>                  凭证(文件 0600): 模型只见名字不见值(§4.5)
+  skills/<名>/SKILL.md            技能(10-14, 方案稿 docs/assistant_skills.md): 某类活怎么干 + 随附脚本/资料; 工具只读, 页面"技能"tab 增删改
   workspace/                      助理默认的读写地盘; 之外的目录要在 policy.json 里点名
   token                           非本机访问助理接口要带的口令(§4.7)
 ```
@@ -256,17 +257,66 @@ stderr；从别的设备开页面，页面要一次口令存 localStorage。训�
 tool_call_id, content}` 时渲染结果与活 KV 逐字节对齐——这段机制 10-11 刚修过并有金标，
 助理不碰它。
 
-## 6. 后台任务与收件箱
+## 6. 任务：一句话交给助理持续跟着（10-14 落地，`asst_task.c`；替代原稿的"定时任务 + 收件箱"）
 
-- `tasks.json` 一条 = `{id, prompt, at: "2026-10-12T09:00", every: "day"|null, session_policy: "new"|"<id>"}`。
-- `asst_sched.c` 一条线程，每 30 秒看一次表，到点就提交一次运行(新会话或指定会话)，
-  运行结束把最后一条助理回复写进 `inbox.jsonl`，页面顶部红点 + 活动页列出。
-- 全局**一次只跑一个运行**(FIFO)：聊天在跑时任务排队，任务在跑时你发消息也排队，页面
-  显示"排队中(前面 1 个)"。为什么不并发：模型子进程虽能 3 路，但活 KV 检查点只有一个，
-  两个会话交替 = 来回磁盘恢复；排队反而快。
-- 事件触发("文件变了就…")放第 3 阶段；第 1 阶段只有时间触发。
-- 内置一条任务模版"早上 9 点：看昨天日记和今天任务，给我一句话提醒"——它只是
-  `tasks.json` 里的一行，不想要就删；没有开关(10-10 用户：页面不放旋钮)。
+**怎么用**：侧栏"任务"页（助理后面一格）输入一句话，回车。助理马上做第一遍；之后它自己定什么时候再看，
+到点自动再跟进一次；做完了自己收口。列表里每行是一个任务：那句话、跟进了几次、下次几点、助理留的话、
+上次进展头部；按钮 打开 / 现在跟进 / 暂停 / 完成 / 删除。"打开"就是进它的对话（助理页），每次做了什么、
+调了什么工具、审批卡都在那里。
+
+**怎么做的**：
+
+- 一个任务 = `~/.ds4/assistant/tasks/<id>.json`（纯文本）+ 一个专属会话（`sessions/<sid>/`，`meta.task` 指回任务）。
+  字段：`text state(active|paused|done) end(done|error|stopped) created updated next runs last note`。
+- 调度线程每 30 s 看一次表：`active` 且 `next ≤ now` 且会话空闲的任务，往它的会话里发一条"继续这个任务。"
+  （英文任务发 "Continue this task."）。这条消息走和聊天一模一样的运行循环，页面上就是一个用户气泡。
+- 用户文本前多一行任务事实（模型看到、页面不显示，与设备行同口径只放事实）：
+  `[任务: 第 N 次跟进 · 创建于 … · 上次结束 … · 你上次留的话: …]`。
+- **周期由模型定，不是页面旋钮**：任务会话的工具表多两行（只在任务会话里有）——
+  `task_check_in(minutes, note)` 定下次几分钟后再叫它、留一句给下次的自己（也显示在列表里）；
+  `task_done(summary)` 收口，之后不再叫。模型这一轮没调 `task_check_in`，收尾时按
+  `ASST_TASK_FOLLOW_S`（一小时）排下一次——任务就是要持续跟，不能因为模型忘了说就断掉。
+- 一次运行结束（`asst_run.c` 收尾钩子）：`runs+1`、最后一轮正文头 600 字节进 `last`、`end` 记结束原因；
+  出错（比如模型没加载）也照样排下一次，不做立即重试。
+- 全局**一次只跑一个运行**（FIFO）不变：你在聊天时任务排队，任务在跑时你发消息也排队。
+- 暂停 / 完成 / 删除会把正跑着的那一轮也停掉；删除 = 任务文件挪 `trash/tasks/`，会话挪 `trash/sessions/`。
+- 接口：`GET /api/assistant/tasks` → `{follow_s, tasks:[…+run_state]}`（没完成的在前）；
+  `POST /api/assistant/tasks {op: add|pause|resume|done|run|delete, id, text}`。
+- 门：`ds4_asst_test` 的 `asst task` 51 项（建/工具表/守门/check_in/收尾/到期/页面操作/英文）；
+  `make asst-e2e` 任务段 12 项（页面创建 → 盘上文件与会话 → 假模型跑完第一遍 → 行里"跟进 1 次 · 下次" → 打开进对话 → 删除进 trash）。
+- 没有的：事件触发（"文件变了就…"），只有时间触发；收件箱（进展直接在列表行与它的对话里）。
+
+### 6.1 通知：浏览器推送（10-14 落地；用户："使用 pwa 推送"、"在当前页面肯定不通知"）
+
+**怎么用**：任务页顶上"通知"卡，打开"在这台设备上接收通知"（浏览器会问一次权限；iPhone 要先添加到主屏幕、从主屏幕打开），
+"发一条测试"看设备上有没有弹。之后三种情况会推到开了通知的设备：
+
+| 谁决定 | 什么时候 | 例子 |
+|---|---|---|
+| 模型（`notify` 工具，所有对话都有） | 它判断你该知道的事，现在发或给个时间到点发 | 旅游计划："出发前一小时提醒" → `notify(text, at="2026-10-20 07:30")`，落"定时提醒"卡，到点推 |
+| 框架（机械规则，不经模型） | 任务这一轮调了 `task_done`（任务做完） | "任务完成: 盯着 X 的价格" + 总结 |
+| 框架 | 任何一次运行跑了 ≥ 120 s | 做了 10 分钟的视频好了 → "<对话标题>" + 回复头部 |
+
+**正开着页面在看时一律不推**：页面可见时每 20 s 报一次在场（`POST /api/assistant/presence`），切后台/关页立刻报走了；
+服务端看到 45 s 内有页面在看，就不推设备，改落 `push/notices.jsonl`，页面 2.5 s 一轮的 poll 拉来在页面里弹（点了进那个对话）。
+`notify` 工具的结果会如实说"shown on the page the user has open"。
+
+**怎么做的**（零依赖，纯 C）：
+
+- 协议 = Web Push（RFC 8030 请求、RFC 8291 加密、RFC 8292 VAPID）。密码学在 `src/push/`：P-256（密钥/ECDH/ECDSA，RFC 6979 确定性 k）、
+  AES-128-GCM、HKDF-SHA256、base64url、整条加密与 JWT。金标 `tests/push/t_push.c`：NIST GCM 向量、RFC 5869、RFC 6979 A.2.5、
+  RFC 8291 附录 A 逐字节；首跑与 node:crypto 独立实现逐项对照过。
+- `asst_push.c`：`push/vapid.json` 一对 VAPID 密钥（首次生成，0600）；订阅存 `push/subs/<endpoint 哈希>.json`；发送 = 加密 → `curl` POST 到
+  endpoint（推送服务全是 https，本项目不引 TLS 库，下 frp / 探公网口已经在用 curl）；404/410 当场删订阅；每条进 `audit.jsonl`。
+- `asst_notify.c`：`notify` 工具、`reminders/<id>.json`（调度线程每 30 s 扫到点的）、运行收尾规则、在场表、notices。
+- `web/sw.js`：`push` 事件 → 系统通知；点通知 → 聚焦已开的工作台并切到那个对话（没开就新开 `/?session=<id>#chat`）。
+- 接口：`GET|POST /api/assistant/push`（key / devices；subscribe / unsubscribe / test）、`GET|POST /api/assistant/reminders`、
+  `POST /api/assistant/presence`、`GET /api/assistant/notices?after=`。
+- 门：`ds4_push_test` 37 项；`ds4_asst_test` 的 `asst push` 52 项（测试自己开假推送服务收 POST、当浏览器解开、验 VAPID、notify 现在/定时/到点、
+  收尾规则、在场不推、410 删订阅）；`make asst-e2e` 任务段加通知卡与"页面开着 → 页面里弹"。
+
+**出错会怎样**：手机用 `http://局域网IP:8000` 打开 → 不是安全上下文，开关灰、提示要 https（frp + 证书那条路）；通知权限拒过 → 提示去浏览器设置；
+推送服务（FCM）在国内要走代理 → curl 吃进程环境里的 `http_proxy`；推不出去的每条在"活动"页流水里有原因。
 
 ## 7. 会话、运行、事件流
 
@@ -318,7 +368,7 @@ src/assistant/
   asst_tools.c      工具 schema JSON + 分发到各实现
   asst_memory.c     profile/rules/diary 读写、system prompt 快照、日记收尾
   asst_store.c      sessions/events/audit/inbox 的 jsonl 读写(追加 + 偏移 tail)
-  asst_sched.c      定时线程
+  asst_task.c       任务(§6): tasks/<id>.json 读写 + 调度线程 + task_check_in / task_done 两个工具 + 页面接口
   asst_sse.c        接管 fd 的事件流线程(tail events.jsonl → SSE)
 src/agent/agent_tools_*.c   把对 agent_worker 的依赖收成小结构(见 §5), 两边共用
 web/studio.html             助理/记忆/活动三个 tab(单文件原则不变)
@@ -338,7 +388,8 @@ GET  /api/assistant/sessions  → [{id, title, state, updated}]
 GET  /api/assistant/memory    → {profile, rules, diary:[{date, text}]}
 POST /api/assistant/memory    {profile?, rules?}
 GET  /api/assistant/activity?session= → {audit:[…], tasks:[…], inbox:[…], approvals:[…], dirs:[…]}
-POST /api/assistant/tasks     {op: add|del, …}
+GET  /api/assistant/tasks     → {follow_s, tasks:[{id, session, state, end, next, runs, text, last, note, run_state}]}
+POST /api/assistant/tasks     {op: add|pause|resume|done|run|delete, id?, text?}
 POST /api/assistant/policy    {op: dir_add|dir_del|approval_revoke|…}
 ```
 

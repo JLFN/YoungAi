@@ -60,8 +60,9 @@ bool asst_init(const char *root, char *err, size_t errn) {
     if (!realpath(asst_root, real) || strlen(real) >= ASST_PATH) { snprintf(err, errn, "cannot create %s: %s", asst_root, strerror(errno)); return false; }
     snprintf(asst_root, sizeof asst_root, "%s", real);
     chmod(asst_root, 0700);   /* 会话、记忆、口令都在里面: 本机别的用户不许看 */
-    mkd(asst_root, "/memory"); mkd(asst_root, "/sessions"); mkd(asst_root, "/workspace"); mkd(asst_root, "/workspace/.trash");
+    mkd(asst_root, "/memory"); mkd(asst_root, "/sessions"); mkd(asst_root, "/workspace"); mkd(asst_root, "/workspace/.trash"); mkd(asst_root, "/skills");
     snprintf(asst_ws, sizeof asst_ws, "%.1000s/workspace", asst_root);
+    snprintf(asst_skills, sizeof asst_skills, "%.1000s/skills", asst_root);   /* 沙盒每次都挂它作只读根(Landlock 只给存在的路径立规则), 所以这里必须先建 */
     char tp[ASST_PATH + 16]; snprintf(tp, sizeof tp, "%s/token", asst_root);
     size_t n = 0; char *t = asst_slurp(tp, &n);
     if (t && n >= 32) { snprintf(asst_token, sizeof asst_token, "%.64s", t); asst_token[strcspn(asst_token, "\r\n ")] = 0; }

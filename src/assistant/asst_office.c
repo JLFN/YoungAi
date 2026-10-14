@@ -9,7 +9,7 @@
 #include <errno.h>
 
 /* font: 父进程找好的中文 TrueType(沙盒里只放行这一个文件); source: 工作区里现成的 .md, 子进程读(沙盒管得着它能读哪) */
-typedef struct { const char *tool, *path, *content, *trash, *also, *font, *sym, *source; char base[ASST_PATH]; } office_job;
+typedef struct { const char *tool, *path, *content, *trash, *also, *font, *sym, *source, *theme; char base[ASST_PATH]; } office_job;   /* theme: pptx 主题名(父进程已核对) */
 
 #define SOURCE_MAX (4 << 20)   /* 4 MB Markdown ≈ 两千页, 再大是读错了文件 */
 
@@ -19,7 +19,7 @@ static bool is_doc_ext(const char *e) { return !strcasecmp(e, ".docx") || !strca
 
 /* 一种格式: 树 → 字节 → 落盘; 返回 false 时 b 里是 error 句 */
 static bool write_one(const office_job *j, const office_node *doc, const char *path, const char *ext, office_report *rep, ds4_buf *b) {
-    office_opts o = { j->base, NULL, time(NULL), j->font ? j->font : "", j->sym ? j->sym : "" };   /* "" = 没找到字体就走非内嵌, 别在沙盒里再找一遍(读不到 /usr/share/fonts) */
+    office_opts o = { j->base, NULL, time(NULL), j->font ? j->font : "", j->sym ? j->sym : "", j->theme };   /* "" = 没找到字体就走非内嵌, 别在沙盒里再找一遍(读不到 /usr/share/fonts) */
     const char *trash = j->trash;
     size_t n = 0; uint8_t *bytes;
     if (!strcasecmp(ext, ".docx")) bytes = office_docx_build(doc, &o, rep, &n);
@@ -51,7 +51,7 @@ static char *office_child(void *ud) {
         free(src);
         const char *ext = ext_of(j->path);
         if (!write_one(j, doc, j->path, ext, &rep, &b)) { office_node_free(doc); office_report_free(&rep); return ds4_buf_take(&b); }
-        if (!strcasecmp(ext, ".pptx")) { int slides = 1; for (const office_node *n = doc->child; n; n = n->next) if (n->kind == OFF_HR && n->next) slides++; ds4_buf_printf(&b, ": %d slides, %d images embedded", slides, rep.images); }
+        if (!strcasecmp(ext, ".pptx")) { int slides = 1; for (const office_node *n = doc->child; n; n = n->next) if (n->kind == OFF_HR && n->next) slides++; ds4_buf_printf(&b, ": %d slides, theme %s, %d images embedded", slides, j->theme && j->theme[0] ? j->theme : "clean", rep.images); }
         else ds4_buf_printf(&b, ": %d headings, %d paragraphs, %d tables, %d lists, %d images embedded", office_count(doc, OFF_HEADING), office_count(doc, OFF_PARA), office_count(doc, OFF_TABLE), office_count(doc, OFF_LIST), rep.images);
         if (rep.missing_images) ds4_buf_printf(&b, ", %d images NOT found", rep.missing_images);
         if (j->also) {
@@ -99,7 +99,15 @@ char *asst_office_exec(const char *tool, const char *args, const asst_gres *g, c
         if (!pair) { free(content); free(also); free(source); return strdup("error: also must be \"pdf\" for a .docx path or \"docx\" for a .pdf path (.pptx has its own slide structure and cannot be paired)\n"); }
         snprintf(also_ext, sizeof also_ext, ".%s", !strcasecmp(a, "pdf") ? "pdf" : "docx");
     }
-    office_job j = { tool, g->path, content, trash, also && also[0] ? also_ext : NULL, NULL, NULL, NULL, "" };
+    static char theme[32] = "";
+    theme[0] = 0;
+    if (doc && !strcasecmp(ext, ".pptx")) {   /* 主题只对 pptx 有意义; 不认识的名字当场拒, 别在沙盒里悄悄退回白底(用户要的就是不白底) */
+        char *th = NULL; asst_jstr(args, "theme", &th);
+        if (th && th[0] && !office_pptx_theme_ok(th)) { ds4_buf b = {0}; ds4_buf_printf(&b, "error: unknown theme \"%s\"; theme must be one of: %s\n", th, office_pptx_themes()); free(th); free(content); free(also); free(source); return ds4_buf_take(&b); }
+        if (th) snprintf(theme, sizeof theme, "%s", th);
+        free(th);
+    }
+    office_job j = { tool, g->path, content, trash, also && also[0] ? also_ext : NULL, NULL, NULL, NULL, theme, "" };
     snprintf(j.base, sizeof j.base, "%s", asst_ws);
     char src_abs[ASST_PATH];
     if (has_src) {   /* 图片相对路径跟着 .md 所在目录走, 和在编辑器里预览这份 .md 时一样 */

@@ -161,9 +161,82 @@ if (lan) {
   ok(v.input === "我的位置\n我在这里：江苏省南京市浦口区文德路8号 https://surl.amap.com/abc\n" && v.tab === "chat" && !v.url.includes("text="), "分享进来落进输入框、切到助理页、查询串已去掉: " + JSON.stringify(v));
   await ctx3.close();
 }
+/* ---- 技能页(电脑外壳): 导航第三格是"技能"; 新建 → 盘上多了 skills/<名>/SKILL.md; 列表行带描述; 接口回 frontmatter 描述; 删除 → 挪进 trash/skills ---- */
+const skDir = path.join(ASST, "skills", "e2e-weekly-report");
+{
+  rmSync(skDir, { recursive: true, force: true });
+  const ctx4 = await browser.newContext({ locale: "zh-CN" });
+  const p4 = await ctx4.newPage(); p4.on("pageerror", e => console.log("pageerror:", e.message));
+  await p4.goto(`http://127.0.0.1:${PORT}/#skills`); await login(p4); await sleep(300);
+  const navNames = await p4.evaluate(() => [...document.querySelectorAll("nav a[data-tab]")].filter(a => !a.hidden).map(a => a.dataset.tab));
+  ok(navNames[1] === "tasks" && navNames[3] === "skills", "侧栏导航: 助理后面是任务(10-14), 技能在第四格(云手机没起时): " + navNames.join(","));
+  /* 这台机器上可能本来就装着技能(10-14 起 Mac 上装着 pptx), 所以不假定空表: 只看页打开了、测试用的那个还不在 */
+  ok(await p4.evaluate(() => curTab()) === "skills" && await p4.locator("#sk-list .row b", { hasText: "e2e-weekly-report" }).count() === 0, "技能页打开, 测试技能还不在");
+  await p4.locator("#sk-new").click(); await p4.locator("#sk-name").fill("E2E Weekly Report");   /* 大写空格: 页面净化成小写连字符 */
+  ok((await p4.locator("#sk-md").inputValue()).startsWith("---\nname: e2e-weekly-report\ndescription:"), "模板随名字净化后的名字填好");
+  await p4.locator("#sk-md").fill("---\nname: e2e-weekly-report\ndescription: 写部门周报用这个\n---\n# 周报\n\n1. 读 reference/tpl.md\n");
+  await p4.locator("#sk-save").click(); await sleep(300);
+  ok(existsSync(path.join(skDir, "SKILL.md")) && readFileSync(path.join(skDir, "SKILL.md"), "utf8").includes("写部门周报用这个"), "保存 → skills/e2e-weekly-report/SKILL.md 落盘");
+  ok(await p4.locator("#sk-list .row.sel b", { hasText: "e2e-weekly-report" }).count() === 1 && await p4.locator("#sk-list .row small", { hasText: "写部门周报用这个" }).count() === 1, "列表行: 名字 + 描述, 新建的被选中");
+  /* 工具表里的 use_skill 行(模型那头)由 ds4_asst_test 的 test_skills 验; 这里只验页面 ↔ 接口 ↔ 盘 */
+  const tj = await p4.evaluate(async () => (await aFetch("skills")).skills.map(s => s.name + ": " + s.description).join("|"));
+  ok(tj.split("|").includes("e2e-weekly-report: 写部门周报用这个"), "GET skills 回名字与 frontmatter 描述: " + tj);
+  await p4.locator("#sk-del").click(); await p4.locator("#ask-yes").click(); await sleep(300);
+  ok(!existsSync(skDir) && readdirSync(path.join(ASST, "trash", "skills")).some(d => d.startsWith("e2e-weekly-report-")), "删除 → 文件夹挪进 trash/skills/");
+  ok(await p4.locator("#sk-list .row b", { hasText: "e2e-weekly-report" }).count() === 0 && await p4.locator("#sk-edit").isHidden(), "删完列表里没了, 编辑卡收起");
+  await ctx4.close();
+}
+
+/* ---- 任务页(10-14): 一句话创建 → 盘上 tasks/<id>.json + 专属会话(meta.task) → 假模型跑完第一遍 → 行里"跟进 1 次 · 下次 …" → 打开 = 进它的对话 → 删除进 trash ---- */
+const tasksDir = path.join(ASST, "tasks");
+{
+  const beforeTasks = new Set(existsSync(tasksDir) ? readdirSync(tasksDir) : []);
+  const ctx5 = await browser.newContext({ locale: "zh-CN" });
+  const p5 = await ctx5.newPage(); p5.on("pageerror", e => console.log("pageerror:", e.message));
+  await p5.goto(`http://127.0.0.1:${PORT}/#tasks`); await login(p5); await sleep(300);
+  ok(await p5.evaluate(() => curTab()) === "tasks" && await p5.locator("#tk-text").isVisible(), "任务页打开, 有一句话输入框");
+  /* 通知卡(10-14): 本机 http://127.0.0.1 是安全上下文, 开关可用但没订阅; 设备数 0 ⇒ 测试键灰; 提醒卡空 */
+  await sleep(600);
+  ok(await p5.locator("#nt-on").count() === 1 && !(await p5.locator("#nt-on").isDisabled()) && !(await p5.locator("#nt-on").isChecked()) && /0/.test(await p5.locator("#nt-devices").textContent()) && await p5.locator("#nt-test").isDisabled(), "通知卡: 开关在、未订阅、设备 0 台、测试键灰: " + await p5.locator("#nt-devices").textContent());
+  ok(await p5.locator("#rm-list .muted").count() === 1, "定时提醒卡: 空");
+  const presenceBefore = (await p5.evaluate(async () => (await aFetch("notices?after=0")).notices.length));
+  await p5.locator("#tk-text").fill("盯着 e2e 的价格, 降了通知我"); await p5.locator("#tk-text").press("Enter"); await sleep(500);
+  const newTask = readdirSync(tasksDir).filter(f => !beforeTasks.has(f));
+  ok(newTask.length === 1, "回车创建 → tasks/ 多一个文件: " + newTask.join(","));
+  const tk = newTask.length ? JSON.parse(readFileSync(path.join(tasksDir, newTask[0]), "utf8")) : {};
+  ok(tk.state === "active" && tk.text === "盯着 e2e 的价格, 降了通知我" && /^[0-9a-f]{12}$/.test(tk.session || ""), "任务文件: active + 原句 + 会话 id");
+  const meta = tk.session ? JSON.parse(readFileSync(path.join(ASST, "sessions", tk.session, "meta.json"), "utf8")) : {};
+  ok(meta.task === newTask[0].replace(".json", ""), "会话 meta.task 指回任务");
+  ok(await p5.locator("#tk-list .row b", { hasText: "盯着 e2e 的价格" }).count() === 1 && (await p5.locator("#nav-tasks").textContent()) === "1", "列表行出现, 侧栏任务数 1");
+  let done = false;   /* 假模型(工具表里没有设备工具)直接出终稿: 几秒内 runs=1 */
+  for (let i = 0; i < 40 && !done; i++) { await sleep(250); try { done = JSON.parse(readFileSync(path.join(tasksDir, newTask[0]), "utf8")).runs === 1; } catch (_) {} }
+  const tk2 = JSON.parse(readFileSync(path.join(tasksDir, newTask[0]), "utf8"));
+  ok(done && tk2.end === "done" && tk2.last.includes("龙井草堂") && tk2.next > Date.now() / 1000 + 3000, "第一遍跑完: runs=1, 上次进展=终稿头部, 没调 check_in 就排到一小时后");
+  const msgs = readFileSync(path.join(ASST, "sessions", tk.session, "messages.jsonl"), "utf8").split("\n").filter(Boolean).map(l => JSON.parse(l));
+  ok(msgs[0].role === "user" && /\[任务: 第 1 次跟进 · 创建于 /.test(msgs[0].content) && msgs[0].content.endsWith("盯着 e2e 的价格, 降了通知我"), "第一条 user 带任务事实行, 正文是原句");
+  /* 通知(10-14 用户: "在当前页面肯定不通知"): 页面开着在看 → 假模型调的 notify 不推设备, 落 notices.jsonl, 页面 poll 拉来弹 toast */
+  const ntf = msgs.find(m => m.role === "tool" && typeof m.content === "string" && m.content.includes("shown on the page"));
+  ok(!!ntf, "notify 工具结果: 页面开着 → 'shown on the page', 没推设备");
+  const notices = await p5.evaluate(async () => (await aFetch("notices?after=0")).notices);
+  ok(notices.length === presenceBefore + 1 && notices[notices.length - 1].body === "e2e 通知: 价格降了" && notices[notices.length - 1].url === "/?session=" + tk.session + "#chat", "notices.jsonl 多一条, 带那个对话的 url: " + JSON.stringify(notices[notices.length - 1]));
+  let toastText = ""; for (let i = 0; i < 20 && !toastText.includes("e2e 通知"); i++) { await sleep(300); toastText = await p5.locator("#toast").textContent(); }
+  ok(toastText.includes("e2e 通知: 价格降了"), "页面里弹出了这条通知: " + toastText);
+  await p5.locator("#tk-list .row b", { hasText: "盯着 e2e 的价格" }).waitFor(); await sleep(2800);   /* 等一轮 poll 把 runs/next 刷进行里 */
+  const line = await p5.locator("#tk-list .row small").first().textContent();
+  ok(/跟进 1 次/.test(line) && /下次 /.test(line), "行里: 跟进 1 次 · 下次 …: " + line);
+  await p5.locator("#tk-list .row button", { hasText: "打开" }).first().click(); await sleep(400);
+  ok(await p5.evaluate(() => curTab() + ":" + curSid) === "chat:" + tk.session, "打开 = 进它的对话");
+  await p5.goto(`http://127.0.0.1:${PORT}/#tasks`); await sleep(400);
+  await p5.locator("#tk-list .row button", { hasText: "删除" }).first().click(); await p5.locator("#ask-yes").click(); await sleep(400);
+  ok(!existsSync(path.join(tasksDir, newTask[0])) && readdirSync(path.join(ASST, "trash", "tasks")).some(f => f.startsWith(newTask[0].replace(".json", "") + "-")) && !existsSync(path.join(ASST, "sessions", tk.session)), "删除 → 任务进 trash/tasks, 会话进 trash/sessions");
+  ok(await p5.locator("#tk-list .row b", { hasText: "盯着 e2e 的价格" }).count() === 0, "删完列表里没了");
+  await ctx5.close();
+}
 await browser.close();
 
 /* ---- 收拾 ---- */
+for (const d of readdirSync(path.join(ASST, "trash", "skills"))) if (d.startsWith("e2e-weekly-report-")) rmSync(path.join(ASST, "trash", "skills", d), { recursive: true, force: true });
+if (existsSync(path.join(ASST, "trash", "tasks"))) for (const f of readdirSync(path.join(ASST, "trash", "tasks"))) { try { if (JSON.parse(readFileSync(path.join(ASST, "trash", "tasks", f), "utf8")).text.startsWith("盯着 e2e 的价格")) rmSync(path.join(ASST, "trash", "tasks", f), { force: true }); } catch (_) {} }
 cleanup();
 const trash = path.join(ASST, "trash", "sessions"); mkdirSync(trash, { recursive: true });
 for (const s of readdirSync(path.join(ASST, "sessions"))) if (!before.has(s)) renameSync(path.join(ASST, "sessions", s), path.join(trash, s + "-e2e-" + Date.now()));
