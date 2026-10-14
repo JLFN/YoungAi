@@ -42,6 +42,15 @@ rsync -az --delete $DRYF \
     --exclude 'ds4_asst_test' --exclude 'ds4_office_test' --exclude 'tests/asst/fake' \
     `# 视频单测与 AVFoundation 判官(vidcheck 只有 Mac 能编)同理, 各机器自己 make` \
     --exclude 'ds4_video_test' --exclude 'tests/video/vidcheck' \
+    `# 推送密码学金标(10-14, src/push)与旁白单测同理` \
+    --exclude 'ds4_push_test' --exclude 'ds4_tts_test' \
+    `# ★云手机的 Linux 产物只在 spark 上有★(10-14 空跑查出): ds4-phone、adb/ashmem 探针、ashmem 内核模块(make -C 内核树编的 .ko 与 kbuild 中间文件,` \
+    `# 签名要 MOK, 重编一次不便宜) —— Mac 没有 ⇒ --delete 一同步就删光; 探针反过来会被 Mac 的 Mach-O 盖掉` \
+    --exclude 'ds4-phone' --exclude 'tests/phone/adbprobe' --exclude 'tests/phone/ashmemprobe' \
+    --exclude 'src/phone/ashmem/*.ko' --exclude 'src/phone/ashmem/*.mod' --exclude 'src/phone/ashmem/*.mod.c' --exclude 'src/phone/ashmem/.*.cmd' \
+    --exclude 'src/phone/ashmem/modules.order' --exclude 'src/phone/ashmem/Module.symvers' \
+    `# 浏览器自动化的日志与截图(.playwright-mcp/)是 Mac 本机的临时产物, 不必带过去` \
+    --exclude '.playwright-mcp' \
     `# ★工具二进制一律不同步★(2026-09-17 实撞): Mac 上编过一次的 gguf-tools 产物会被推到 Linux,` \
     `# 覆盖那边的原生版本。症状是跑起来报 "Syntax error: ( unexpected"(内核认不出 Mach-O,` \
     `# 退给 /bin/sh 当脚本读) —— 一眼看不出是二进制串了台。ELF/Mach-O 只按扩展名认不出来,` \

@@ -32,3 +32,6 @@ gguf-tools/quantize/quantize_gpu.cu
 # 2026-08-28 为记录两个隐蔽 bug 的根因(锚索引用了抽格后的 S / bf_fp_routed 生产者守卫
 # 与消费者不对齐)加了必要注释而越线 —— 拆函数体要真模型逐位闸, 是后续工序。
 gguf-tools/amp/ds4quant_run_p7.inc.c
+
+# vendored (Linux 5.17 drivers/staging/android/ashmem.c, GPL-2.0; 只做 6.17 接口移植, 不改逻辑)
+src/phone/ashmem/ashmem.c
