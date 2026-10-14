@@ -30,6 +30,7 @@
       <a href="#install"><span lang="zh-CN">安装与启动</span><span lang="en">Install &amp; start</span></a>
       <a href="#studio"><span lang="zh-CN">工作台地图</span><span lang="en">Studio map</span></a>
       <a href="#chat"><span lang="zh-CN">和助理对话</span><span lang="en">Talking to it</span></a>
+      <a href="#voice"><span lang="zh-CN">语音输入</span><span lang="en">Voice input</span></a>
       <a href="#tools"><span lang="zh-CN">工具逐个看</span><span lang="en">Every tool</span></a>
       <a href="#tasks"><span lang="zh-CN">任务与通知</span><span lang="en">Tasks &amp; push</span></a>
       <a href="#skills"><span lang="zh-CN">技能</span><span lang="en">Skills</span></a>
@@ -129,6 +130,50 @@ make cuda-spark
       </ul>
       <div class="note"><span lang="zh-CN"><b>提示：</b>一台机器一份模型，后台任务和你的聊天排队跑。任务正在跑时你发消息，会等它这一轮做完。</span>
         <span lang="en"><b>Note:</b> one machine, one model, so background tasks and your chat take turns. If a task is running when you send a message, yours waits for that round to finish.</span></div>
+    </section>
+
+    <!-- ============ 语音 ============ -->
+    <section id="voice">
+      <h2><span lang="zh-CN">语音输入</span><span lang="en">Voice input</span></h2>
+      <p lang="zh-CN">用法和微信一样。语音识别在这台机器的 GPU 上跑，录音不离开它。</p>
+      <p lang="en">It works like WeChat. Speech recognition runs on this machine's GPU, so the recording never leaves it.</p>
+      <ol class="steps">
+        <li lang="zh-CN">输入框空着时，最右边的圆钮是<b>麦克风</b>。点一下切到语音模式，第一次会问麦克风权限。</li>
+        <li lang="en">With the input box empty, the rightmost round button is a <b>microphone</b>. Tap it to switch to voice mode; the first time, the browser asks for microphone permission.</li>
+        <li lang="zh-CN">输入框变成<b>"按住 说话"</b>长条。按住说，上方显示音量和秒数，最后 5 秒会倒数。</li>
+        <li lang="en">The input turns into a <b>"Hold to talk"</b> bar. Hold it and speak; a level meter and timer appear above, counting down in the last 5 seconds.</li>
+        <li lang="zh-CN">松手 → "识别中…" → 识别出的文字<b>直接作为消息发出</b>，输入框里原来的草稿不动。手指往上滑超过一截再松手 = 取消，不上传。</li>
+        <li lang="en">Let go → "Recognizing…" → the text is <b>sent as a message right away</b>; any draft in the input box is left alone. Slide your finger up before letting go to cancel; nothing is uploaded.</li>
+        <li lang="zh-CN">圆钮变成<b>键盘</b>时点它，回到打字。下次打开会记得你上次用的是哪种。</li>
+        <li lang="en">Tap the button when it shows a <b>keyboard</b> to go back to typing. The page remembers which mode you used last.</li>
+      </ol>
+      <div class="table-wrap"><table>
+        <tr><th><span lang="zh-CN">项</span><span lang="en">Item</span></th><th><span lang="zh-CN">说明</span><span lang="en">Details</span></th></tr>
+        <tr><td><span lang="zh-CN">模型</span><span lang="en">Model</span></td><td><span lang="zh-CN"><a href="https://huggingface.co/moonshine-ai/moonshine-tiny-zh">moonshine-tiny-zh</a>，2700 万参数、108 MB；推理是本项目自己写的 C + GPU 核（CUDA / Metal），没有 Python 和 ONNX</span><span lang="en"><a href="https://huggingface.co/moonshine-ai/moonshine-tiny-zh">moonshine-tiny-zh</a>, 27M parameters, 108 MB; inference is this project's own C + GPU kernels (CUDA / Metal), with no Python or ONNX</span></td></tr>
+        <tr><td><span lang="zh-CN">速度</span><span lang="en">Speed</span></td><td><span lang="zh-CN">Spark 上一段 3.4 秒的话识别 51 毫秒；手机先在页面里转成 16 kHz 再上传，30 秒的录音不到 1 MB</span><span lang="en">51 ms for a 3.4-second utterance on the Spark; the page converts to 16 kHz before uploading, so 30 seconds is under 1 MB</span></td></tr>
+        <tr><td><span lang="zh-CN">限制</span><span lang="en">Limits</span></td><td><span lang="zh-CN">只认中文；一次最长 30 秒（到点自动发出）；按住不到 0.6 秒算太短，不上传</span><span lang="en">Chinese only; up to 30 seconds (it sends automatically at the limit); holds under 0.6 seconds count as too short and are not uploaded</span></td></tr>
+        <tr><td><span lang="zh-CN">准确率</span><span lang="en">Accuracy</span></td><td><span lang="zh-CN">它是最小的那一档：论文在难测试集（众包录音、各种口音）上的错字率约 29%～36%。对着手机清楚地说会好得多，但比大模型差一个档次</span><span lang="en">The smallest tier: the paper reports a 29–36% character error rate on hard test sets (crowd-sourced recordings, many accents). Clear speech into a phone does much better, but it is a notch below large models</span></td></tr>
+        <tr><td><span lang="zh-CN">现状</span><span lang="en">Status</span></td><td><span lang="zh-CN">Mac 和 Spark 上的识别结果与官方参考实现逐字一致，Spark 生产服务冒烟通过；真手机上试过几句（三句错两个字）；三台手机各念 10 句的正式验收还没跑</span><span lang="en">Transcripts on the Mac and the Spark match the official reference character for character, and the Spark production server passed a smoke test; a real phone has been tried on a few sentences (two wrong characters in three); the formal run of 10 sentences on each of three phones has not been done yet</span></td></tr>
+      </table></div>
+      <h3><span lang="zh-CN">怎么开</span><span lang="en">How to turn it on</span></h3>
+      <p lang="zh-CN">识别模型不随仓库发，要你自己下载。把下面几个文件放进 <code>gguf/asr/moonshine-tiny-zh/</code>，再到"模型"页重新加载一次，麦克风就出现了：</p>
+      <p lang="en">The recognizer is not shipped with the repo; download it yourself. Put these files in <code>gguf/asr/moonshine-tiny-zh/</code>, then load the model again on Models, and the microphone appears:</p>
+<pre><code>mkdir -p gguf/asr/moonshine-tiny-zh &amp;&amp; cd gguf/asr/moonshine-tiny-zh
+for f in config.json tokenizer.json model.safetensors LICENSE.txt; do
+  curl -fLO https://huggingface.co/moonshine-ai/moonshine-tiny-zh/resolve/main/$f
+done</code></pre>
+      <ul lang="zh-CN">
+        <li>没有这个目录，这个功能就不存在：不出麦克风，也不报错。</li>
+        <li>麦克风要 https 或 localhost 打开页面才有（浏览器规定）。用 <code>http://局域网IP</code> 打开时最右边只有发送键，见<a href="#mobile">手机与外网</a>。</li>
+        <li>识别跟着模型子进程走：训练时模型停下，语音也暂时用不了。</li>
+      </ul>
+      <ul lang="en">
+        <li>Without that folder the feature simply does not exist: no microphone, no error.</li>
+        <li>The microphone needs the page opened over https or localhost (a browser rule). Over <code>http://&lt;LAN-IP&gt;</code> the rightmost button is just Send; see <a href="#mobile">phone and internet</a>.</li>
+        <li>Recognition lives in the model process: while training stops the model, voice input is unavailable too.</li>
+      </ul>
+      <div class="note warn"><span lang="zh-CN"><b>许可证不一样：</b>语音输入 Powered by Moonshine AI。moonshine-tiny-zh 不是 MIT，用的是 Moonshine AI Community License：研究和非商用免费；商用要先到 moonshine.ai/community-license 登记，你和关联方年营收超过 100 万美元时许可自动终止；不许拿它的输出训练基础模型。用不用由你决定。</span>
+        <span lang="en"><b>A different license:</b> voice input is Powered by Moonshine AI. moonshine-tiny-zh is not MIT; it is under the Moonshine AI Community License: free for research and non-commercial use; commercial use requires registering at moonshine.ai/community-license, the license ends once you and your affiliates exceed US$1M in annual revenue, and its outputs may not train foundation models. Using it is your call.</span></div>
     </section>
 
     <!-- ============ 工具 ============ -->
@@ -373,12 +418,14 @@ description: 写部门周报用这个：按部门汇总本周导出的表格，�
         <li>OpenAI 兼容客户端填 Base URL <code>http://主机:8000/v1</code> + 密钥即可；Anthropic SDK 用 <code>x-api-key</code> 头。API 页上有按你的地址和模型名生成好的示例。</li>
         <li>本机调也要带密钥，不带回 401。模型没加载时回 404。</li>
         <li><code>"temperature": 0</code> 每次输出逐字节相同；要思考加 <code>"reasoning_effort": "high"</code>；图片用 OpenAI 的 <code>image_url</code> 或 Anthropic 的 <code>image</code> 块（<code>data:</code> URL）。</li>
+        <li>装了识别模型时还有 <code>/v1/audio/transcriptions</code>：请求体直接放 16 kHz 单声道 WAV（不是 OpenAI 的 multipart 表单），回 <code>{"text":"…"}</code>；别的采样率或格式回 400 并说明收到的是什么。</li>
         <li>只要 API、不要工作台、不想编译：<code>curl -fsSLO https://huggingface.co/wenzhouwu/YoungAi-DeepSeek-V4.1-Flash/resolve/main/install.sh &amp;&amp; bash install.sh</code>。</li>
       </ul>
       <ul lang="en">
         <li>OpenAI-compatible clients need Base URL <code>http://&lt;host&gt;:8000/v1</code> plus the key; the Anthropic SDK uses the <code>x-api-key</code> header. The API tab shows ready-made examples with your address and model name.</li>
         <li>Even local calls need the key, or you get 401. With no model loaded you get 404.</li>
         <li><code>"temperature": 0</code> gives byte-identical output every run; add <code>"reasoning_effort": "high"</code> for thinking; send images as OpenAI <code>image_url</code> or Anthropic <code>image</code> blocks (<code>data:</code> URLs).</li>
+        <li>With the speech model installed there is also <code>/v1/audio/transcriptions</code>: the body is a 16 kHz mono WAV as-is (not OpenAI's multipart form) and the reply is <code>{"text":"…"}</code>; other sample rates or formats get a 400 saying what arrived.</li>
         <li>API only, no Studio, no build: <code>curl -fsSLO https://huggingface.co/wenzhouwu/YoungAi-DeepSeek-V4.1-Flash/resolve/main/install.sh &amp;&amp; bash install.sh</code>.</li>
       </ul>
     </section>
@@ -417,6 +464,8 @@ description: 写部门周报用这个：按部门汇总本周导出的表格，�
         <tr><td><span lang="zh-CN">技能保存被拒，报 line N</span><span lang="en">Skill rejected with "line N"</span></td><td><span lang="zh-CN">那一行有代码块或命令</span><span lang="en">that line has a code block or command</span></td><td><span lang="zh-CN">改成用工具名描述步骤</span><span lang="en">describe the step with tool names instead</span></td></tr>
         <tr><td><span lang="zh-CN">外部程序调 /v1 得 401</span><span lang="en">Outside program gets 401 on /v1</span></td><td><span lang="zh-CN">没带密钥或密钥被删</span><span lang="en">no key, or the key was deleted</span></td><td><span lang="zh-CN">API 页建一把，带 <code>Authorization: Bearer</code></span><span lang="en">create one on API and send <code>Authorization: Bearer</code></span></td></tr>
         <tr><td><span lang="zh-CN">穿透显示连通，手机却打不开</span><span lang="en">Tunnel is up but the phone cannot connect</span></td><td><span lang="zh-CN">大陆服务器 + 域名没备案，80/443 被拦</span><span lang="en">mainland server with unregistered domain; 80/443 blocked</span></td><td><span lang="zh-CN">公网端口换 8443，或去备案</span><span lang="en">switch the public port to 8443, or register the domain</span></td></tr>
+        <tr><td><span lang="zh-CN">输入框旁没有麦克风</span><span lang="en">No microphone next to the input box</span></td><td><span lang="zh-CN">没放识别模型，或页面是 http 局域网地址打开的</span><span lang="en">no speech model installed, or the page is on a plain http LAN address</span></td><td><span lang="zh-CN">见<a href="#voice">语音输入 · 怎么开</a>；改用 https</span><span lang="en">see <a href="#voice">Voice input · how to turn it on</a>; use https</span></td></tr>
+        <tr><td><span lang="zh-CN">提示"麦克风权限被拒了"</span><span lang="en">"Microphone access was denied"</span></td><td><span lang="zh-CN">之前拒绝过浏览器的麦克风请求</span><span lang="en">the browser's microphone prompt was refused earlier</span></td><td><span lang="zh-CN">到浏览器（或系统）设置里给这个网址开麦克风</span><span lang="en">allow the microphone for this site in browser (or system) settings</span></td></tr>
         <tr><td><span lang="zh-CN">忘了工作台密码</span><span lang="en">Forgot the Studio password</span></td><td>—</td><td><span lang="zh-CN">删 <code>~/.ds4/studio/auth</code>，刷新重设</span><span lang="en">delete <code>~/.ds4/studio/auth</code> and reload</span></td></tr>
       </table></div>
       <p lang="zh-CN">还没解决：到 <a href="https://github.com/fodelf/YoungAi/issues">GitHub Issues</a> 提问，或写信 310066827@qq.com。活动页的流水里通常有原因原文，一起贴上最好。</p>

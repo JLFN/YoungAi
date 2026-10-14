@@ -39,8 +39,8 @@
       </div>
       <h1 lang="zh-CN">住在<em>你自己机器上</em>的个人 AI 助理</h1>
       <h1 lang="en">A personal AI assistant that lives <em>on your own machine</em></h1>
-      <p class="lede" lang="zh-CN">记得你说过的事，会上网、会写 Word / PDF / PPT / Excel、会做视频、会盯着一件事持续跟进，干完把结果交到手机上的下一个 app。模型、记忆、文件全在本机，数据不出门。</p>
-      <p class="lede" lang="en">It remembers what you tell it, browses the web, writes Word / PDF / PowerPoint / Excel files,
+      <p class="lede" lang="zh-CN">按住就能说话。记得你说过的事，会上网、会写 Word / PDF / PPT / Excel、会做视频、会盯着一件事持续跟进，干完把结果交到手机上的下一个 app。模型、记忆、文件全在本机，数据不出门。</p>
+      <p class="lede" lang="en">Hold to talk. It remembers what you tell it, browses the web, writes Word / PDF / PowerPoint / Excel files,
         makes videos, keeps following up on a job, and hands the result to the next app on your phone.
         Model, memory and files all stay on the machine.</p>
       <div class="btns">
@@ -217,6 +217,12 @@
         <p lang="zh-CN">一个文件夹、一份 SKILL.md，教它某类活怎么干。格式照 Agent Skills 开放标准，不许带脚本。</p>
         <p lang="en">One folder, one SKILL.md, teaching it how to do a kind of job. Agent Skills format; scripts are not allowed.</p>
         <div class="tools">use_skill</div>
+      </div>
+      <div class="card">
+        <h3><span class="ico"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></span><span lang="zh-CN">语音输入</span><span lang="en">Voice input</span></h3>
+        <p lang="zh-CN">像微信那样按住说话，松手直接发出。识别也在本机 GPU 上跑（moonshine-tiny-zh，Spark 上一句 51 毫秒），录音不出门。目前只认中文。</p>
+        <p lang="en">Hold to talk like in WeChat; let go and it sends. Recognition also runs on the local GPU (moonshine-tiny-zh, 51 ms per utterance on the Spark), so audio never leaves the machine. Chinese only for now.</p>
+        <div class="tools">/v1/audio/transcriptions</div>
       </div>
       <div class="card">
         <h3><span class="ico"><svg viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg></span><span lang="zh-CN">后训练</span><span lang="en">Post-training</span></h3>

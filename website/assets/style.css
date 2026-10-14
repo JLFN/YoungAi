@@ -262,3 +262,5 @@ footer a { color: var(--ink-2); }
 .checks.two { grid-template-columns: 1fr 1fr; gap: 14px 32px; margin: 8px 0 36px; }
 @media (max-width: 760px) { .checks.two { grid-template-columns: 1fr; } }
 .shot.arch { background: #f4f5f8; }
+/* 表格第一列多是两三个字的项名, 被正文挤窄会断成一字一行 */
+.table-wrap td:first-child { min-width: 4.5em; }

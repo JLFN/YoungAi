@@ -29,7 +29,7 @@ pipeline_tag: text-generation
 
 <p align="center">
   <b>A personal AI assistant that lives on your own machine.</b><br>
-  It remembers what you tell it, browses the web, writes Word/PDF/PowerPoint/Excel files, makes videos, keeps
+  Hold to talk. It remembers what you tell it, browses the web, writes Word/PDF/PowerPoint/Excel files, makes videos, keeps
   following up on a job, and hands the result to the next app on your phone. Model, memory and files all stay on the box.
 </p>
 
@@ -76,6 +76,33 @@ The assistant's tools (this table is what the model sees; there is no scenario-s
 | Follow-up | `task_check_in` `task_done` `notify` | a task picks its own next check; reminders and "done" notices go to your phone (Web Push) |
 | Skills | `use_skill` | a folder with a `SKILL.md` teaches it how to do a kind of job (Agent Skills format, no scripts allowed) |
 | Cloud phone | six `phone_*` tools | only in danger mode; see the disclaimer at the end |
+
+### Voice input: hold to talk
+
+Like WeChat: with the input box empty, the rightmost button is a microphone; tap it to get a "Hold to talk" bar, hold
+and speak, and let go to **send right away**. Slide up before letting go to cancel. The limit is 30 seconds. Speech
+recognition also runs on the machine's GPU, so the audio never leaves it.
+
+- The recognizer is [moonshine-tiny-zh](https://huggingface.co/moonshine-ai/moonshine-tiny-zh) (27M parameters, 108 MB),
+  run by this project's own C + GPU kernels (CUDA / Metal), with no Python or ONNX. On the Spark a 3.4-second utterance
+  takes 51 ms to transcribe.
+- **Chinese only.** It is the smallest tier: the paper reports a 29–36% character error rate on hard test sets
+  (crowd-sourced recordings, many accents). Speaking clearly into a phone does much better, but it is a notch below large models.
+- **To turn it on**, put the model's files in `gguf/asr/moonshine-tiny-zh/` and load the model again on *Models*; a
+  microphone appears next to the input box. Without that folder the feature simply does not exist: no microphone, no error.
+
+  ```sh
+  mkdir -p gguf/asr/moonshine-tiny-zh && cd gguf/asr/moonshine-tiny-zh
+  for f in config.json tokenizer.json model.safetensors LICENSE.txt; do
+    curl -fLO https://huggingface.co/moonshine-ai/moonshine-tiny-zh/resolve/main/$f
+  done
+  ```
+
+- Browsers only grant the microphone over https or localhost; over `http://<LAN-IP>` there is no microphone, and the
+  rightmost button is just Send.
+- Status: transcripts on the Mac (Metal) and the Spark (CUDA) match the official reference implementation character for
+  character, and the production server on the Spark passed a smoke test. A real phone has been tried on a few sentences (two
+  wrong characters in three); the formal acceptance run (10 sentences on each of three phones) has not been done yet.
 
 ## Safety: the sandbox, not trust in the model
 
@@ -124,7 +151,9 @@ Full walk-through: [technical notes §4.3](docs/TECHNICAL.md#43-the-post-trainin
 
 **Use it as an API.** `/v1/chat/completions`, `/v1/completions`, `/v1/responses`, `/v1/messages` (OpenAI / Anthropic
 compatible). Create a key on the *API* tab and send `Authorization: Bearer <key>` (also from localhost; without it you get
-401). `"temperature": 0` gives byte-identical output every run. API only, no Studio, no build:
+401). `"temperature": 0` gives byte-identical output every run. With the speech model installed there is also
+`/v1/audio/transcriptions`: the request body is a 16 kHz mono WAV as-is (not OpenAI's multipart form) and the reply is
+`{"text":"…"}`; other sample rates or formats get a 400 saying what arrived. API only, no Studio, no build:
 
 ```sh
 curl -fsSLO https://huggingface.co/wenzhouwu/YoungAi-DeepSeek-V4.1-Flash/resolve/main/install.sh
@@ -186,3 +215,8 @@ the GGML copyright notice stays in `LICENSE`. The model is DeepSeek's; thanks fo
 
 Engine: MIT ([`LICENSE`](LICENSE)). The quantized weights derive from DeepSeek V4.1 Flash, also MIT
 ([`LICENSE-DeepSeek`](LICENSE-DeepSeek)).
+
+Voice input is Powered by Moonshine AI. The moonshine-tiny-zh recognizer is **not MIT**; it is under the Moonshine AI
+Community License: free for research and non-commercial use; commercial use requires registering at
+moonshine.ai/community-license, the license ends automatically once you and your affiliates exceed US$1M in annual
+revenue, and its outputs may not be used to train foundation models. This repository does not ship its weights; using it is your call.

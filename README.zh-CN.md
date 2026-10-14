@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>住在你自己机器上的个人 AI 助理。</b><br>
-  记得你说过的事，会上网、会写 Word/PDF/PPT/Excel、会做视频、会盯着一件事持续跟进，<br>
+  按住就能说话。记得你说过的事，会上网、会写 Word/PDF/PPT/Excel、会做视频、会盯着一件事持续跟进，<br>
   干完把结果交到手机上的下一个 app——模型、记忆、文件全在本机，数据不出门。
 </p>
 
@@ -53,6 +53,26 @@
 | 技能 | `use_skill` | `SKILL.md` 文件夹教它某类活怎么干（Agent Skills 格式，不许带脚本） |
 | 云手机 | `phone_*` 六个 | 危险模式才有，见文末免责声明 |
 
+### 语音输入：按住说话
+
+和微信一样：输入框空着时最右边是麦克风，点一下切成"按住 说话"长条；按住说，松手**直接发出去**，往上滑松手就取消，
+最长 30 秒。语音识别也在这台机器的 GPU 上跑，录音不出门。
+
+- 识别模型是 [moonshine-tiny-zh](https://huggingface.co/moonshine-ai/moonshine-tiny-zh)（2700 万参数，108 MB），推理用本项目自己写的 C + GPU 核
+  （CUDA / Metal），没有 Python 和 ONNX。在 Spark 上识别一段 3.4 秒的话要 51 毫秒。
+- **只认中文。** 它是最小的那一档：论文在难测试集（众包录音、各种口音）上的错字率约 29%～36%，对着手机清楚地说会好得多，但比大模型差一个档次。
+- **怎么开**：把模型的三个文件放进 `gguf/asr/moonshine-tiny-zh/`，再到"模型"页重新加载一次，输入框旁就会出现麦克风。没有这个目录时这个功能就不存在：不出麦克风，也不报错。
+
+  ```sh
+  mkdir -p gguf/asr/moonshine-tiny-zh && cd gguf/asr/moonshine-tiny-zh
+  for f in config.json tokenizer.json model.safetensors LICENSE.txt; do
+    curl -fLO https://huggingface.co/moonshine-ai/moonshine-tiny-zh/resolve/main/$f
+  done
+  ```
+
+- 浏览器只在 https 或 localhost 下给麦克风。用 `http://局域网IP` 打开时没有麦克风，这时最右边只有发送键。
+- 现状：Mac（Metal）和 Spark（CUDA）上的识别结果和官方参考实现逐字一致，Spark 的生产服务也冒烟通过了；真手机上试过几句（三句错两个字）；三台手机各念 10 句、统计错字率的正式验收还没跑。
+
 ## 安全：靠沙盒，不靠信任模型
 
 - **每次工具调用都在一个新的子进程里，先上内核沙盒再干活**：Linux 是 Landlock + seccomp，macOS 是 Seatbelt。
@@ -94,6 +114,8 @@ make cuda-spark
 
 **当 API 用。** `/v1/chat/completions`、`/v1/completions`、`/v1/responses`、`/v1/messages`（OpenAI / Anthropic 兼容）。
 先在"API"页建一把密钥，请求带 `Authorization: Bearer <密钥>`（本机调也要，不带回 401）。`"temperature": 0` 每次输出逐字节相同。
+装了识别模型时还多一个 `/v1/audio/transcriptions`：请求体直接放 16 kHz 单声道 WAV（不是 OpenAI 的 multipart 表单），返回 `{"text":"…"}`；
+别的采样率或格式会回 400，并说明收到的是什么。
 只要 API 不要工作台、不想编译：
 
 ```sh
@@ -148,3 +170,7 @@ bash install.sh                      # 默认编程侧车，--domain law 换领�
 保留在 `LICENSE`。模型属于 DeepSeek，感谢公开权重和参考代码。
 
 引擎 MIT（[`LICENSE`](LICENSE)）；量化权重派生自 DeepSeek V4.1 Flash，同为 MIT（[`LICENSE-DeepSeek`](LICENSE-DeepSeek)）。
+
+语音输入 Powered by Moonshine AI。识别模型 moonshine-tiny-zh **不是 MIT**，用的是 Moonshine AI Community License：研究和非商用免费；
+商用要先到 moonshine.ai/community-license 登记，你和关联方年营收超过 100 万美元时许可自动终止，得另谈；不许拿它的输出去训练基础模型。
+本仓库不带它的权重，用不用由你决定。
