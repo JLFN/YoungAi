@@ -98,7 +98,7 @@ make cuda-spark
 3. **手机**：打开页面"添加到主屏幕"就是 App。定位、剪贴板、分享、推送这些要 https——在"设置"里填一台云服务器开穿透，
    或者用 Tailscale；步骤和排错见 [docs/pwa.md](docs/pwa.md)。
 4. **任务**页：输入一句话交给助理持续跟；打开"在这台设备上接收通知"，做完或到点会推到手机。
-5. **技能**页：新建或导入一个带 `SKILL.md` 的文件夹（仓库自带一份做 PPT 的 [`skills/pptx/`](skills/pptx/)）。
+5. **技能**页：新建或导入一个带 `SKILL.md` 的文件夹（仓库自带一份做 PPT 的 [`skills/pptx/`](https://github.com/fodelf/YoungAi/tree/restructure/skills/pptx)）。
 
 工作台各页、每个工具怎么用、出错会怎样，见 **[使用指南](https://fodelf.github.io/YoungAi/guide.html)**。
 
@@ -149,7 +149,7 @@ bash install.sh                      # 默认编程侧车，--domain law 换领�
 设置里有一个**危险模式**开关，**默认关闭**。打开后主机上会起一部虚拟 Android 13 手机（只在 Linux 主机上有：内核要有
 `binder`，macOS 跑不了），模型多六个 `phone_*` 工具：看屏、点、滑、按键、打字、开 app。工作台多一个**云手机**页签显示实况
 （H.264 流，浏览器自己解），`/api/phone/*` 是一张普通的 REST 表，页面、模型和你的脚本走的是同一套
-（[`docs/assistant_phone.md`](docs/assistant_phone.md)）。拨开关之前先读完这几条：
+（[`docs/assistant_phone.md`](https://github.com/fodelf/YoungAi/blob/restructure/docs/assistant_phone.md)）。拨开关之前先读完这几条：
 
 - **模型是自主操作的。** 危险模式打开后，没有人逐步确认每一次点击。手机起来是空的（没有 SIM、没有账号、没有应用商店），
   但**你在里面登录的任何账号、装的任何 APK，模型都能用**——它可能发消息、下单、付款、删东西。后果由打开开关的人承担。

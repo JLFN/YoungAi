@@ -133,7 +133,7 @@ make cuda-spark
    enter a cloud server in *Settings* and turn on the tunnel, or use Tailscale. Steps and troubleshooting:
    [docs/pwa.md](docs/pwa.md) (Chinese).
 4. **Tasks**: type one sentence to hand a job over; turn on *Receive notifications on this device* to be pinged when it is done or due.
-5. **Skills**: create one, or import a folder with a `SKILL.md` (the repo ships one for slide decks: [`skills/pptx/`](skills/pptx/)).
+5. **Skills**: create one, or import a folder with a `SKILL.md` (the repo ships one for slide decks: [`skills/pptx/`](https://github.com/fodelf/YoungAi/tree/restructure/skills/pptx)).
 
 How every tab and every tool works, and what happens when something goes wrong: the
 **[user guide](https://fodelf.github.io/YoungAi/guide.html)**.
@@ -188,7 +188,7 @@ Settings has a **Danger mode** switch, **off by default**. Turning it on starts 
 (Linux only: the kernel needs `binder`; macOS cannot run it) and gives the model six `phone_*` tools: look at the screen,
 tap, swipe, press keys, type, open apps. The workbench gets a **Phone** tab with the live screen (H.264 stream decoded by
 your browser), and `/api/phone/*` is a plain REST API that the page, the model and your own scripts all share
-([`docs/assistant_phone.md`](docs/assistant_phone.md)). Read this before you flip the switch:
+([`docs/assistant_phone.md`](https://github.com/fodelf/YoungAi/blob/restructure/docs/assistant_phone.md)). Read this before you flip the switch:
 
 - **The model acts on its own.** With danger mode on, nobody confirms each tap. The phone starts empty (no SIM, no accounts,
   no app store), but **any account you sign into and any APK you install there, the model can use** — it may send messages,
