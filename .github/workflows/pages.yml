@@ -1,0 +1,38 @@
+# 项目网站 → GitHub Pages(https://fodelf.github.io/YoungAi/)。
+# 只在网站源文件或它引用的截图/logo 变了时才发; 拼目录的逻辑只在 website/build.sh 一处, 本机预览和这里用同一份。
+name: website
+
+on:
+  push:
+    branches: [restructure]
+    paths:
+      - "website/**"
+      - "docs/img/**"
+      - "web/logo.jpg"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: sh website/build.sh _site
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
