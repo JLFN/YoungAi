@@ -15,7 +15,9 @@
 
 #define TR_SERVE_BUDGET_MB 110000     /* 引擎常驻预算(spark 121 GB: 主干 106.5 GiB 进缓存, 三塔挤在外面, 服务不用它们) */
 #define TR_SERVE_MIN_AVAIL_MB 100000  /* 起服前机器要空到这个数, 否则装不下 */
-#define TR_SERVE_FLOOR_MB 10000       /* 装完后的余量地板(在分请求缓冲之前量) */
+/* 装完后的余量地板(在分请求缓冲之前量) = 看门狗红线 × 2: 红线才是假死线, 多留一条请求的量; 每条请求的预填峰值由服务端准入单独管(不够拒那条, 不假死)。
+ * 10-14 实撞: 原来手写 10000, 云手机(≈2.5 GB)一起跑余量 9196 就把起得好好的模型杀了, 而白天它在 6.9 GB 上跑了一整天没事。 */
+#define TR_SERVE_FLOOR_MB (2 * TR_WD_KILL_MB)
 #define TR_UP_TRIES 120               /* 等 /v1/models 可达: 120 × 5 s = 10 分钟(冷启拷 106 GB 到页缓存约 1.5 分钟; 盘慢的机器给足) */
 #define TR_SMOKE_PROMPT "{\"model\":\"deepseek-chat\",\"temperature\":0,\"max_tokens\":48,\"messages\":[{\"role\":\"user\",\"content\":\"用一句话解释什么是市盈率(PE), 并说明它偏高通常意味着什么。\"}]}"
 
@@ -75,6 +77,23 @@ static void *watchdog(void *arg) {
     return NULL;
 }
 
+/* 语音识别模型目录: gguf/asr/ 下按名最小的、带 model.safetensors 的子目录(moonshine-tiny-zh 这类; 同名 -onnx 目录只有金标用的 .onnx, 自然排除)。
+ * 没有 = 子进程不带 --asr, 接口答 404, 页面不出麦克风, 不报错。 */
+static bool asr_dir(char *out, size_t n) {
+    char base[TR_PATH + 16]; snprintf(base, sizeof base, "%s/gguf/asr", tr_root);
+    DIR *d = opendir(base); if (!d) return false;
+    char best[256] = ""; struct dirent *e;
+    while ((e = readdir(d))) {
+        if (e->d_name[0] == '.') continue;
+        char p[TR_PATH + 300]; snprintf(p, sizeof p, "%s/%s/model.safetensors", base, e->d_name);
+        if (access(p, R_OK) == 0 && (!best[0] || strcmp(e->d_name, best) < 0)) snprintf(best, sizeof best, "%s", e->d_name);
+    }
+    closedir(d);
+    if (!best[0]) return false;
+    snprintf(out, n, "%s/%s", base, best);
+    return true;
+}
+
 bool tr_model_start_sync(int model_port, FILE *log) {
     set_phase(TR_MODEL_STARTING);
     bool ok = false; pid_t pid = -1;
@@ -99,6 +118,8 @@ bool tr_model_start_sync(int model_port, FILE *log) {
     snprintf(ps, sizeof ps, "%d", model_port); snprintf(bud, sizeof bud, "%d", TR_SERVE_BUDGET_MB);
     argv[na++] = "--mem-budget-mb"; argv[na++] = bud; argv[na++] = "--host"; argv[na++] = "127.0.0.1"; argv[na++] = "--port"; argv[na++] = ps;
     argv[na++] = "--trace"; argv[na++] = trace;
+    char asr[TR_PATH + 300];
+    if (asr_dir(asr, sizeof asr)) { argv[na++] = "--asr"; argv[na++] = asr; }   /* 语音识别模型(docs/assistant_asr.md): 有就带上, 页面据此出麦克风 */
     for (int i = 0; extra[i] && na < 62; i++) argv[na++] = extra[i];   /* 第 3 行起原样透传(--engram-dir / 用户选的别的引擎参数) */
     argv[na] = NULL;
     char slog[TR_PATH + 96]; tr_ui_log_path("server", slog, sizeof slog);

@@ -252,6 +252,11 @@ void *client_main(void *arg) {
         goto done;
     }
 
+    if (server_asr_route(s, fd, &hr)) {   /* /v1/audio/transcriptions(server_asr.c): WAV 正文, 不走 request 解析 */
+        http_request_free(&hr);
+        goto done;
+    }
+
     request req;
     char err[160];
     bool ok = false;

@@ -62,25 +62,6 @@ void log_context_memory(ds4_backend backend, int ctx_size) {
                m.comp_cap);
 }
 
-void server_close_resources(server *s) {
-    if (s->trace) {
-        fclose(s->trace);
-        s->trace = NULL;
-    }
-    kv_cache_close(&s->kv);
-    tool_memory_free(&s->tool_mem);
-    live_tool_state_free(&s->responses_live);
-    live_tool_state_free(&s->anthropic_live);
-    visible_live_free(&s->thinking_live);
-    pthread_mutex_destroy(&s->tool_mu);
-    pthread_mutex_destroy(&s->trace_mu);
-    pthread_cond_destroy(&s->clients_cv);
-    pthread_cond_destroy(&s->cv);
-    pthread_mutex_destroy(&s->mu);
-    ds4_session_free(s->session);
-    ds4_engine_close(s->engine);
-    memset(s, 0, sizeof(*s));
-}
 
 /* 跨文件全局 (声明在 server_types2.h): 渲染/引导层没有 cfg 可传, 走全局。 */
 int g_base_native = 0;
@@ -178,6 +159,8 @@ void usage(FILE *fp) {
         "      Add Access-Control-Allow-* headers for browser JS clients. Does not change --host.\n"
         "  --trace FILE\n"
         "      Write a human-readable session trace: prompts, cache decisions, output, tool calls.\n"
+        "  --asr DIR\n"
+        "      Speech recognition model directory (Moonshine safetensors + config + tokenizer); serves POST /v1/audio/transcriptions (16 kHz mono 16-bit WAV body).\n"
         "\n"
         "Thinking and sampling:\n"
         "  Requests default to non-thinking mode. thinking={type:enabled}, think=true,\n"
@@ -398,6 +381,8 @@ server_config parse_options(int argc, char **argv) {
             c.enable_cors = true;
         } else if (!strcmp(arg, "--trace")) {
             c.trace_path = need_arg(&i, argc, argv, arg);
+        } else if (!strcmp(arg, "--asr")) {
+            c.asr_dir = need_arg(&i, argc, argv, arg);   /* 语音识别模型目录(server_asr.c, 2026-10-14) */
         } else if (!strcmp(arg, "--kv-disk-dir")) {
             c.kv_disk_dir = need_arg(&i, argc, argv, arg);
         } else if (!strcmp(arg, "--kv-disk-space-mb")) {

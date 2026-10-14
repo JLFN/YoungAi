@@ -246,6 +246,7 @@ typedef struct {
 struct server {
     ds4_engine *engine;
     ds4_session *session;
+    struct ds4_asr *asr;       /* --asr DIR 装的语音识别模型(src/model/asr/); 空 = 没装, /v1/audio/transcriptions 答 404 */
     int ctx_size;              /* 批处理快路建临时会话用 */
     int batch_max;             /* 并发批上限(0=关), 见 generate_jobs_batched */
     int default_tokens;
@@ -300,6 +301,9 @@ struct server {
     int port;                   /* 监听端口: 训练页切到训练时交给 train_cycle.sh, 让 ds4-train 用同一端口接管页面(src/studio/) */
 };
 
+/* 语音识别任务(server_asr.c, 2026-10-14): 客户端线程解好的样本进, worker 在 GPU 上识别, 文本出 */
+typedef struct asr_job { float *pcm; uint32_t n; char *text; bool ok; char err[256]; } asr_job;
+
 /* Jobs are stack-owned by the client thread.  The worker signals completion
  * after the response has been written, so request data and the socket remain
  * valid without heap-allocating per-request job objects. */
@@ -314,6 +318,8 @@ struct job {
     /* 非空 = 这不是请求, 是"热切侧车/后训练件"任务(server_plugins.c): 堆上分配, 没有客户端在等, worker 做完自己释放。
      * 走同一个队列是为了让它排在已到的请求后面、只在两条请求之间生效 —— 插件表是进程级的。 */
     struct server_plugin_switch *sw;
+    /* 非空 = 这是语音识别任务(server_asr.c): 与请求同队列排队, worker 做完 job_finish, 客户端线程回包 */
+    asr_job *asr;
 };
 
 /* 客户端没给 max_tokens 时用它 = 不设上限; 真正的界是 ctx − 提示, 两条生成路各自 clamp。
@@ -456,6 +462,7 @@ typedef struct {
     int default_tokens;
     const char *chdir_path;
     const char *trace_path;
+    const char *asr_dir;       /* --asr: 语音识别模型目录(model.safetensors + config.json + tokenizer.json) */
     const char *kv_disk_dir;
     uint64_t kv_disk_space_mb;
     kv_cache_options kv_cache;

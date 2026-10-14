@@ -201,6 +201,7 @@ void *worker_main(void *arg) {
         job *j = dequeue(s);
         if (!j) break;
         if (j->sw) { server_plugins_apply(s, j); continue; }   /* 切侧车任务: 单 worker 按序取, 走到这里前面的请求都答完了 */
+        if (j->asr) { server_asr_apply(s, j); job_finish(j); continue; }   /* 语音识别(server_asr.c): 几十 ms 的 GPU 活, 排在前面的请求后面 */
         if (s->batch_max >= 2 && job_batchable(j)) {
             job *batch[DS4_SERVER_BATCH_LANES];
             batch[0] = j;

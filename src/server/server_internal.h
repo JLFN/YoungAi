@@ -339,6 +339,11 @@ void server_plugins_apply(server *s, job *j);
 job *dequeue(server *s);
 job *dequeue_try(server *s);
 void job_finish(job *j);
+/* 语音识别接口(server_asr.c, 2026-10-14): 开/关模型; route 认 /v1/audio/transcriptions(处理了返回 true); apply 在 worker 线程跑 GPU */
+bool server_asr_open(server *s, const char *dir);
+void server_asr_close(server *s);
+bool server_asr_route(server *s, int fd, const http_request *hr);
+void server_asr_apply(server *s, job *j);
 /* 上下文大小: V4 从会话读, V4.1 没有会话(s->session == NULL)就用起服时定下的 s->ctx_size */
 static inline int server_ctx_size(const server *s) { return s->session ? ds4_session_ctx(s->session) : s->ctx_size; }
 void send_prefill_failure_response(server *s, const job *j, const server_prefill_progress *progress, const char *ctx, const char *flags, const char *err);

@@ -26,6 +26,7 @@ static const ds4_test_entry test_entries[] = {
     {"--metal-v41", "metal-v41", "DeepSeek V4.1 Metal primitives vs src/common golden + finite differences (no model)", test_metal_v41_group, 0},
 #endif
     {"--metal-tensor-equivalence", "metal-tensor-equivalence", "fast/quality Metal prompt-logit and greedy equivalence", test_metal_mpp_equivalence, 1},
+    {"--asr", "asr", "speech recognition (Moonshine, src/model/asr) vs ONNX golden: encoder + per-step logits (SKIP without gguf/asr model)", test_asr_units, 0},
 #endif
     {"--server", "server", "server parser/rendering/cache unit tests", test_server_unit_group, 0},
     {"--tp-allreduce", "tp-allreduce", "tensor-parallel all-reduce transport loopback", test_tp_allreduce, 0},

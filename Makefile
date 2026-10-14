@@ -108,6 +108,10 @@ MODEL_OBJS := src/model/model_api.o src/model/model_train_runs.o src/model/model
               src/model/model_child.o src/model/model_serve.o src/model/model_train_job.o src/model/model_train_pick.o
 # 跟模型说话的 HTTP 客户端: 还靠助理的小 JSON 取值(asst_json.c), 只有 ds4-train 链; 小 JSON 并进 src/common 后并入 MODEL_OBJS
 MODEL_CLIENT_OBJS := src/model/model_llm.o
+# 语音识别(src/model/asr/, 方案稿 docs/assistant_asr.md): 住 ds4-server(要 GPU 原语 ds4_gpu_asr.h); ds4_test 的 --asr 门也链。CPU 变体只会报"要 GPU 构建"。
+ASR_SRCS := $(wildcard src/model/asr/*.c)
+ASR_OBJS := $(ASR_SRCS:.c=.o)
+ASR_CPU_OBJS := $(ASR_SRCS:.c=_cpu.o)
 
 ifeq ($(UNAME_S),Darwin)
 METAL_LDLIBS := $(LDLIBS) -framework Foundation -framework Metal -framework Accelerate
@@ -157,8 +161,8 @@ help:
 ds4: $(CLI_OBJS) linenoise.o $(CORE_OBJS)
 	$(CC) $(CFLAGS) -o $@ $(CLI_OBJS) linenoise.o $(CORE_OBJS) $(METAL_LDLIBS)
 
-ds4-server: $(SERVER_OBJS) $(KV_OBJS) rax.o $(MODEL_OBJS) $(CORE_OBJS)
-	$(CC) $(CFLAGS) -o $@ $(SERVER_OBJS) $(KV_OBJS) rax.o $(MODEL_OBJS) $(CORE_OBJS) $(METAL_LDLIBS)
+ds4-server: $(SERVER_OBJS) $(KV_OBJS) rax.o $(MODEL_OBJS) $(ASR_OBJS) $(CORE_OBJS)
+	$(CC) $(CFLAGS) -o $@ $(SERVER_OBJS) $(KV_OBJS) rax.o $(MODEL_OBJS) $(ASR_OBJS) $(CORE_OBJS) $(METAL_LDLIBS)
 
 ds4-bench: $(BENCH_OBJS) $(CORE_OBJS)
 	$(CC) $(CFLAGS) -o $@ $(BENCH_OBJS) $(CORE_OBJS) $(METAL_LDLIBS)
@@ -178,9 +182,9 @@ mm-ui: tools/mm_ui.swift
 mm-ocr: tools/mm_ocr.swift
 	swiftc -O tools/mm_ocr.swift -o $@
 
-cpu: $(CLI_CPU_OBJS) $(SERVER_CPU_OBJS) $(BENCH_CPU_OBJS) $(EVAL_CPU_OBJS) $(AGENT_CPU_OBJS) $(WEB_OBJS) $(KV_OBJS) linenoise.o rax.o $(CPU_CORE_OBJS)
+cpu: $(CLI_CPU_OBJS) $(SERVER_CPU_OBJS) $(ASR_CPU_OBJS) $(BENCH_CPU_OBJS) $(EVAL_CPU_OBJS) $(AGENT_CPU_OBJS) $(WEB_OBJS) $(KV_OBJS) linenoise.o rax.o $(CPU_CORE_OBJS)
 	$(CC) $(CFLAGS) -o ds4 $(CLI_CPU_OBJS) linenoise.o $(CPU_CORE_OBJS) $(LDLIBS)
-	$(CC) $(CFLAGS) -o ds4-server $(SERVER_CPU_OBJS) $(KV_OBJS) rax.o $(MODEL_OBJS) $(CPU_CORE_OBJS) $(LDLIBS)
+	$(CC) $(CFLAGS) -o ds4-server $(SERVER_CPU_OBJS) $(KV_OBJS) rax.o $(MODEL_OBJS) $(ASR_CPU_OBJS) $(CPU_CORE_OBJS) $(LDLIBS)
 	$(CC) $(CFLAGS) -o ds4-bench $(BENCH_CPU_OBJS) $(CPU_CORE_OBJS) $(LDLIBS)
 	$(CC) $(CFLAGS) -o ds4-eval $(EVAL_CPU_OBJS) $(CPU_CORE_OBJS) $(LDLIBS)
 	$(CC) $(CFLAGS) -o ds4-agent $(AGENT_CPU_OBJS) $(WEB_OBJS) $(KV_OBJS) linenoise.o $(CPU_CORE_OBJS) $(LDLIBS)
@@ -222,7 +226,7 @@ cuda:
 ds4: $(CLI_OBJS) linenoise.o $(CORE_OBJS)
 	$(NVCC) $(NVCCFLAGS) -o $@ $^ $(CUDA_LDLIBS)
 
-ds4-server: $(SERVER_OBJS) $(KV_OBJS) rax.o $(MODEL_OBJS) $(CORE_OBJS)
+ds4-server: $(SERVER_OBJS) $(KV_OBJS) rax.o $(MODEL_OBJS) $(ASR_OBJS) $(CORE_OBJS)
 	$(NVCC) $(NVCCFLAGS) -o $@ $^ $(CUDA_LDLIBS)
 
 ds4-bench: $(BENCH_OBJS) $(CORE_OBJS)
@@ -234,9 +238,9 @@ ds4-eval: $(EVAL_OBJS) $(CORE_OBJS)
 ds4-agent: $(AGENT_OBJS) $(WEB_OBJS) $(KV_OBJS) linenoise.o $(CORE_OBJS)
 	$(NVCC) $(NVCCFLAGS) -o $@ $^ $(CUDA_LDLIBS)
 
-cpu: $(CLI_CPU_OBJS) $(SERVER_CPU_OBJS) $(BENCH_CPU_OBJS) $(EVAL_CPU_OBJS) $(AGENT_CPU_OBJS) $(WEB_OBJS) $(KV_OBJS) linenoise.o rax.o $(CPU_CORE_OBJS)
+cpu: $(CLI_CPU_OBJS) $(SERVER_CPU_OBJS) $(ASR_CPU_OBJS) $(BENCH_CPU_OBJS) $(EVAL_CPU_OBJS) $(AGENT_CPU_OBJS) $(WEB_OBJS) $(KV_OBJS) linenoise.o rax.o $(CPU_CORE_OBJS)
 	$(CC) $(CFLAGS) -o ds4 $(CLI_CPU_OBJS) linenoise.o $(CPU_CORE_OBJS) $(LDLIBS)
-	$(CC) $(CFLAGS) -o ds4-server $(SERVER_CPU_OBJS) $(KV_OBJS) rax.o $(MODEL_OBJS) $(CPU_CORE_OBJS) $(LDLIBS)
+	$(CC) $(CFLAGS) -o ds4-server $(SERVER_CPU_OBJS) $(KV_OBJS) rax.o $(MODEL_OBJS) $(ASR_CPU_OBJS) $(CPU_CORE_OBJS) $(LDLIBS)
 	$(CC) $(CFLAGS) -o ds4-bench $(BENCH_CPU_OBJS) $(CPU_CORE_OBJS) $(LDLIBS)
 	$(CC) $(CFLAGS) -o ds4-eval $(EVAL_CPU_OBJS) $(CPU_CORE_OBJS) $(LDLIBS)
 	$(CC) $(CFLAGS) -o ds4-agent $(AGENT_CPU_OBJS) $(WEB_OBJS) $(KV_OBJS) linenoise.o $(CPU_CORE_OBJS) $(LDLIBS)
@@ -266,6 +270,10 @@ src/studio/%.o: src/studio/%.c src/studio/studio_internal.h src/model/model_inte
 	$(CC) $(CFLAGS) -c -o $@ $<
 src/model/%.o: src/model/%.c src/model/model_internal.h src/common/ds4_json.h
 	$(CC) $(CFLAGS) -c -o $@ $<
+src/model/asr/%.o: src/model/asr/%.c src/model/asr/ds4_asr.h src/model/asr/asr_internal.h ds4_gpu_asr.h src/common/ds4_st41.h src/common/ds4_json.h
+	$(CC) $(CFLAGS) -c -o $@ $<
+src/model/asr/%_cpu.o: src/model/asr/%.c src/model/asr/ds4_asr.h src/model/asr/asr_internal.h
+	$(CC) $(CFLAGS) -DDS4_NO_GPU -c -o $@ $<
 src/model/model_llm.o: src/assistant/asst_internal.h
 src/model/model_catalog.o: src/common/ds4_gr_fnv.h
 # 登录(studio_auth.o, 只有主进程有): ds4-server 不链它 —— 模型子进程只绑 127.0.0.1, 外面进来的请求都先过主进程的闸
@@ -482,11 +490,11 @@ tests/cuda_long_context_smoke: tests/cuda_long_context_smoke.o $(CORE_OBJS)
 tests/cuda_sample_selftest: tests/cuda_sample_selftest.o $(CORE_OBJS)
 	$(NVCC) $(NVCCFLAGS) -o $@ $^ $(CUDA_LDLIBS)
 
-ds4_test: $(TESTS_OBJS) $(SERVER_TEST_OBJS) $(SERVER_TESTS_OBJS) $(KV_OBJS) rax.o $(MODEL_OBJS) $(CORE_OBJS)
+ds4_test: $(TESTS_OBJS) $(SERVER_TEST_OBJS) $(SERVER_TESTS_OBJS) $(KV_OBJS) rax.o $(MODEL_OBJS) $(ASR_OBJS) $(CORE_OBJS)
 ifeq ($(UNAME_S),Darwin)
-	$(CC) $(CFLAGS) -o $@ $(TESTS_OBJS) $(SERVER_TEST_OBJS) $(SERVER_TESTS_OBJS) $(KV_OBJS) rax.o $(MODEL_OBJS) $(CORE_OBJS) $(METAL_LDLIBS)
+	$(CC) $(CFLAGS) -o $@ $(TESTS_OBJS) $(SERVER_TEST_OBJS) $(SERVER_TESTS_OBJS) $(KV_OBJS) rax.o $(MODEL_OBJS) $(ASR_OBJS) $(CORE_OBJS) $(METAL_LDLIBS)
 else
-	$(NVCC) $(NVCCFLAGS) -o $@ $(TESTS_OBJS) $(SERVER_TEST_OBJS) $(SERVER_TESTS_OBJS) $(KV_OBJS) rax.o $(MODEL_OBJS) $(CORE_OBJS) $(CUDA_LDLIBS)
+	$(NVCC) $(NVCCFLAGS) -o $@ $(TESTS_OBJS) $(SERVER_TEST_OBJS) $(SERVER_TESTS_OBJS) $(KV_OBJS) rax.o $(MODEL_OBJS) $(ASR_OBJS) $(CORE_OBJS) $(CUDA_LDLIBS)
 endif
 
 # src/common 共享格式库单测: 无模型/无 GPU, 纯主机 C。夹具路径相对仓库根。

@@ -74,6 +74,7 @@ void test_metal_v41_vq(void);
 void test_metal_v41_bwd(void);
 void test_metal_v41_bwd_attn(void);
 void test_metal_v41_group(void);
+void test_asr_units(void);   /* tests/t_asr.c: 语音识别对 ONNX 金标(2026-10-14) */
 
 /* ---- t_long_context.c(hex/token 字节助手被 t_vectors.c 复用) ---- */
 char *test_read_file(const char *path);

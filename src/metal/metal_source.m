@@ -192,6 +192,7 @@ NSString *ds4_gpu_full_source(void) {
         @"metal/v41_vq.metal",
         @"metal/v41_bwd.metal",
         @"metal/v41_draft.metal",
+        @"metal/asr.metal",   /* 语音识别(2026-10-14): 自带参数块, 不依赖 v41 公共件 */
     ];
 
     NSMutableString *source = [NSMutableString stringWithString:base];

@@ -109,6 +109,7 @@
 #include "src/cuda/cuda_bwd_moe.inc.cu"     /* 后训练反传: SwiGLU / 路由 / routed 专家(借 v41_vq_open·v41_vq_cw 解码与 g_v41_gr 增益覆盖) */
 #include "src/cuda/cuda_draft_attn.inc.cu"  /* 草稿器蒸馏(2026-10-07): 批量全可见块注意力前向(借 sparse_attn_mma 的打分/统计积木与 attn_split 的分段公式)/反向、陪审团、批量取行 */
 #include "src/cuda/cuda_v41_vision.inc.cu"  /* 视觉塔(2026-10-13): bias / 2D RoPE / 稠密注意力 / SwiGLU 对 / GELU / unfold / 行替换(借 v41_1 的暂存与 bf16 舍入) */
+#include "src/cuda/cuda_asr.inc.cu"         /* 语音识别(2026-10-14): Moonshine 族的 f32 小核(借 v41_1 的暂存), 契约 ds4_gpu_asr.h */
 
 /* ★PDL 小核集中登记(2026-09-23)★: 这些核第一句就是 v41_pdl_wait()(见 cuda_internal.cuh 的 PDL 段), 所以前面的边可以改成程序化边 ——
  * 它们本身没有可预读的常量, 省的是发射与上线开销(与上一个核的收尾重叠)。放在聚合根末尾: 所有核都已定义, 这里才拿得到函数地址。

@@ -42,6 +42,7 @@ static bool lane_admit(server *s, v41_lane *lanes, int cap, int *nl, uint64_t *o
     job *j = block ? dequeue(s) : dequeue_try(s);
     if (!j) return false;
     if (j->sw) { *sw = j; return true; }
+    if (j->asr) { server_asr_apply(s, j); job_finish(j); return true; }   /* 语音识别(server_asr.c): 不占道, 调度线程当场做完(GPU 在这条线程上串行) */
     v41_lane *L = NULL;
     for (int i = 0; i < cap && !L; i++) if (!lanes[i].j) L = &lanes[i];
     L->j = j;

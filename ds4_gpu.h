@@ -18,5 +18,6 @@
 #include "ds4_gpu_hc.h"
 #include "ds4_gpu_v41.h"   /* DeepSeek V4.1 批前向原语(2026-09-12) */
 #include "ds4_gpu_bwd.h"   /* 后训练反传原语(2026-10-01) */
+#include "ds4_gpu_asr.h"   /* 语音识别原语(2026-10-14) */
 
 #endif

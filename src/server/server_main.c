@@ -3,6 +3,28 @@
 #include "server_internal.h"
 #include "../model/model_internal.h"
 
+/* 退出时按建立的逆序放资源(10-14 从 server_config.c 挪来: 那边顶到 500 行了; 关资源本来就是 main 的事) */
+void server_close_resources(server *s) {
+    if (s->trace) {
+        fclose(s->trace);
+        s->trace = NULL;
+    }
+    server_asr_close(s);
+    kv_cache_close(&s->kv);
+    tool_memory_free(&s->tool_mem);
+    live_tool_state_free(&s->responses_live);
+    live_tool_state_free(&s->anthropic_live);
+    visible_live_free(&s->thinking_live);
+    pthread_mutex_destroy(&s->tool_mu);
+    pthread_mutex_destroy(&s->trace_mu);
+    pthread_cond_destroy(&s->clients_cv);
+    pthread_cond_destroy(&s->cv);
+    pthread_mutex_destroy(&s->mu);
+    ds4_session_free(s->session);
+    ds4_engine_close(s->engine);
+    memset(s, 0, sizeof(*s));
+}
+
 #ifndef DS4_SERVER_TEST
 int main(int argc, char **argv) {
     signal(SIGPIPE, SIG_IGN);
@@ -119,6 +141,7 @@ int main(int argc, char **argv) {
     }
     server_plugins_init(&s, cfg.engine.model_path);   /* 聊天页热切侧车的钩子(server_plugins.c); 要在 worker 起之前, 它读 s->engine */
     s.mon = mon_open(&s);   /* 监控数据面要先于 worker 存在: worker 一拿到 job 就打点 */
+    if (cfg.asr_dir && !server_asr_open(&s, cfg.asr_dir)) { server_close_resources(&s); return 1; }   /* 给了 --asr 就必须能用: 静默没有麦克风比报错更难查 */
     if (s.batch_max >= 2 && !v41)
         server_log(DS4_LOG_GENERATION,
                    "ds4-server: 并发批处理已开 (最多 %d 路合批; 仅非流式/无工具的 chat 请求)",
