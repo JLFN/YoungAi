@@ -1,9 +1,9 @@
-/* asst_llm.c — 助理调模型: 127.0.0.1:<模型端口> POST /v1/chat/completions(stream), 解析 SSE 增量(正文/思考/tool_calls/用量)。
+/* model_llm.c — 助理调模型: 127.0.0.1:<模型端口> POST /v1/chat/completions(stream), 解析 SSE 增量(正文/思考/tool_calls/用量)。
  * 走 HTTP 而不是进程内调引擎: 模型在 ds4-server 子进程里(主进程永不退, 模型会被训练停掉、换模型重起), 这正是两者分开的理由。
  * 不带 temperature / max_tokens(10-10 用户: "不要温度, 不要长度限制"): 服务端按模型卡配方采样; 工具语法位服务端自己强制贪心(10-11 修的 v41_syntax_greedy)。
  * ds4-server 的流式响应是 Connection: close 分隔(不是 chunked), 读到对端关就是完了。
  * 出错会怎样: 连不上 → err="model is not running"(训练中/没装模型), 页面照实显示; 中途 stop → 关 socket, ds4-server 探到断开自己停生成。 */
-#include "asst_internal.h"
+#include "../assistant/asst_internal.h"
 #include <arpa/inet.h>
 #include <errno.h>
 #include <netinet/in.h>

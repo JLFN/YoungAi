@@ -311,7 +311,7 @@ status() {
 incomplete_bytes() {
     find "$1/.cache/huggingface/download" -name '*.incomplete' 2>/dev/null | while read -r f; do fsize "$f"; done | awk '{s += $1} END {print s + 0}'
 }
-# Progress from disk only, read every few seconds by the workbench's Models tab (src/train/train_models.c).
+# Progress from disk only, read every few seconds by the workbench's Models tab (src/model/model_catalog.c).
 # "HAVE" counts the part being downloaded right now, so it keeps rising during a download instead of jumping per part.
 probe() {
     local have k=0 i d

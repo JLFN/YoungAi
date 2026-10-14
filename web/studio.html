@@ -2,7 +2,7 @@
 <!-- web/studio.html — DwarfStar 工作台(首页): 左侧导航 + 右侧工作区, 七个 tab: 助理 / 记忆 / 活动 / 模型 / 训练 / 语料 / 记录。
      API(10-12 用户: "加一个 api 子 tab, 用 apikey 管理大模型的请求"): 建/删外部程序调 /v1 用的密钥、看用量, 接口 /api/keys/*(src/train/train_keys.c)。
      助理/记忆/活动(10-11 用户: "对标 muse, 把聊天页面变成个人 Agent 助理"; 方案 docs/assistant.md): 接口 /api/assistant/*(src/assistant/), 会话与记忆存在服务端 ~/.ds4/assistant/。
-     模型 tab(10-10 用户 "少一个模型 tab, 可以下载模型, 跟 unsloth 的客户端页面一样"): 正在使用 / 本机模型卡片(选侧车一键加载) / HF 下载(进度、续传、取消), 接口 /api/models/*(src/train/train_models.c)。
+     模型 tab(10-10 用户 "少一个模型 tab, 可以下载模型, 跟 unsloth 的客户端页面一样"): 正在使用 / 本机模型卡片(选侧车一键加载) / HF 下载(进度、续传、取消), 接口 /api/models/*(src/model/model_catalog.c)。
      (10-10 用户: "和主流工具一样左右布局 … 主题跟 logo 一致是蓝色 …
      不要强硬写起服务就不能训练, 训练时内部就停服务 … 再多一个聊天 tab")。主进程 ds4-train 在 GET / 返回它(模型子进程 ds4-server 也返回, 直接开它能聊)。
      零依赖单文件: 无 CDN、无外部脚本, 离线可用。数据: /api/train/status|runs|run|data|preview + /api/models/* + /v1/chat/completions(主进程转给模型子进程)。
@@ -13,7 +13,7 @@
      两套外壳(10-12 用户: "变成 pwa … 不要简单改动 pc 端的布局, 重新以 app 的方式设计, 根据浏览器打开的环境使用不同的布局"):
      <html data-shell="desk|app">, 判定规则在 <head> 的 shellPick。desk = 上面说的左右布局, 原样不动; app = 顶栏 + 底部四格(助理/模型/训练/更多)
      + 左侧栏变抽屉(对话列表) + 表格变卡片 + 训练页分"进度/设置"两段。两套共用同一份 DOM 和数据代码, 只有 CSS 与几个 app 专属元素不同。
-     PWA: manifest.webmanifest + sw.js + icon-*.png(都在 web/, 路由见 src/train/train_api.c 的 STATIC_FILES); 安装条件与 https 的事见 docs/pwa.md。 -->
+     PWA: manifest.webmanifest + sw.js + icon-*.png(都在 web/, 路由见 src/model/model_api.c 的 STATIC_FILES); 安装条件与 https 的事见 docs/pwa.md。 -->
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
@@ -2692,7 +2692,7 @@ $("m-cancel").onclick = async () => {
   try { const r = await getJSON("/api/models/cancel", { method: "POST" }); toast(r.ok ? t("dl_cancelled") : t("fail", r.error), !r.ok); } catch (e) { toast(t("not_sent", e), true); }
   setTimeout(loadModels, 2500);
 };
-/* 删模型: 只删 GGUF 本体(服务端 train_models.c 的 api_delete), 侧车目录留着 —— 确认框里写清楚, 免得以为侧车也没了 */
+/* 删模型: 只删 GGUF 本体(服务端 model_catalog.c 的 api_delete), 侧车目录留着 —— 确认框里写清楚, 免得以为侧车也没了 */
 async function deleteModel(m) {
   if (!(await ask(t("m_del_q", modelName(m.path), m.path, GB(m.bytes), m.sidecars.length), true, t("ask_del")))) return;
   try {

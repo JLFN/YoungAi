@@ -308,7 +308,7 @@ bool asst_qget(const char *query, const char *key, char *out, size_t n);   /* �
 int asst_file_get(const char *path, ds4_buf *out, const char **ctype);     /* 200 + 文件体; 工作区外 403; 没有 404 */
 char *asst_file_save(const char *name, const char *data, size_t n);        /* 存进 workspace/inbox/<净化过的名字>, 返回给模型看的一句话 */
 
-/* ---------------- 模型客户端(asst_llm.c): 127.0.0.1:<模型端口> 的流式 chat/completions ---------------- */
+/* ---------------- 模型客户端(model_llm.c): 127.0.0.1:<模型端口> 的流式 chat/completions ---------------- */
 #define ASST_MAX_CALLS 16
 typedef struct {
     void (*on_text)(void *ud, const char *s, size_t n);

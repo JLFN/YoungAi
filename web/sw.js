@@ -8,7 +8,7 @@
 const CACHE = "ds4-studio-v2";   /* v2: manifest 加了 share_target(分享目标), 装过的手机要换掉缓存里的旧 manifest */
 const SHELL = ["/", "/manifest.webmanifest", "/logo.jpg", "/icon-192.png", "/icon-512.png", "/icon-maskable.png", "/apple-touch-icon.png"];
 const STATIC = new Set(SHELL.slice(1));
-const PAGES = new Set(["/", "/index.html", "/studio", "/train"]);   /* 同 src/train/train_api.c 里 serve_page 认的路径 */
+const PAGES = new Set(["/", "/index.html", "/studio", "/train"]);   /* 同 src/model/model_api.c 里 serve_page 认的路径 */
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));

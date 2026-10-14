@@ -1,5 +1,5 @@
 /* fake_model.c — 助理页面端到端门用的假模型(tests/asst/e2e_device.mjs 起它): 在 127.0.0.1:<port> 装成 ds4-server 答 /v1/models 与流式 /v1/chat/completions。
- * 编成的二进制叫 ds4-server(tests/asst/fake/ds4-server): 主进程 ds4-train 按进程名认领"已在跑的模型子进程"(train_ctl.c prog_is), 页面才进 serving 态能发消息。
+ * 编成的二进制叫 ds4-server(tests/asst/fake/ds4-server): 主进程 ds4-train 按进程名认领"已在跑的模型子进程"(model_proc.c prog_is), 页面才进 serving 态能发消息。
  * 不保存状态: 看请求体里有几条 role:"tool" 决定下一步 —— 0 → read_clipboard; 1 → write_file 一份报告(把剪贴板内容写进去); 2 → locate; 3 → run(沙盒里生成一个文件);
  * 4 → 一轮里调五个交出去的动作(navigate / call / copy_text / share(path) / open_app, 只在工具表里真有这些工具时); 之后 → 终稿。
  * 这样页面上的设备卡(等结果的 + 动作按钮的) / 文件卡 都在一次运行里出现。16 GB 的 Mac 跑不了真模型, 这是在本机把"进 → 干 → 出"整条链点通的唯一办法。 */

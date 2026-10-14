@@ -1,7 +1,7 @@
 /* server_httpd.c — 机械拆分自 ds4_server.c (12449-12786 行): HTTP 读写/模型列表/客户端线程。 */
 
 #include "server_internal.h"
-#include "../train/train_internal.h"
+#include "../model/model_internal.h"
 
 static void http_request_free(http_request *r) {
     free(r->body);
@@ -203,7 +203,7 @@ void *client_main(void *arg) {
         goto done;
     }
 
-    /* 工作台页与它的接口(src/train/train_api.c, 与主进程 ds4-train 共用一份): 这里是模型子进程, 页面能聊、能热切侧车/③(server_plugins.c);
+    /* 工作台页与它的接口(src/model/model_api.c, 与主进程 ds4-train 共用一份): 这里是模型子进程, 页面能聊、能热切侧车/③(server_plugins.c);
      * 发车/换模型/起服这些管子进程的操作 tr_api 在 serving=1 时拒 —— 它们归主进程(主进程把 /api/models/plugins|list 转到这里) */
     if (!strcmp(hr.path, "/") || !strcmp(hr.path, "/index.html") || !strcmp(hr.path, "/studio") || !strcmp(hr.path, "/train") || tr_static_path(hr.path) || !strncmp(hr.path, "/api/train/", 11) || !strncmp(hr.path, "/api/models/", 12)) {
         tr_req rq; memset(&rq, 0, sizeof rq);

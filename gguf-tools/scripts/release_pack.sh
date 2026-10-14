@@ -22,7 +22,7 @@ NAME="youngai-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m)-$(date +%Y%m%
 FILES=(ds4-server ds4-train ds4 gguf-tools/bench/anchor_metrics web/*.html web/*.jpg web/*.png web/manifest.webmanifest web/sw.js LICENSE LICENSE-DeepSeek README.md README.zh-CN.md
        gguf-tools/scripts/hf_install.sh
        gguf-tools/data/posttrain/hold.jsonl gguf/go-onebit/g7/wt2.ids gguf/v41judge/teacher_g7_wt2_n512.bin)
-# 只带一个脚本: 下载(hf CLI 的包装)。起服/训练/门/选轮全在 ds4-train 的 C 里(src/train/train_model.c train_job.c train_gate.c), 10-10 起不再随包发脚本。
+# 只带一个脚本: 下载(hf CLI 的包装)。起服/训练/门/选轮全在 ds4-train 的 C 里(src/model/model_serve.c model_train_job.c model_train_pick.c), 10-10 起不再随包发脚本。
 [ "$(uname -s)" = Darwin ] && FILES+=(metal/*.metal)
 for f in "${FILES[@]}"; do [ -e "$f" ] || { echo "缺 $f(二进制要先编: make cuda-spark(Mac: make) 与 make -C gguf-tools anchor_metrics)"; exit 1; }; done
 # 动态库在本机都得找得到: 找不到的话别人一执行就是 "error while loading shared libraries", 还以为包坏了

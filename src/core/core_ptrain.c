@@ -282,7 +282,7 @@ int ds4_engine_ptrain(ds4_engine *e, const char *spec) {
         pt_release("第 0 步评估");   /* 探针走解码路, 它的暂存别叠在评估/训练暂存上面 */
         /* 给了 init 时第 0 步的"挂 ③"= 起点那份 ③(续训: 起点对留出题答什么, 与部署态并排); 没给就只有部署态 */
         if (!pt_probes(e, &c, &d, base, &base_stop, c.init[0] ? c.init : NULL, "e00", &stop_k, &stop_n)) goto out;
-        if (lf) { fprintf(lf, "probe e00 stop %u %u base %d\n", stop_k, stop_n, base_stop); fflush(lf); }   /* 选轮读: ③ 收口不得少于部署态(train_gate.c) */
+        if (lf) { fprintf(lf, "probe e00 stop %u %u base %d\n", stop_k, stop_n, base_stop); fflush(lf); }   /* 选轮读: ③ 收口不得少于部署态(model_train_pick.c) */
         pt_release("第 0 步探针");
     }
     /* ★每轮按 token 预算抽题(10-03 用户定)★: epoch_tok > 0 时一轮 = 打乱序里连续的一段, 各题行数累计到预算就收, 下一轮从游标接着取,

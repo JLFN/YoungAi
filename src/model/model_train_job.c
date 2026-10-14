@@ -1,11 +1,11 @@
-/* train_job.c — 训练作业线程(2026-10-10, 原 train_cycle.sh + z_nightly_spark.sh stage_train 的 C 版)。总述见 train_internal.h。
+/* model_train_job.c — 训练作业线程(2026-10-10, 原 train_cycle.sh + z_nightly_spark.sh stage_train 的 C 版)。总述见 train_internal.h。
  * 一次一条作业: 停模型子进程 → fork ./ds4 --ptrain → wt2 门 + 选轮 → 模型子进程按 gguf/serve_pick.txt 装回来。
  * ★训完只产出, 不挂★(10-10 用户: "训练完就是训练完不要直接挂"): 不碰 serve_pick.txt, 装回来的还是训前那套; ③ 关联训练时装着的侧车
  *   (③ 的 base.fnv = 它的指纹), 聊天页切到那份侧车、打开"后训练"开关才挂, 切走就卸。
  * 训练用的 ①② = serve_pick.txt 里的那对(工作台选了哪套就训哪套; ③ 是对着这对解的, 对不上引擎拒挂); 第 3 行起只取 --engram-dir 给 ./ds4
  *   (发布包里模型在 gguf/hub, n-gram 表不在转换机的路径上, 训练器/打分器同样要它); ③ 不继承(起点恒为 ①+②)。
  * 出错会怎样: 训练失败/被停/这趟无效(没有一轮比第 0 步低且收口不退), 模型照样装回来, 页面回到能聊; 原因在 ui_logs/cycle_*.log 与那趟的 train.out。 */
-#include "train_internal.h"
+#include "model_internal.h"
 #include <pthread.h>
 #include <signal.h>
 #include <sys/stat.h>

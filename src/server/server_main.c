@@ -1,7 +1,7 @@
 /* server_main.c — ds4_server.c 拆分后的生产入口: main() 与信号/服务装配。
  * 其余全部域见同目录 server_*.c; 内部接口在 server_internal.h。 */
 #include "server_internal.h"
-#include "../train/train_internal.h"
+#include "../model/model_internal.h"
 
 #ifndef DS4_SERVER_TEST
 int main(int argc, char **argv) {

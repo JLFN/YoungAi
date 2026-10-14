@@ -1,14 +1,14 @@
 /* server_plugins.c — 服务里热切换 ②侧车 / ③后训练件, 不重装 113 GB 底座(2026-10-10, 用户 "chat 页面再加一个切换不同侧车的功能,
  * 后训练结束也要一个自动重载的功能")。
  *
- * 链路: 聊天页 POST /api/models/plugins → 训练页模块校验(src/train/train_models.c: 侧车是装着的模型的、③ 的 base.fnv 对得上 ②)
+ * 链路: 聊天页 POST /api/models/plugins → 训练页模块校验(src/model/model_catalog.c: 侧车是装着的模型的、③ 的 base.fnv 对得上 ②)
  *   → tr_live.request(本文件)排一个切换任务进请求队列 → worker 轮到它时调 ds4_engine_v41_switch_plugins → 成了再写 serve_pick.txt。
  * 为什么走请求队列: 插件表(路由偏置 / 增益覆盖)是进程级的, 只能在两条请求之间换。单路 worker 按到达顺序取任务, 轮到它时前面的
  *   请求都答完了; 合批调度器取到它就停止接新请求, 等在跑的几路收尾再换(server_sched_v41.c)。
  * 请求立刻返回, 不让浏览器挂着等前面的长回答; 结果记在这里, 页面轮询 /api/models/list 的 switch 字段看。
  * 为什么切完要写 serve_pick.txt: 服务之后任何一次重起(训练回来、崩了重拉)都该是用户最后选的那套, 不是起服命令行上的老侧车。 */
 #include "server_internal.h"
-#include "../train/train_internal.h"
+#include "../model/model_internal.h"
 
 struct server_plugin_switch { char amp[2056], pt[2056]; };
 

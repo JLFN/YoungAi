@@ -1,10 +1,10 @@
-/* train_model.c — 模型子进程 ds4-server 的生命周期(2026-10-10, 原 serve_1m_spark.sh start/stop 的 C 版; 脚本留作命令行工具)。总述见 train_internal.h。
+/* model_serve.c — 模型子进程 ds4-server 的生命周期(2026-10-10, 原 serve_1m_spark.sh start/stop 的 C 版; 脚本留作命令行工具)。总述见 train_internal.h。
  * 起 = 起跑清单(实例锁: 大模型进程只许一个; MemAvailable ≥ TR_SERVE_MIN_AVAIL_MB) → 按 gguf/serve_pick.txt 拼参数 exec → 等 /v1/models 可达
  *      → 余量 ≥ TR_SERVE_FLOOR_MB(低于它会 swap/读盘假死) → 冒烟一条中文金融问答(09-19 实撞: /v1/models 正常, 每条 chat 却回 cuda prefill failed)
  *      → 看门狗线程(TR_WD_KILL_MB 连续两次就杀)。没过任何一关就杀掉, 原因在 ui_logs/serve_*.log(模型页日志栏)。
  * 停 = 按程序名 SIGTERM(主进程重起后接上的老服务也认), 等它从 /proc 消失(卸 100+ GB 映射几十秒; 没等干净就起训练会撞实例锁)。
  * 内存账(121 GB spark, 09-19 实测): 起来后 MemAvailable 11 GB, 首条请求的前向缓冲分完后稳定 6.4~6.7 GB; ★别调大 --mem-budget-mb 硬塞★。 */
-#include "train_internal.h"
+#include "model_internal.h"
 #include <dirent.h>
 #include <pthread.h>
 #include <signal.h>

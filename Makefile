@@ -100,9 +100,12 @@ CORE_ENGINE_CPU_OBJS := $(CORE_ENGINE_SRCS:.c=_cpu.o)
 
 # src/common 共享格式库(纯主机 C, 无 GPU 引用 — 全部构建共用一个 .o)
 COMMON_FMT_OBJS := src/common/ds4_quantfmt.o src/common/ds4_json.o
-# 训练页四件(src/train/, 规则在下面; train_models.o = 模型页): 要在 ds4-server 的依赖行之前定义 —— 依赖列表在解析时就展开, 定义在后面 Linux 那条 $^ 就是空的(10-10 实撞)
-TRAIN_API_OBJS := src/train/train_api.o src/train/train_runs.o src/train/train_ctl.o src/train/train_models.o \
-                  src/train/train_child.o src/train/train_model.o src/train/train_job.o src/train/train_gate.o
+# 模型模块(src/model/, 总纲 docs/modules.md): 模型子进程起停 + 模型清单/侧车 + 后训练作业与选轮 + /api/train|models 路由; ds4-server 与 ds4-train 共用。
+# 要在 ds4-server 的依赖行之前定义 —— 依赖列表在解析时就展开, 定义在后面 Linux 那条 $^ 就是空的(10-10 实撞)
+MODEL_OBJS := src/model/model_api.o src/model/model_train_runs.o src/model/model_proc.o src/model/model_catalog.o \
+              src/model/model_child.o src/model/model_serve.o src/model/model_train_job.o src/model/model_train_pick.o
+# 跟模型说话的 HTTP 客户端: 还靠助理的小 JSON 取值(asst_json.c), 只有 ds4-train 链; 小 JSON 并进 src/common 后并入 MODEL_OBJS
+MODEL_CLIENT_OBJS := src/model/model_llm.o
 
 ifeq ($(UNAME_S),Darwin)
 METAL_LDLIBS := $(LDLIBS) -framework Foundation -framework Metal -framework Accelerate
@@ -152,8 +155,8 @@ help:
 ds4: $(CLI_OBJS) linenoise.o $(CORE_OBJS)
 	$(CC) $(CFLAGS) -o $@ $(CLI_OBJS) linenoise.o $(CORE_OBJS) $(METAL_LDLIBS)
 
-ds4-server: $(SERVER_OBJS) $(KV_OBJS) rax.o $(TRAIN_API_OBJS) $(CORE_OBJS)
-	$(CC) $(CFLAGS) -o $@ $(SERVER_OBJS) $(KV_OBJS) rax.o $(TRAIN_API_OBJS) $(CORE_OBJS) $(METAL_LDLIBS)
+ds4-server: $(SERVER_OBJS) $(KV_OBJS) rax.o $(MODEL_OBJS) $(CORE_OBJS)
+	$(CC) $(CFLAGS) -o $@ $(SERVER_OBJS) $(KV_OBJS) rax.o $(MODEL_OBJS) $(CORE_OBJS) $(METAL_LDLIBS)
 
 ds4-bench: $(BENCH_OBJS) $(CORE_OBJS)
 	$(CC) $(CFLAGS) -o $@ $(BENCH_OBJS) $(CORE_OBJS) $(METAL_LDLIBS)
@@ -175,7 +178,7 @@ mm-ocr: tools/mm_ocr.swift
 
 cpu: $(CLI_CPU_OBJS) $(SERVER_CPU_OBJS) $(BENCH_CPU_OBJS) $(EVAL_CPU_OBJS) $(AGENT_CPU_OBJS) $(WEB_OBJS) $(KV_OBJS) linenoise.o rax.o $(CPU_CORE_OBJS)
 	$(CC) $(CFLAGS) -o ds4 $(CLI_CPU_OBJS) linenoise.o $(CPU_CORE_OBJS) $(LDLIBS)
-	$(CC) $(CFLAGS) -o ds4-server $(SERVER_CPU_OBJS) $(KV_OBJS) rax.o $(TRAIN_API_OBJS) $(CPU_CORE_OBJS) $(LDLIBS)
+	$(CC) $(CFLAGS) -o ds4-server $(SERVER_CPU_OBJS) $(KV_OBJS) rax.o $(MODEL_OBJS) $(CPU_CORE_OBJS) $(LDLIBS)
 	$(CC) $(CFLAGS) -o ds4-bench $(BENCH_CPU_OBJS) $(CPU_CORE_OBJS) $(LDLIBS)
 	$(CC) $(CFLAGS) -o ds4-eval $(EVAL_CPU_OBJS) $(CPU_CORE_OBJS) $(LDLIBS)
 	$(CC) $(CFLAGS) -o ds4-agent $(AGENT_CPU_OBJS) $(WEB_OBJS) $(KV_OBJS) linenoise.o $(CPU_CORE_OBJS) $(LDLIBS)
@@ -217,7 +220,7 @@ cuda:
 ds4: $(CLI_OBJS) linenoise.o $(CORE_OBJS)
 	$(NVCC) $(NVCCFLAGS) -o $@ $^ $(CUDA_LDLIBS)
 
-ds4-server: $(SERVER_OBJS) $(KV_OBJS) rax.o $(TRAIN_API_OBJS) $(CORE_OBJS)
+ds4-server: $(SERVER_OBJS) $(KV_OBJS) rax.o $(MODEL_OBJS) $(CORE_OBJS)
 	$(NVCC) $(NVCCFLAGS) -o $@ $^ $(CUDA_LDLIBS)
 
 ds4-bench: $(BENCH_OBJS) $(CORE_OBJS)
@@ -231,7 +234,7 @@ ds4-agent: $(AGENT_OBJS) $(WEB_OBJS) $(KV_OBJS) linenoise.o $(CORE_OBJS)
 
 cpu: $(CLI_CPU_OBJS) $(SERVER_CPU_OBJS) $(BENCH_CPU_OBJS) $(EVAL_CPU_OBJS) $(AGENT_CPU_OBJS) $(WEB_OBJS) $(KV_OBJS) linenoise.o rax.o $(CPU_CORE_OBJS)
 	$(CC) $(CFLAGS) -o ds4 $(CLI_CPU_OBJS) linenoise.o $(CPU_CORE_OBJS) $(LDLIBS)
-	$(CC) $(CFLAGS) -o ds4-server $(SERVER_CPU_OBJS) $(KV_OBJS) rax.o $(TRAIN_API_OBJS) $(CPU_CORE_OBJS) $(LDLIBS)
+	$(CC) $(CFLAGS) -o ds4-server $(SERVER_CPU_OBJS) $(KV_OBJS) rax.o $(MODEL_OBJS) $(CPU_CORE_OBJS) $(LDLIBS)
 	$(CC) $(CFLAGS) -o ds4-bench $(BENCH_CPU_OBJS) $(CPU_CORE_OBJS) $(LDLIBS)
 	$(CC) $(CFLAGS) -o ds4-eval $(EVAL_CPU_OBJS) $(CPU_CORE_OBJS) $(LDLIBS)
 	$(CC) $(CFLAGS) -o ds4-agent $(AGENT_CPU_OBJS) $(WEB_OBJS) $(KV_OBJS) linenoise.o $(CPU_CORE_OBJS) $(LDLIBS)
@@ -255,10 +258,14 @@ src/common/ds4_json.o: src/common/ds4_json.c src/common/ds4_json.h
 src/common/ds4_sha256.o: src/common/ds4_sha256.c src/common/ds4_sha256.h
 	$(CC) $(CFLAGS) -c -o $@ src/common/ds4_sha256.c
 
-# 训练页(src/train/): 路由/产物解析/进程控制三件(TRAIN_API_OBJS)ds4-server 与 ds4-train 共用; ds4-train 只多一层薄 HTTP。
+# 工作台外壳(src/train/): 只有 ds4-train 链; 路由/产物解析/进程控制在模型模块(MODEL_OBJS), ds4-server 也链。
 # 纯主机 C, 不链引擎; Mac/Linux 同一条规则(nvcc 不参与)
-src/train/%.o: src/train/%.c src/train/train_internal.h src/common/ds4_json.h
+src/train/%.o: src/train/%.c src/train/train_internal.h src/model/model_internal.h src/common/ds4_json.h
 	$(CC) $(CFLAGS) -c -o $@ $<
+src/model/%.o: src/model/%.c src/model/model_internal.h src/common/ds4_json.h
+	$(CC) $(CFLAGS) -c -o $@ $<
+src/model/model_llm.o: src/assistant/asst_internal.h
+src/model/model_catalog.o: src/common/ds4_gr_fnv.h
 # 登录(train_auth.o, 只有主进程有): ds4-server 不链它 —— 模型子进程只绑 127.0.0.1, 外面进来的请求都先过主进程的闸
 TRAIN_AUTH_OBJS := src/train/train_auth.o src/train/train_keys.o src/common/ds4_sha256.o
 src/train/train_auth.o src/train/train_keys.o: src/common/ds4_sha256.h
@@ -276,8 +283,8 @@ endif
 # 云手机门 0 探针(tests/phone/adbprobe.c): 只链 adb 客户端与 ds4_buf, 不链引擎
 tests/phone/adbprobe: tests/phone/adbprobe.c src/sandbox/sbx_adb.o src/common/ds4_json.o
 	$(CC) $(CFLAGS) -o $@ tests/phone/adbprobe.c src/sandbox/sbx_adb.o src/common/ds4_json.o
-ds4-train: src/train/train_main.o src/train/train_http.o src/train/train_proxy.o $(TRAIN_API_OBJS) $(TRAIN_AUTH_OBJS) $(TRAIN_NET_OBJS) $(ASST_OBJS) $(SANDBOX_OBJS) $(PUSH_OBJS) $(OFFICE_OBJS) $(VIDEO_OBJS) $(TTS_LINK) $(WEB_OBJS) src/common/ds4_json.o
-	$(CC) $(CFLAGS) -o $@ src/train/train_main.o src/train/train_http.o src/train/train_proxy.o $(TRAIN_API_OBJS) $(TRAIN_AUTH_OBJS) $(TRAIN_NET_OBJS) $(ASST_OBJS) $(SANDBOX_OBJS) $(PUSH_OBJS) $(OFFICE_OBJS) $(VIDEO_OBJS) $(TTS_LINK) $(WEB_OBJS) src/common/ds4_json.o $(LDLIBS)
+ds4-train: src/train/train_main.o src/train/train_http.o src/train/train_proxy.o $(MODEL_OBJS) $(TRAIN_AUTH_OBJS) $(TRAIN_NET_OBJS) $(ASST_OBJS) $(SANDBOX_OBJS) $(MODEL_CLIENT_OBJS) $(PUSH_OBJS) $(OFFICE_OBJS) $(VIDEO_OBJS) $(TTS_LINK) $(WEB_OBJS) src/common/ds4_json.o
+	$(CC) $(CFLAGS) -o $@ src/train/train_main.o src/train/train_http.o src/train/train_proxy.o $(MODEL_OBJS) $(TRAIN_AUTH_OBJS) $(TRAIN_NET_OBJS) $(ASST_OBJS) $(SANDBOX_OBJS) $(MODEL_CLIENT_OBJS) $(PUSH_OBJS) $(OFFICE_OBJS) $(VIDEO_OBJS) $(TTS_LINK) $(WEB_OBJS) src/common/ds4_json.o $(LDLIBS)
 src/push/%.o: src/push/%.c src/push/ds4_push.h src/common/ds4_sha256.h
 	$(CC) $(CFLAGS) -c $< -o $@
 ds4_push_test: tests/push/t_push.c $(PUSH_OBJS) src/common/ds4_sha256.o
@@ -316,8 +323,8 @@ tests/asst/fake/ds4-server: tests/asst/fake_model.c
 asst-e2e: ds4-train tests/asst/fake/ds4-server
 	node tests/asst/e2e_device.mjs
 # 沙盒逃逸单测 + 纯逻辑单测 + 工作台登录单测(不要模型, 秒级; make test 里跑)
-ds4_asst_test: tests/asst/t_asst_sbx.c tests/asst/t_asst_logic.c tests/asst/t_asst_video.c tests/asst/t_studio_auth.c tests/asst/t_studio_net.c tests/asst/t_studio_models.c tests/asst/t_asst_phone.c tests/asst/t_asst_task.c tests/asst/t_asst_push.c $(ASST_OBJS) $(SANDBOX_OBJS) $(PUSH_OBJS) $(OFFICE_OBJS) $(VIDEO_OBJS) $(TTS_LINK) $(WEB_OBJS) $(TRAIN_API_OBJS) $(TRAIN_AUTH_OBJS) $(TRAIN_NET_OBJS) src/common/ds4_json.o
-	$(CC) $(CFLAGS) -o $@ tests/asst/t_asst_sbx.c tests/asst/t_asst_logic.c tests/asst/t_asst_video.c tests/asst/t_studio_auth.c tests/asst/t_studio_net.c tests/asst/t_studio_models.c tests/asst/t_asst_phone.c tests/asst/t_asst_task.c tests/asst/t_asst_push.c $(ASST_OBJS) $(SANDBOX_OBJS) $(PUSH_OBJS) $(OFFICE_OBJS) $(VIDEO_OBJS) $(TTS_LINK) $(WEB_OBJS) $(TRAIN_API_OBJS) $(TRAIN_AUTH_OBJS) $(TRAIN_NET_OBJS) src/common/ds4_json.o $(LDLIBS)
+ds4_asst_test: tests/asst/t_asst_sbx.c tests/asst/t_asst_logic.c tests/asst/t_asst_video.c tests/asst/t_studio_auth.c tests/asst/t_studio_net.c tests/asst/t_studio_models.c tests/asst/t_asst_phone.c tests/asst/t_asst_task.c tests/asst/t_asst_push.c $(ASST_OBJS) $(SANDBOX_OBJS) $(MODEL_CLIENT_OBJS) $(PUSH_OBJS) $(OFFICE_OBJS) $(VIDEO_OBJS) $(TTS_LINK) $(WEB_OBJS) $(MODEL_OBJS) $(TRAIN_AUTH_OBJS) $(TRAIN_NET_OBJS) src/common/ds4_json.o
+	$(CC) $(CFLAGS) -o $@ tests/asst/t_asst_sbx.c tests/asst/t_asst_logic.c tests/asst/t_asst_video.c tests/asst/t_studio_auth.c tests/asst/t_studio_net.c tests/asst/t_studio_models.c tests/asst/t_asst_phone.c tests/asst/t_asst_task.c tests/asst/t_asst_push.c $(ASST_OBJS) $(SANDBOX_OBJS) $(MODEL_CLIENT_OBJS) $(PUSH_OBJS) $(OFFICE_OBJS) $(VIDEO_OBJS) $(TTS_LINK) $(WEB_OBJS) $(MODEL_OBJS) $(TRAIN_AUTH_OBJS) $(TRAIN_NET_OBJS) src/common/ds4_json.o $(LDLIBS)
 
 
 # Standalone capability modules (self-contained, no engine coupling): z 隐变量
@@ -468,11 +475,11 @@ tests/cuda_long_context_smoke: tests/cuda_long_context_smoke.o $(CORE_OBJS)
 tests/cuda_sample_selftest: tests/cuda_sample_selftest.o $(CORE_OBJS)
 	$(NVCC) $(NVCCFLAGS) -o $@ $^ $(CUDA_LDLIBS)
 
-ds4_test: $(TESTS_OBJS) $(SERVER_TEST_OBJS) $(SERVER_TESTS_OBJS) $(KV_OBJS) rax.o $(TRAIN_API_OBJS) $(CORE_OBJS)
+ds4_test: $(TESTS_OBJS) $(SERVER_TEST_OBJS) $(SERVER_TESTS_OBJS) $(KV_OBJS) rax.o $(MODEL_OBJS) $(CORE_OBJS)
 ifeq ($(UNAME_S),Darwin)
-	$(CC) $(CFLAGS) -o $@ $(TESTS_OBJS) $(SERVER_TEST_OBJS) $(SERVER_TESTS_OBJS) $(KV_OBJS) rax.o $(TRAIN_API_OBJS) $(CORE_OBJS) $(METAL_LDLIBS)
+	$(CC) $(CFLAGS) -o $@ $(TESTS_OBJS) $(SERVER_TEST_OBJS) $(SERVER_TESTS_OBJS) $(KV_OBJS) rax.o $(MODEL_OBJS) $(CORE_OBJS) $(METAL_LDLIBS)
 else
-	$(NVCC) $(NVCCFLAGS) -o $@ $(TESTS_OBJS) $(SERVER_TEST_OBJS) $(SERVER_TESTS_OBJS) $(KV_OBJS) rax.o $(TRAIN_API_OBJS) $(CORE_OBJS) $(CUDA_LDLIBS)
+	$(NVCC) $(NVCCFLAGS) -o $@ $(TESTS_OBJS) $(SERVER_TEST_OBJS) $(SERVER_TESTS_OBJS) $(KV_OBJS) rax.o $(MODEL_OBJS) $(CORE_OBJS) $(CUDA_LDLIBS)
 endif
 
 # src/common 共享格式库单测: 无模型/无 GPU, 纯主机 C。夹具路径相对仓库根。
@@ -505,7 +512,7 @@ linecount:
 	if [ -n "$$viol" ]; then echo "linecount: 以下文件超 500 行(豁免走 .linecount-exempt, 要带理由):"; echo "$$viol"; exit 1; \
 	else echo "linecount: ok (≤500 行, 豁免清单外零超标)"; fi
 clean:
-	rm -f ds4 ds4-server ds4-bench ds4-eval ds4-agent ds4-phone ds4_cpu ds4_native ds4_server_test ds4_test ds4_unit ds4_asst_test ds4_office_test ds4_video_test ds4_push_test tests/video/vidcheck e0-pingpong mm-ui mm-ocr *.o src/assistant/*.o src/sandbox/*.o src/sandbox/phone/*.o src/train/*.o src/push/*.o src/office/*.o src/video/*.o src/cli/*.o src/bench/*.o src/kv/*.o src/web/*.o src/eval/*.o src/agent/*.o src/dist/*.o src/server/*.o src/core/*.o src/common/*.o src/metal/*.o tests/server_tests_*.o tests/t_*.o tests/cuda_long_context_smoke tests/cuda_long_context_smoke.o
+	rm -f ds4 ds4-server ds4-bench ds4-eval ds4-agent ds4-phone ds4_cpu ds4_native ds4_server_test ds4_test ds4_unit ds4_asst_test ds4_office_test ds4_video_test ds4_push_test tests/video/vidcheck e0-pingpong mm-ui mm-ocr *.o src/assistant/*.o src/sandbox/*.o src/sandbox/phone/*.o src/model/*.o src/train/*.o src/push/*.o src/office/*.o src/video/*.o src/cli/*.o src/bench/*.o src/kv/*.o src/web/*.o src/eval/*.o src/agent/*.o src/dist/*.o src/server/*.o src/core/*.o src/common/*.o src/metal/*.o tests/server_tests_*.o tests/t_*.o tests/cuda_long_context_smoke tests/cuda_long_context_smoke.o
 
 # Task 04 / E0: standalone thunderbolt ping-pong latency gate (no core deps, no
 # model). Defined after the default targets so it never becomes the default goal.

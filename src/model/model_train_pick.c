@@ -1,4 +1,4 @@
-/* train_gate.c — 选轮 + 通用漂移报数(2026-10-10 起; 10-11 改口径, 原 z_nightly_spark.sh kd_pick/stage_docgate + v41_judge.sh engine 臂的 C 版)。总述见 train_internal.h。
+/* model_train_pick.c — 选轮 + 通用漂移报数(2026-10-10 起; 10-11 改口径, 原 z_nightly_spark.sh kd_pick/stage_docgate + v41_judge.sh engine 臂的 C 版)。总述见 train_internal.h。
  * ★10-11 口径(用户: "拆开看, 看结果有没有变好, 不要用 wt2 做门")★ —— 三个读数各答一个问题, 互不否决:
  *   ① 学会了没(选轮唯一依据): train.log 各轮的留出损失(给了 eval= 按泛化留出 gen_kl), 最低者胜; 没有一轮低于第 0 步 ⇒ 这趟无效, 不写 pick。
  *   ② 还会不会正常说话: 收口探针(core_ptrain_probe.c, train.log 的 probe 行) —— 挂 ③ 的收口数不得少于部署态在同一组题、同一上限下的收口数;
@@ -10,8 +10,8 @@
  *   wt2 量的是"像不像原模型", 判不了有效。但 ≥3 SE 的真退(0004 e03 −1.09 / B e03 −1.70 / C e03 −2.22)是训过头的统计证据, 这种轮不参选(有噪声内的轮可选时它本来就该让位)。
  *   不参选 ≠ 删: ckpt 还在盘上, 记录页标红, 开关在用户手里(10-10: 训完不自动挂)。
  * 锚/判决器缺时只少 ③ 这组数, 选轮照做(它不再决定什么, 缺了不该把整趟判死)。
- * ② 臂每趟只跑一次(它不依赖 ckpt); 学生文件落在趟目录 eval/ 下; 判决全文落 eval/gate_ckpt_eNN.txt(先 ② 后 ②+③, 末尾一行"配对"), 记录页(train_runs.c gate_json)按同一口径读。 */
-#include "train_internal.h"
+ * ② 臂每趟只跑一次(它不依赖 ckpt); 学生文件落在趟目录 eval/ 下; 判决全文落 eval/gate_ckpt_eNN.txt(先 ② 后 ②+③, 末尾一行"配对"), 记录页(model_train_runs.c gate_json)按同一口径读。 */
+#include "model_internal.h"
 #include <dirent.h>
 #include <math.h>
 #include <sys/stat.h>

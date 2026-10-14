@@ -1,7 +1,7 @@
-/* train_runs.c — ds4-train: 盘上训练产物 → JSON。总述见 train_internal.h。
- * 只读, 不解释: train.log 的 step/epoch/probe 行照抄成数组, 漂移文件(两臂全文 + 配对行)抽数与标签照 train_gate.c 写的原样带出,
- * pick.txt 是 train_gate.c 写的选轮结果。train.log 是追加写的: 同目录重训时以最后一个 "step 0" 为界只认这一趟(与 kdpick 同规矩)。 */
-#include "train_internal.h"
+/* model_train_runs.c — ds4-train: 盘上训练产物 → JSON。总述见 train_internal.h。
+ * 只读, 不解释: train.log 的 step/epoch/probe 行照抄成数组, 漂移文件(两臂全文 + 配对行)抽数与标签照 model_train_pick.c 写的原样带出,
+ * pick.txt 是 model_train_pick.c 写的选轮结果。train.log 是追加写的: 同目录重训时以最后一个 "step 0" 为界只认这一趟(与 kdpick 同规矩)。 */
+#include "model_internal.h"
 #include <dirent.h>
 #include <sys/stat.h>
 #include <time.h>
@@ -63,7 +63,7 @@ static bool cfg_get(const char *dir, const char *key, char *out, size_t n) {
 }
 
 /* 漂移文件两臂: 先 ② 后 ②+③, 每臂各一行 "分布还原率 Σmin = X" / "Mean KLD = Y (中位 Z" / "Same top token = W%" / "PPL(student) = P",
- * 末行 "配对(n=N): ΔΣmin = +X.XXpp ± S (Z SE) ΔKLD = … | 真退/真进/噪声内"(train_gate.c 写; 标签照抄, 不在这里重判) */
+ * 末行 "配对(n=N): ΔΣmin = +X.XXpp ± S (Z SE) ΔKLD = … | 真退/真进/噪声内"(model_train_pick.c 写; 标签照抄, 不在这里重判) */
 static void gate_json(ds4_buf *b, const char *dir, unsigned ep) {
     char p[TR_PATH + 64]; snprintf(p, sizeof p, "%s/eval/gate_ckpt_e%02u.txt", dir, ep);
     char *t = tr_slurp(p, NULL);

@@ -1,4 +1,4 @@
-/* t_studio_models.c — 模型页"删除"(src/train/train_models.c 的 api_delete)离线单测。仓库根指到临时目录, 模型用 ftruncate 造的 9 GiB
+/* t_studio_models.c — 模型页"删除"(src/model/model_catalog.c 的 api_delete)离线单测。仓库根指到临时目录, 模型用 ftruncate 造的 9 GiB
  * 稀疏文件(列表只认 ≥ 8 GiB 的 .gguf; 稀疏不占盘)。查: 路径越界 / 软链 / 下次要装的拒删且文件还在; 正常删掉 GGUF 本体、侧车目录留着。
  * 由 t_asst_sbx.c 的 main 调用, 返回失败条数。 */
 #include "../../src/train/train_internal.h"

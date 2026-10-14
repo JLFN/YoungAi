@@ -1,4 +1,4 @@
-/* train_models.c — 工作台"模型"页的接口(2026-10-10, 用户 "少一个模型 tab, 可以下载模型, 跟 unsloth 的客户端页面一样")。总述见 train_internal.h。
+/* model_catalog.c — 工作台"模型"页的接口(2026-10-10, 用户 "少一个模型 tab, 可以下载模型, 跟 unsloth 的客户端页面一样")。总述见 train_internal.h。
  *
  * 本机模型 = gguf/ 下三层以内、≥8 GiB 的 .gguf。小于这个的是 MTP/草稿器之类的部件, 单独装不起来, 列出来只会让人点错。
  * 配套侧车 = 与 GGUF 同目录、名字以 "<GGUF 去掉 .gguf>-" 开头、里面有 gr_L*.bin 或 manifest.txt 的目录。
@@ -9,7 +9,7 @@
  *   这里一个数也不抄 —— 抄了迟早和发布包对不上。速度/剩余时间由页面拿两次读数的差自己算。
  * 加载 = 把选择写进 gguf/serve_pick.txt, 再让主进程停了模型子进程重起(serve_1m_spark.sh 不带参数时读它)。
  *   训练中点加载只写文件不打断训练: 训完 train_cycle.sh 装回来的就是新选的这套。 */
-#include "train_internal.h"
+#include "model_internal.h"
 #include "../common/ds4_gr_fnv.h"   /* ③ 配 ② 的指纹: 与引擎核对、解算器落盘同一份算法 */
 #include <dirent.h>
 #include <errno.h>
