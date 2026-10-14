@@ -61,20 +61,38 @@ void pptx_small_parts(ds4_buf *pres_props, ds4_buf *view_props, ds4_buf *table_s
     ds4_buf_puts(table_styles, XML_HEAD "<a:tblStyleLst " A_NS " def=\"{5C22544A-7EE6-4342-B048-85BDC9FD1C3A}\"/>");
 }
 
+/* 主题表(10-14 用户: 要"科技风"的 PPT 出来还是白底蓝字 —— 之前只有一套版式, 没有"风格"这个入口)。
+ * 值进 theme1.xml 的 clrScheme(dk1=正文 lt1=底 dk2=标题 lt2=面板 accent1=强调), 母版 clrMap 把 tx1→dk1 bg1→lt1, 所以没显式上色的文字自动跟主题走: 深色主题正文自然是浅字。
+ * 表头字 th_text 单列: 深色主题表头底是深蓝, 用正文的浅灰不够亮, 给一个青色。 */
+static const pptx_theme_t THEMES[] = {
+    { "clean", "FFFFFF", "1F2937", "1F3864", "EEF2F7", "2F5597", "595959", "D9E2F3", NULL,     "0563C1", false },
+    { "tech",  "0B1220", "E2E8F0", "F8FAFC", "111A2E", "22D3EE", "94A3B8", "0F2A44", "7DD3FC", "67E8F9", true },   /* 深海军蓝底 + 青色强调: 科技 / AI / 产品发布 */
+    { "warm",  "FFF8F0", "3B2F2F", "7C2D12", "FDE8D7", "EA580C", "8A6E62", "FBD8BF", NULL,     "C2410C", true },   /* 米白底 + 橙色强调: 生活 / 教育 / 餐饮 */
+};
+#define NTHEMES (sizeof THEMES / sizeof THEMES[0])
+const pptx_theme_t *pptx_theme_find(const char *name) {
+    if (!name || !name[0]) return &THEMES[0];
+    for (size_t i = 0; i < NTHEMES; i++) if (!strcmp(name, THEMES[i].name)) return &THEMES[i];
+    return NULL;
+}
+const char *office_pptx_themes(void) { return "clean, tech, warm"; }
+bool office_pptx_theme_ok(const char *name) { return pptx_theme_find(name) != NULL; }
+
 /* 主题: 颜色 + 字体 + 三档填充/线/效果(PowerPoint 要求的最小闭包) */
-void pptx_theme(ds4_buf *b, const char *name) {
+void pptx_theme(ds4_buf *b, const char *name, const pptx_theme_t *t) {
     ds4_buf_printf(b, XML_HEAD "<a:theme " A_NS " name=\"%s\"><a:themeElements><a:clrScheme name=\"DwarfStar\">"
-                      "<a:dk1><a:srgbClr val=\"1F2937\"/></a:dk1><a:lt1><a:srgbClr val=\"FFFFFF\"/></a:lt1><a:dk2><a:srgbClr val=\"1F3864\"/></a:dk2><a:lt2><a:srgbClr val=\"EEF2F7\"/></a:lt2>"
-                      "<a:accent1><a:srgbClr val=\"2F5597\"/></a:accent1><a:accent2><a:srgbClr val=\"ED7D31\"/></a:accent2><a:accent3><a:srgbClr val=\"A5A5A5\"/></a:accent3>"
+                      "<a:dk1><a:srgbClr val=\"%s\"/></a:dk1><a:lt1><a:srgbClr val=\"%s\"/></a:lt1><a:dk2><a:srgbClr val=\"%s\"/></a:dk2><a:lt2><a:srgbClr val=\"%s\"/></a:lt2>"
+                      "<a:accent1><a:srgbClr val=\"%s\"/></a:accent1><a:accent2><a:srgbClr val=\"ED7D31\"/></a:accent2><a:accent3><a:srgbClr val=\"A5A5A5\"/></a:accent3>"
                       "<a:accent4><a:srgbClr val=\"FFC000\"/></a:accent4><a:accent5><a:srgbClr val=\"5B9BD5\"/></a:accent5><a:accent6><a:srgbClr val=\"70AD47\"/></a:accent6>"
-                      "<a:hlink><a:srgbClr val=\"0563C1\"/></a:hlink><a:folHlink><a:srgbClr val=\"954F72\"/></a:folHlink></a:clrScheme>"
+                      "<a:hlink><a:srgbClr val=\"%s\"/></a:hlink><a:folHlink><a:srgbClr val=\"954F72\"/></a:folHlink></a:clrScheme>", name, t->text, t->bg, t->title, t->panel, t->accent, t->link);
+    ds4_buf_puts(b,
                       "<a:fontScheme name=\"DwarfStar\"><a:majorFont><a:latin typeface=\"Calibri\"/><a:ea typeface=\"Microsoft YaHei\"/><a:cs typeface=\"\"/></a:majorFont>"
                       "<a:minorFont><a:latin typeface=\"Calibri\"/><a:ea typeface=\"Microsoft YaHei\"/><a:cs typeface=\"\"/></a:minorFont></a:fontScheme>"
                       "<a:fmtScheme name=\"DwarfStar\"><a:fillStyleLst><a:solidFill><a:schemeClr val=\"phClr\"/></a:solidFill><a:solidFill><a:schemeClr val=\"phClr\"/></a:solidFill><a:solidFill><a:schemeClr val=\"phClr\"/></a:solidFill></a:fillStyleLst>"
                       "<a:lnStyleLst><a:ln w=\"6350\"><a:solidFill><a:schemeClr val=\"phClr\"/></a:solidFill></a:ln><a:ln w=\"12700\"><a:solidFill><a:schemeClr val=\"phClr\"/></a:solidFill></a:ln><a:ln w=\"19050\"><a:solidFill><a:schemeClr val=\"phClr\"/></a:solidFill></a:ln></a:lnStyleLst>"
                       "<a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst/></a:effectStyle></a:effectStyleLst>"
                       "<a:bgFillStyleLst><a:solidFill><a:schemeClr val=\"phClr\"/></a:solidFill><a:solidFill><a:schemeClr val=\"phClr\"/></a:solidFill><a:solidFill><a:schemeClr val=\"phClr\"/></a:solidFill></a:bgFillStyleLst></a:fmtScheme>"
-                      "</a:themeElements><a:objectDefaults/><a:extraClrSchemeLst/></a:theme>", name);
+                      "</a:themeElements><a:objectDefaults/><a:extraClrSchemeLst/></a:theme>");
 }
 
 #define EMPTY_TREE "<p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"0\" cy=\"0\"/><a:chOff x=\"0\" y=\"0\"/><a:chExt cx=\"0\" cy=\"0\"/></a:xfrm></p:grpSpPr></p:spTree>"

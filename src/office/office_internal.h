@@ -28,12 +28,21 @@ void docx_props(ds4_buf *core, ds4_buf *app, const char *title, time_t now);
 /* 列表编号定义: kinds[i] 两位 —— bit0 外层有序, bit1 内层有序 */
 void docx_numbering(ds4_buf *b, const uint8_t *kinds, int n);
 
+/* pptx 主题(office_pptx_pkg.c 的表): 颜色全是 6 位十六进制。clean = 10-14 前唯一的样子(白底), 金标 slides.pptx.golden 就是它, 改它的值 = 改金标。
+ * deco = 画装饰(封面大圆弧、标题左侧强调条与下划线、右下页码); clean 不画, 别的都画 */
+typedef struct {
+    const char *name;
+    const char *bg, *text, *title, *panel, *accent, *muted, *th_fill, *th_text, *link;   /* 底色 / 正文 / 标题 / 面板(浅底块) / 强调 / 次要文字 / 表头底 / 表头字(NULL = 正文色) / 链接 */
+    bool deco;
+} pptx_theme_t;
+const pptx_theme_t *pptx_theme_find(const char *name);   /* NULL/"" → clean; 不认识 → NULL */
+
 /* pptx 包骨架(office_pptx_pkg.c) */
 void pptx_content_types(ds4_buf *b, int nslides, bool notes, bool png, bool jpeg);
 void pptx_root_rels(ds4_buf *b);
 void pptx_presentation(ds4_buf *b, ds4_buf *rels, int nslides, bool notes);
 void pptx_small_parts(ds4_buf *pres_props, ds4_buf *view_props, ds4_buf *table_styles);
-void pptx_theme(ds4_buf *b, const char *name);
+void pptx_theme(ds4_buf *b, const char *name, const pptx_theme_t *t);
 void pptx_master(ds4_buf *b, ds4_buf *rels);
 void pptx_layout(ds4_buf *b, ds4_buf *rels);
 void pptx_notes_master(ds4_buf *b, ds4_buf *rels);

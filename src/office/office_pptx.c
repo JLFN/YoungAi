@@ -3,9 +3,13 @@
  *   只有一个标题(可带一段话)且是第一页 → 标题页(大字居中 + 副标题); 只有标题 → 章节页(居中);
  *   标题 + 内容 → 内容页: 标题在上, 正文框在下; 有图 → 正文左半、图右半(等比缩进框); 有表 → 表格占正文区(有文字时文字在上三分之一);
  *   代码块 = 等宽浅底段落; 引用 = 斜体灰字; 列表 = 项目符号(两级缩进); 后续标题 = 加粗段落。
- * <!-- --> 注释 = 讲稿备注(notesSlide); 图片只认 png/jpeg, 读不到的图在正文里写一行并记进 report。 */
+ * <!-- --> 注释 = 讲稿备注(notesSlide); 图片只认 png/jpeg, 读不到的图在正文里写一行并记进 report。
+ * 主题(10-14): 颜色从 T(office_pptx_pkg.c 的表)取, 不再写死; deco 主题每页画底色 + 装饰(封面/章节页两道圆弧与标题下强调条, 内容页标题左侧竖条、下划线、右下页码)。
+ * clean 一笔不画、颜色与改前逐字节同 —— 金标 slides.pptx.golden 不动。 */
 #include "office_internal.h"
 #include <stdio.h>
+
+static const pptx_theme_t *T;   /* 当前主题: 写出器单线程(沙盒子进程里跑), 文件静态够用 */
 
 #define SLIDE_W 12192000
 #define SLIDE_H 6858000
@@ -31,7 +35,7 @@ static void run_props(ds4_buf *b, int sz, bool bold, bool italic, bool code, con
 static void inlines(ds4_buf *b, const office_node *n, int sz, bool bold, bool italic, const char *color) {
     for (; n; n = n->next) {
         if (n->kind == OFF_TEXT || n->kind == OFF_LINK) {
-            ds4_buf_puts(b, "<a:r>"); run_props(b, sz, bold || n->bold, italic || n->italic, n->code, n->kind == OFF_LINK ? "0563C1" : color);
+            ds4_buf_puts(b, "<a:r>"); run_props(b, sz, bold || n->bold, italic || n->italic, n->code, n->kind == OFF_LINK ? T->link : color);
             ds4_buf_puts(b, "<a:t>"); office_xml_text(b, n->text ? n->text : ""); ds4_buf_puts(b, "</a:t></a:r>");
         } else if (n->kind == OFF_IMAGE) { ds4_buf_puts(b, "<a:r>"); run_props(b, sz, false, true, false, color); ds4_buf_puts(b, "<a:t>["); office_xml_text(b, n->text ? n->text : "image"); ds4_buf_puts(b, "]</a:t></a:r>"); }
         else if (n->kind == OFF_BREAK) ds4_buf_puts(b, "<a:br/>");
@@ -55,6 +59,33 @@ static void text_box(sw *w, long x, long y, long cx, long cy, const char *anchor
     ds4_buf_printf(&w->xml, "</p:spPr><p:txBody><a:bodyPr wrap=\"square\" anchor=\"%s\" lIns=\"91440\" rIns=\"91440\"><a:normAutofit/></a:bodyPr><a:lstStyle/>", anchor);
     ds4_buf_append(&w->xml, paras->ptr, paras->len);
     ds4_buf_puts(&w->xml, "</p:txBody></p:sp>");
+}
+/* 装饰形状: 矩形 / 椭圆, 填充与描边各带透明度(百分比, 100 = 不透明) */
+static void shape(sw *w, const char *prst, long x, long y, long cx, long cy, const char *fill, int falpha, const char *line, long lw, int lalpha) {
+    ds4_buf_printf(&w->xml, "<p:sp><p:nvSpPr><p:cNvPr id=\"%d\" name=\"Deco %d\"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x=\"%ld\" y=\"%ld\"/><a:ext cx=\"%ld\" cy=\"%ld\"/></a:xfrm><a:prstGeom prst=\"%s\"><a:avLst/></a:prstGeom>", w->nid, w->nid, x, y, cx, cy, prst);
+    w->nid++;
+    if (fill) { ds4_buf_printf(&w->xml, "<a:solidFill><a:srgbClr val=\"%s\">", fill); if (falpha < 100) ds4_buf_printf(&w->xml, "<a:alpha val=\"%d\"/>", falpha * 1000); ds4_buf_puts(&w->xml, "</a:srgbClr></a:solidFill>"); }
+    else ds4_buf_puts(&w->xml, "<a:noFill/>");
+    if (line) { ds4_buf_printf(&w->xml, "<a:ln w=\"%ld\"><a:solidFill><a:srgbClr val=\"%s\">", lw, line); if (lalpha < 100) ds4_buf_printf(&w->xml, "<a:alpha val=\"%d\"/>", lalpha * 1000); ds4_buf_puts(&w->xml, "</a:srgbClr></a:solidFill></a:ln>"); }
+    else ds4_buf_puts(&w->xml, "<a:ln><a:noFill/></a:ln>");
+    ds4_buf_puts(&w->xml, "</p:spPr><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:endParaRPr lang=\"zh-CN\"/></a:p></p:txBody></p:sp>");
+}
+/* 封面/章节页: 右下两道同心圆弧(出血到页外) + 标题下一段强调条; 内容页: 标题左侧竖条 + 标题下细线 + 右下页码 */
+static void deco_cover(sw *w, long bar_y) {
+    shape(w, "ellipse", SLIDE_W - 3600000, SLIDE_H - 3600000, 5400000, 5400000, NULL, 100, T->accent, 50800, 30);
+    shape(w, "ellipse", SLIDE_W - 2200000, SLIDE_H - 2200000, 3200000, 3200000, NULL, 100, T->accent, 25400, 55);
+    shape(w, "rect", (SLIDE_W - 1600000) / 2, bar_y, 1600000, 45720, T->accent, 100, NULL, 0, 100);
+}
+static void deco_content(sw *w, bool has_title) {
+    if (has_title) {
+        shape(w, "rect", MARGIN - 200000, TITLE_Y + 250000, 70000, TITLE_H - 450000, T->accent, 100, NULL, 0, 100);
+        shape(w, "rect", MARGIN, TITLE_Y + TITLE_H + 20000, BODY_W, 19050, T->accent, 60, NULL, 0, 100);
+    }
+    char num[16]; snprintf(num, sizeof num, "%d", w->slide);
+    office_node t = { OFF_TEXT, 0, 0, 0, 0, 0, 0, num, NULL, 0, NULL, NULL }; ds4_buf p = {0};
+    para(&p, &t, 1000, false, false, T->muted, 0, NULL, "r");
+    text_box(w, SLIDE_W - MARGIN - 900000, SLIDE_H - 420000, 900000, 300000, "b", &p, NULL);
+    ds4_buf_free(&p);
 }
 static void picture(sw *w, const office_node *im, long bx, long by, long bw, long bh) {
     char path[4096]; office_join(w->o->base_dir, im->url, path, sizeof path);
@@ -85,8 +116,10 @@ static void table(sw *w, const office_node *t, long x, long y, long cx, long cy)
         int k = 0;
         for (const office_node *c = r->child; c && k < nc; c = c->next, k++) {
             ds4_buf_puts(&w->xml, "<a:tc><a:txBody><a:bodyPr/><a:lstStyle/>");
-            para(&w->xml, c->child, 1400, r->header, false, NULL, 0, NULL, NULL);
-            ds4_buf_printf(&w->xml, "</a:txBody><a:tcPr>%s</a:tcPr></a:tc>", r->header ? "<a:solidFill><a:srgbClr val=\"D9E2F3\"/></a:solidFill>" : "");
+            para(&w->xml, c->child, 1400, r->header, false, r->header ? T->th_text : T->deco ? T->text : NULL, 0, NULL, NULL);   /* 表格正文显式上色: 单元格默认字色跟表格样式走(黑), 深色底上看不见(10-14 LibreOffice 渲染实撞); clean 留 NULL 保金标 */
+            ds4_buf_puts(&w->xml, "</a:txBody><a:tcPr>");
+            if (r->header) ds4_buf_printf(&w->xml, "<a:solidFill><a:srgbClr val=\"%s\"/></a:solidFill>", T->th_fill);
+            ds4_buf_puts(&w->xml, "</a:tcPr></a:tc>");
         }
         for (; k < nc; k++) ds4_buf_puts(&w->xml, "<a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:endParaRPr lang=\"zh-CN\"/></a:p></a:txBody><a:tcPr/></a:tc>");
         ds4_buf_puts(&w->xml, "</a:tr>");
@@ -115,9 +148,9 @@ static int body_paras(ds4_buf *b, const office_node *blocks, int sz, const offic
     for (const office_node *x = blocks; x; x = x->next) {
         if (x == title || x->kind == OFF_IMAGE || x->kind == OFF_TABLE || x->kind == OFF_NOTES || x->kind == OFF_HR) continue;
         n++;
-        if (x->kind == OFF_HEADING) para(b, x->child, sz + 200, true, false, "1F3864", 0, NULL, NULL);
+        if (x->kind == OFF_HEADING) para(b, x->child, sz + 200, true, false, T->title, 0, NULL, NULL);
         else if (x->kind == OFF_PARA) para(b, x->child, sz, false, false, NULL, 0, NULL, NULL);
-        else if (x->kind == OFF_QUOTE) para(b, x->child, sz, false, true, "595959", 0, NULL, NULL);
+        else if (x->kind == OFF_QUOTE) para(b, x->child, sz, false, true, T->muted, 0, NULL, NULL);
         else if (x->kind == OFF_LIST) list_paras(b, x, 0, sz);
         else if (x->kind == OFF_CODE) {
             for (const char *p = x->text ? x->text : ""; *p; ) {
@@ -142,20 +175,25 @@ static void slide(sw *w, const office_node *blocks, int nblocks, bool first) {
         else if (x->kind != OFF_HR) nothers++;
     }
     w->xml.len = 0; w->rels.len = 0; w->nid = 2; w->rid = 1;
-    ds4_buf_puts(&w->xml, XML_HEAD "<p:sld " A_NS " " R_NS " " P_NS "><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"0\" cy=\"0\"/><a:chOff x=\"0\" y=\"0\"/><a:chExt cx=\"0\" cy=\"0\"/></a:xfrm></p:grpSpPr>");
+    ds4_buf_puts(&w->xml, XML_HEAD "<p:sld " A_NS " " R_NS " " P_NS "><p:cSld>");
+    if (T->deco) ds4_buf_printf(&w->xml, "<p:bg><p:bgPr><a:solidFill><a:srgbClr val=\"%s\"/></a:solidFill><a:effectLst/></p:bgPr></p:bg>", T->bg);   /* 每页自己写底色: 母版 bg1 在 WPS/Keynote 里不一定被尊重 */
+    ds4_buf_puts(&w->xml, "<p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"0\" cy=\"0\"/><a:chOff x=\"0\" y=\"0\"/><a:chExt cx=\"0\" cy=\"0\"/></a:xfrm></p:grpSpPr>");
     ds4_buf_puts(&w->rels, XML_HEAD "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout\" Target=\"../slideLayouts/slideLayout1.xml\"/>");
     ds4_buf p = {0};
     const bool only_title = title && !img && !tbl && nothers == 0;
     const office_node *sub = NULL; for (const office_node *x = blocks; x; x = x->next) if (x != title && x->kind == OFF_PARA) { sub = x; break; }
     if (title && !img && !tbl && first && nothers <= 1 && (!nothers || sub)) {   /* 标题页 */
-        para(&p, title->child, 4400, true, false, "1F3864", 0, NULL, "ctr");
+        if (T->deco) deco_cover(w, 3640000);
+        para(&p, title->child, 4400, true, false, T->title, 0, NULL, "ctr");
         text_box(w, MARGIN, 2000000, BODY_W, 1600000, "b", &p, NULL); p.len = 0;
-        if (sub) { para(&p, sub->child, 2400, false, false, "595959", 0, NULL, "ctr"); text_box(w, MARGIN, 3700000, BODY_W, 1200000, "t", &p, NULL); p.len = 0; }
+        if (sub) { para(&p, sub->child, 2400, false, false, T->muted, 0, NULL, "ctr"); text_box(w, MARGIN, 3700000, BODY_W, 1200000, "t", &p, NULL); p.len = 0; }
     } else if (only_title) {   /* 章节页 */
-        para(&p, title->child, 4000, true, false, "1F3864", 0, NULL, "ctr");
+        if (T->deco) deco_cover(w, 4450000);
+        para(&p, title->child, 4000, true, false, T->title, 0, NULL, "ctr");
         text_box(w, MARGIN, 2400000, BODY_W, 2000000, "ctr", &p, NULL); p.len = 0;
     } else {
-        if (title) { para(&p, title->child, 3200, true, false, "1F3864", 0, NULL, NULL); text_box(w, MARGIN, TITLE_Y, BODY_W, TITLE_H, "b", &p, NULL); p.len = 0; }
+        if (T->deco) deco_content(w, title != NULL);
+        if (title) { para(&p, title->child, 3200, true, false, T->title, 0, NULL, NULL); text_box(w, MARGIN, TITLE_Y, BODY_W, TITLE_H, "b", &p, NULL); p.len = 0; }
         const long by = title ? BODY_Y : TITLE_Y, bh = title ? BODY_H : BODY_H + BODY_Y - TITLE_Y;
         const long tw = img ? BODY_W / 2 - 150000 : BODY_W;
         const int sz = nothers > 8 ? 1600 : nothers > 5 ? 1800 : 2000;
@@ -185,6 +223,7 @@ static void slide(sw *w, const office_node *blocks, int nblocks, bool first) {
 
 uint8_t *office_pptx_build(const office_node *doc, const office_opts *o, office_report *rep, size_t *len) {
     office_zip z; office_zip_begin(&z, o->now);
+    T = pptx_theme_find(o->theme); if (!T) T = pptx_theme_find(NULL);   /* 不认识的名字调用方该先拦(asst_office.c); 这里退回 clean 而不是炸 */
     sw w = { &z, o, rep, {0}, {0}, 0, 2, 1, 0, false, false };
     /* 按 --- 切片: 把链表临时断开成每片一段 */
     office_node *head = doc->child; bool any_notes = false;
@@ -205,11 +244,11 @@ uint8_t *office_pptx_build(const office_node *doc, const office_opts *o, office_
     ds4_buf pp = {0}, vp = {0}, ts = {0}; pptx_small_parts(&pp, &vp, &ts);
     office_zip_add(&z, "ppt/presProps.xml", pp.ptr, pp.len); office_zip_add(&z, "ppt/viewProps.xml", vp.ptr, vp.len); office_zip_add(&z, "ppt/tableStyles.xml", ts.ptr, ts.len);
     ds4_buf_free(&pp); ds4_buf_free(&vp); ds4_buf_free(&ts);
-    pptx_theme(&b, "DwarfStar"); office_zip_add(&z, "ppt/theme/theme1.xml", b.ptr, b.len); b.len = 0;
+    pptx_theme(&b, "DwarfStar", T); office_zip_add(&z, "ppt/theme/theme1.xml", b.ptr, b.len); b.len = 0;
     pptx_master(&b, &r); office_zip_add(&z, "ppt/slideMasters/slideMaster1.xml", b.ptr, b.len); office_zip_add(&z, "ppt/slideMasters/_rels/slideMaster1.xml.rels", r.ptr, r.len); b.len = 0; r.len = 0;
     pptx_layout(&b, &r); office_zip_add(&z, "ppt/slideLayouts/slideLayout1.xml", b.ptr, b.len); office_zip_add(&z, "ppt/slideLayouts/_rels/slideLayout1.xml.rels", r.ptr, r.len); b.len = 0; r.len = 0;
     if (any_notes) {
-        pptx_theme(&b, "DwarfStar Notes"); office_zip_add(&z, "ppt/theme/theme2.xml", b.ptr, b.len); b.len = 0;
+        pptx_theme(&b, "DwarfStar Notes", pptx_theme_find(NULL)); office_zip_add(&z, "ppt/theme/theme2.xml", b.ptr, b.len); b.len = 0;   /* 备注页永远白底: 深色主题的浅字在白色备注页上看不见 */
         pptx_notes_master(&b, &r); office_zip_add(&z, "ppt/notesMasters/notesMaster1.xml", b.ptr, b.len); office_zip_add(&z, "ppt/notesMasters/_rels/notesMaster1.xml.rels", r.ptr, r.len); b.len = 0; r.len = 0;
     }
     char *title = o->title ? strdup(o->title) : office_first_heading(doc);

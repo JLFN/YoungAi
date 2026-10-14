@@ -3,7 +3,7 @@
  * ② Markdown: 夹具 report.md 的树形(标题/表/列表嵌套/代码/引用/图/注释/行内样式)。
  * ③ 公式: 夹具 sales.json 每个公式的值、错误值、不认识的函数不填值。
  * ④ 金标: report.md + 运行时造的 PNG → docx; sales.json → xlsx; 与 tests/fixtures/office/ 下的 .golden 逐字节同(时间传常量)。
- *    --update-golden 重写金标(改了版式后有意为之才用; 改前先 diff 看变了什么)。
+ *    --update-golden 重写金标(改了版式后有意为之才用; 改前先 diff 看变了什么)。--keep 跑完不删临时目录并打印路径(肉眼看 pptx/pdf 长什么样: LibreOffice 转图)。
  * ⑤ 外部复验(有就跑, 没有 SKIP): unzip -t 零错; xmllint 每个 XML 部件良构; macOS textutil 从 docx 抽回的正文含夹具里的句子。
  * ⑥ PNG 解码(去滤波)。⑦ PDF(非内嵌路金标; 内嵌路: 子集化、ToUnicode、xref、macOS mdimport 抽文本)+ PPTX(金标; 分页/备注/图/表)。 */
 #include "../../src/office/ds4_office.h"
@@ -14,6 +14,7 @@
 #include <unistd.h>
 
 static int fails, passes;
+static bool keep;   /* --keep: 不删临时目录 */
 #define CHECK(cond, ...) do { if (cond) passes++; else { fails++; printf("FAIL %s:%d: ", __FILE__, __LINE__); printf(__VA_ARGS__); printf("\n"); } } while (0)
 #define FIX "tests/fixtures/office/"
 #define NOW 1760000000   /* 2025-10-09T08:53:20Z: 常量时间 → 产物逐字节可比 */
@@ -165,7 +166,7 @@ static void test_build(bool update) {
     static const uint8_t jpg[] = { 0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 'J', 'F', 'I', 'F', 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0xFF, 0xC0, 0x00, 0x11, 0x08, 0x01, 0xE0, 0x02, 0x80, 0x03 };
     CHECK(office_img_info(jpg, sizeof jpg, &ii) && ii.w == 640 && ii.h == 480 && !strcmp(ii.ext, "jpeg"), "jpeg info %dx%d", ii.w, ii.h);
     size_t n; char *md = (char *)slurp(FIX "report.md", &n);
-    office_node *d = office_md_parse(md); office_opts o = { tmp, NULL, NOW, NULL, NULL }; office_report rep = {0}; size_t dn;
+    office_node *d = office_md_parse(md); office_opts o = { tmp, NULL, NOW, NULL, NULL, NULL }; office_report rep = {0}; size_t dn;
     uint8_t *docx = office_docx_build(d, &o, &rep, &dn);
     CHECK(docx && dn > 2000 && rep.images == 1 && !rep.missing_images, "docx built %zu bytes, images %d/%d", dn, rep.images, rep.missing_images);
     CHECK(dn >= 4 && docx[0] == 'P' && docx[1] == 'K', "zip signature");
@@ -199,7 +200,7 @@ static void test_pdf_pptx(bool update) {
     char png[300]; snprintf(png, sizeof png, "%s/chart.png", tmp); make_png(png);
     size_t n; char *md = (char *)slurp(FIX "report.md", &n); office_node *d = office_md_parse(md);
     /* 非内嵌路: 产物与机器无关 → 金标 */
-    office_opts ob = { tmp, NULL, NOW, "", "" }; office_report rb = {0}; size_t bn;
+    office_opts ob = { tmp, NULL, NOW, "", "", NULL }; office_report rb = {0}; size_t bn;
     uint8_t *pb = office_pdf_build(d, &ob, &rb, &bn);
     CHECK(pb && bn > 3000 && !memcmp(pb, "%PDF-1.4", 8) && has_bytes(pb, bn, "STSong-Light") && has_bytes(pb, bn, "startxref") && rb.notes.len && strstr(rb.notes.ptr, "not embedded"), "builtin-font pdf: %zu bytes, note=%s", bn, rb.notes.ptr ? rb.notes.ptr : "-");
     golden("report-builtin.pdf", pb, bn, update);
@@ -237,12 +238,12 @@ static void test_pdf_pptx(bool update) {
             const uint32_t syms[] = { 0x2022, 0x2192, 0x201C, 0x201D, 0x2014, 0x2026, 0x2460, 0x2713, 0xB1, 0xB0, 0 }; int miss = 0;
             for (int i = 0; syms[i]; i++) if (!(mf && office_ttf_gid(mf, syms[i])) && !(sf && office_ttf_gid(sf, syms[i]))) { miss++; printf("  no glyph for U+%04X in %s%s%s\n", syms[i], fp, sp ? " or " : "", sp ? sp : ""); }
             CHECK(miss == 0, "every common symbol is drawable by the main or the fallback font (fallback %s)", sp ? sp : "none");
-            office_node *sd = office_md_parse("- 列表 → 下一步, “引号” ① ✓ 30°\n"); office_opts os = { tmp, NULL, NOW, NULL, NULL }; office_report rs = {0}; size_t sn;
+            office_node *sd = office_md_parse("- 列表 → 下一步, “引号” ① ✓ 30°\n"); office_opts os = { tmp, NULL, NOW, NULL, NULL, NULL }; office_report rs = {0}; size_t sn;
             uint8_t *ps = office_pdf_build(sd, &os, &rs, &sn);
             CHECK(ps && (!sf || has_bytes(ps, sn, "/F4 ")) && (sf || !has_bytes(ps, sn, "/F4 ")), "symbols go to /F4 exactly when a fallback font is configured (%s)", sp ? sp : "none");
             free(ps); office_report_free(&rs); office_node_free(sd); office_ttf_free(sf); office_ttf_free(mf);
         }
-        office_opts oe = { tmp, NULL, NOW, NULL, NULL }; office_report re = {0}; size_t en;
+        office_opts oe = { tmp, NULL, NOW, NULL, NULL, NULL }; office_report re = {0}; size_t en;
         uint8_t *pe = office_pdf_build(d, &oe, &re, &en);
         CHECK(pe && en > 10000 && en < 400000 && has_bytes(pe, en, "/FontFile2") && has_bytes(pe, en, "/ToUnicode") && has_bytes(pe, en, "/CIDToGIDMap /Identity") && !re.notes.len && re.images == 1, "embedded pdf: %zu bytes images %d notes %s", en, re.images, re.notes.ptr ? re.notes.ptr : "-");   /* 流都压过, 只能看字典键 */
         /* startxref 指向的位置真是 xref */
@@ -265,7 +266,7 @@ static void test_pdf_pptx(bool update) {
     office_node_free(d); free(md);
     /* pptx: 夹具 slides.md → 6 页(标题页/要点+备注/表格/图+要点/有序+引用+代码/章节页) */
     char *sm = (char *)slurp(FIX "slides.md", &n); office_node *sd = office_md_parse(sm);
-    office_opts op = { tmp, NULL, NOW, NULL, NULL }; office_report rp = {0}; size_t pn;
+    office_opts op = { tmp, NULL, NOW, NULL, NULL, NULL }; office_report rp = {0}; size_t pn;
     uint8_t *px = office_pptx_build(sd, &op, &rp, &pn);
     CHECK(px && pn > 5000 && rp.images == 1 && !rp.missing_images, "pptx built %zu bytes images %d", pn, rp.images);
     golden("slides.pptx", px, pn, update);
@@ -279,8 +280,26 @@ static void test_pdf_pptx(bool update) {
     CHECK(s4 && strstr(s4, "<p:pic>") && strstr(s4, "r:embed=\"rId2\"") && strstr(s4, "营收连续两季增长"), "slide 4 has picture + bullets");
     snprintf(p1, sizeof p1, "%s/x/ppt/slides/slide3.xml", tmp); char *s3 = (char *)slurp(p1, &wn);
     CHECK(s3 && strstr(s3, "<a:tbl>") && strstr(s3, "<a:gridCol") && strstr(s3, "1,385"), "slide 3 has a table");
-    free(pres); free(ns); free(s4); free(s3); free(px); office_report_free(&rp); office_node_free(sd); free(sm);
-    char cmd[512]; snprintf(cmd, sizeof cmd, "rm -rf '%s'", tmp); if (system(cmd)) {}
+    free(pres); free(ns); free(s4); free(s3); free(px); office_report_free(&rp);
+    /* 主题(10-14): 同一份夹具 theme=tech → 每页写底色 0B1220、封面有圆弧、内容页有页码与强调条、表头青字深底、链接青色; clean 的金标上面已经比过(一字节不变) */
+    CHECK(office_pptx_theme_ok(NULL) && office_pptx_theme_ok("") && office_pptx_theme_ok("tech") && office_pptx_theme_ok("warm") && !office_pptx_theme_ok("neon") && !strcmp(office_pptx_themes(), "clean, tech, warm"), "theme names");
+    office_opts ot = { tmp, NULL, NOW, NULL, NULL, "tech" }; office_report rt = {0}; size_t tn;
+    uint8_t *pt = office_pptx_build(sd, &ot, &rt, &tn);
+    CHECK(pt && tn > pn, "tech pptx built %zu bytes (clean %zu)", tn, pn);
+    golden("slides-tech.pptx", pt, tn, update);
+    snprintf(f2, sizeof f2, "%s/slides-tech.pptx", tmp); put(f2, pt, tn);
+    external_checks(f2, tmp, NULL);
+    snprintf(p1, sizeof p1, "%s/x/ppt/slides/slide1.xml", tmp); char *t1 = (char *)slurp(p1, &wn);
+    CHECK(t1 && strstr(t1, "<p:bg><p:bgPr><a:solidFill><a:srgbClr val=\"0B1220\"/>") && strstr(t1, "prst=\"ellipse\"") && strstr(t1, "val=\"F8FAFC\"") && !strstr(t1, "1F3864"), "tech cover: dark background, arcs, light title");
+    snprintf(p1, sizeof p1, "%s/x/ppt/slides/slide3.xml", tmp); char *t3 = (char *)slurp(p1, &wn);
+    CHECK(t3 && strstr(t3, "val=\"0F2A44\"") && strstr(t3, "val=\"7DD3FC\"") && strstr(t3, "<a:t>3</a:t>") && strstr(t3, "val=\"22D3EE\"") && !strstr(t3, "D9E2F3"), "tech table slide: themed header, page number, accent bar");
+    snprintf(p1, sizeof p1, "%s/x/ppt/theme/theme1.xml", tmp); char *th = (char *)slurp(p1, &wn);
+    CHECK(th && strstr(th, "<a:dk1><a:srgbClr val=\"E2E8F0\"/></a:dk1><a:lt1><a:srgbClr val=\"0B1220\"/></a:lt1>"), "tech theme1: text/bg swapped so unstyled runs come out light");
+    snprintf(p1, sizeof p1, "%s/x/ppt/theme/theme2.xml", tmp); char *th2 = (char *)slurp(p1, &wn);
+    CHECK(th2 && strstr(th2, "<a:lt1><a:srgbClr val=\"FFFFFF\"/></a:lt1>"), "notes theme stays white");
+    free(t1); free(t3); free(th); free(th2); free(pt); office_report_free(&rt);
+    office_node_free(sd); free(sm);
+    char cmd[512]; if (keep) printf("kept: %s\n", tmp); else { snprintf(cmd, sizeof cmd, "rm -rf '%s'", tmp); if (system(cmd)) {} }
 }
 
 /* ---------------- ⑥ PNG 解码(含滤波行): 自造 3x2 RGB, 第二行 Up 滤波 ---------------- */
@@ -303,7 +322,8 @@ static void test_png(void) {
 }
 
 int main(int argc, char **argv) {
-    const bool update = argc > 1 && !strcmp(argv[1], "--update-golden");
+    bool update = false;
+    for (int i = 1; i < argc; i++) { if (!strcmp(argv[i], "--update-golden")) update = true; else if (!strcmp(argv[i], "--keep")) keep = true; }
     test_flate(); test_md(); test_calc(); test_build(update); test_png(); test_pdf_pptx(update);
     printf("office: %d passed, %d failed\n", passes, fails);
     return fails ? 1 : 0;

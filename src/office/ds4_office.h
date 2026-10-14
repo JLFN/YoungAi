@@ -48,6 +48,7 @@ typedef struct {
     time_t now;
     const char *font_path;      /* PDF 用: NULL 自动找; "" 强制非内嵌 */
     const char *sym_font_path;  /* PDF 用: 主字体缺的符号(• → “” — … ① ✓)从这里取; NULL 自动找, "" 不要 */
+    const char *theme;          /* pptx 用: 版式主题名(office_pptx_themes 列的); NULL/"" = clean(白底, 10-14 前唯一的样子) */
 } office_opts;
 typedef struct { int images, missing_images, formulas, uncomputed; ds4_buf notes; } office_report;   /* notes: 给模型看的提醒, 一行一条 */
 void office_report_free(office_report *r);
@@ -56,8 +57,10 @@ void office_report_free(office_report *r);
 uint8_t *office_docx_build(const office_node *doc, const office_opts *o, office_report *rep, size_t *len);
 /* pdf(office_pdf.c + office_pdf_write.c): 树 → 整个 .pdf 字节。字体: o->font_path 为 NULL 自动找(office_ttf_find), "" = 强制非内嵌(STSong-Light, 产物与机器无关) */
 uint8_t *office_pdf_build(const office_node *doc, const office_opts *o, office_report *rep, size_t *len);
-/* pptx(office_pptx.c + office_pptx_pkg.c): 树按 --- 切成幻灯片 */
+/* pptx(office_pptx.c + office_pptx_pkg.c): 树按 --- 切成幻灯片。主题(10-14 用户: "根本没有科技风还是很素"): 配色 + 装饰由 o->theme 选, 表在 office_pptx_pkg.c */
 uint8_t *office_pptx_build(const office_node *doc, const office_opts *o, office_report *rep, size_t *len);
+const char *office_pptx_themes(void);          /* "clean, tech, warm": 给工具描述与报错用 */
+bool office_pptx_theme_ok(const char *name);   /* NULL/"" 也算(= clean) */
 
 /* ---------------- TrueType(office_ttf.c): 只认 glyf 轮廓 ---------------- */
 typedef struct office_ttf office_ttf;
