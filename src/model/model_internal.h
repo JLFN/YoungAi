@@ -4,9 +4,9 @@
  * 来历: 工作台 ds4-train(2026-10-10, 用户 "把训练也做一个可视化页面出来, 可以控制和观测" → "ds 服务启动起来就可以选择是跑模型还是跑训练, 集成在一起")。
  *
  * ★主进程永远不退, 模型与训练都是它的子进程★(10-10 用户: "理论上这个主服务是永远不停的, 模型和后训练都是子实现"):
- *   主进程  ds4-train(train_main.c + train_http.c 一层薄 HTTP)占页面端口, 出工作台页与全部 /api/…。
+ *   主进程  ds4-train(studio_main.c + studio_http.c 一层薄 HTTP)占页面端口, 出工作台页与全部 /api/…。
  *   模型    ds4-server 由它直接 fork/exec(model_serve.c), 绑 127.0.0.1:<页面端口+1>(TR_MODEL_PORT); 主进程把 /v1/… /monitor /metrics
- *           与要问活引擎的两条(/api/models/plugins 热切、/api/models/list)原字节转给它(train_proxy.c), 页面与 API 客户端只认主进程的端口。
+ *           与要问活引擎的两条(/api/models/plugins 热切、/api/models/list)原字节转给它(studio_proxy.c), 页面与 API 客户端只认主进程的端口。
  *   训练    主进程里一条作业线程(model_train_job.c): 停模型子进程 → fork ./ds4 --ptrain → wt2 门(model_train_pick.c: fork ./ds4 --score-ids 两臂 +
  *           anchor_metrics 五指标)→ 选轮 → 模型子进程按 gguf/serve_pick.txt 装回来。
  *           (页面上原有的"出题"(文档 → 模型写问答)10-10 按用户要求删掉; 文档上传后直接成原文料 <目录>.text.jsonl 可训。)

@@ -1,9 +1,9 @@
-/* train_proxy.c — 主进程把归模型子进程的请求原字节转给它(2026-10-10; 用户: "主服务是永远不停的, 模型和后训练都是子实现")。
- * 总述见 train_internal.h。ds4-server 绑 127.0.0.1:<页面端口+1>; 页面与 API 客户端只认主进程的端口。
- * 每条转发开一个线程: 主循环是单线程阻塞的(train_http.c), 一条回答几分钟, 不能把页面的轮询堵死。线程只碰自己的两个 socket, 不碰任何共享状态。
+/* studio_proxy.c — 主进程把归模型子进程的请求原字节转给它(2026-10-10; 用户: "主服务是永远不停的, 模型和后训练都是子实现")。
+ * 总述见 studio_internal.h。ds4-server 绑 127.0.0.1:<页面端口+1>; 页面与 API 客户端只认主进程的端口。
+ * 每条转发开一个线程: 主循环是单线程阻塞的(studio_http.c), 一条回答几分钟, 不能把页面的轮询堵死。线程只碰自己的两个 socket, 不碰任何共享状态。
  * 响应边收边转(流式回答不攒); ds4-server 每条响应都 Connection: close(server_http.c), 所以"上游关了 = 这条响应完了", 不用解析 chunked。
  * 出错会怎样: 连不上子进程 → 502 一句话(页面当"模型没装着"); 浏览器中途关页 → 这边关上游, ds4-server 自己探到断开就停生成(client_disconnected)。 */
-#include "train_internal.h"
+#include "studio_internal.h"
 #include <arpa/inet.h>
 #include <errno.h>
 #include <netinet/in.h>

@@ -1,10 +1,10 @@
-/* train_frps.c — 认云服务器上已有的东西(纯文本解析, 不连网, 单测在 tests/asst/t_studio_net.c)。用在 train_tunnel.c 的部署第一步。
+/* studio_frps.c — 认云服务器上已有的东西(纯文本解析, 不连网, 单测在 tests/asst/t_studio_net.c)。用在 studio_tunnel.c 的部署第一步。
  * 为什么要认(10-12 用户的服务器实撞): 那台服务器上已经跑着另一个项目的 frps 占着 7000。只填 IP 和账号就要能自己处理这类情况:
  *   - 7000 上是 frps: 读它的配置拿令牌, 放行端口也合适就直接复用 —— 服务器上什么都不装, 安全组也不用多开口;
  *   - 7000 上是别的程序, 或者 frps 的配置读不到/解析不了: 我们另装一套, 换一个空闲端口;
  *   - 公网端口被别的程序占着: 直接报是谁占的, 不等 frpc 起来才报 "port already used"。
  * 输入都是远端命令的原始输出: `ss -ltnpH`(谁在监听哪个口)、frps 进程的命令行、frps 的配置文件(新版 toml / 老版 ini 两种都认)。 */
-#include "train_internal.h"
+#include "studio_internal.h"
 #include <ctype.h>
 
 /* ss -ltnpH 一行: "LISTEN 0 4096 0.0.0.0:7000 0.0.0.0:* users:(("frps",pid=123,fd=3))"; IPv6 是 "[::]:7000" 或 "*:7000" */

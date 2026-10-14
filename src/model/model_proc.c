@@ -1,4 +1,4 @@
-/* model_proc.c — /proc 扫进程 + 仅剩的脚本调用(模型页下载 = hf_install.sh)。总述见 train_internal.h。
+/* model_proc.c — /proc 扫进程 + 仅剩的脚本调用(模型页下载 = hf_install.sh)。总述见 model_internal.h。
  * 进程一律按程序名认(程序本身叫 name, 或 bash/sh 正在跑名叫 name 的脚本)。★不许在整条命令行里找子串★(10-10 实撞): 别的进程命令行里带着这个词 ——
  * tail -f ds4-server-1m.log、ssh 远程命令、编辑器开着脚本 —— 就被当成"服务在跑", 模型页点加载一直报"服务已经在跑", 而其实什么都没跑。
  * 训练/起服的流程编排已不在脚本里(model_train_job.c / model_serve.c), 这里不再认 z_nightly / v41_judge / train_cycle / serve_1m_spark。 */

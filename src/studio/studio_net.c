@@ -1,25 +1,25 @@
-/* train_net.c — 设置弹窗(10-12 用户: "菜单最下面加一个设置按钮, 点击弹窗填入云服务器的账号密码, 支持保存修改, 同样的本地文件存储;
+/* studio_net.c — 设置弹窗(10-12 用户: "菜单最下面加一个设置按钮, 点击弹窗填入云服务器的账号密码, 支持保存修改, 同样的本地文件存储;
  * 设置里面有个功能叫做穿透, 就是把本地的服务使用 frp 穿透到互联网借助云服务器; 还有一个上传证书的功能 … 最后实现互联网可以访问的 pwa")。
  *
  * 一张图:  手机 ──https──▶ 云服务器:公网口(frps)══ frp 隧道(TLS + 令牌, 套在 ssh -L 里)══▶ 本机 frpc ──http──▶ 127.0.0.1:<页面端口>(ds4-train)
- *   安全组只要放行 SSH 端口(本来就开)和公网端口: frps 控制口只听服务器本机, frpc 经 ssh 端口转发连它(train_sshtun.c)。
- *   frps: 我们用 ssh(设置里的账号密码)装到云服务器, systemd 托管(ds4-frps.service), 服务器重启自己起来。流程在 train_tunnel.c。
- *   frpc: ds4-train 的子进程(train_frp.c)。有证书时 frpc 用 https2http 插件在本机解 TLS —— 证书私钥不离开这台机器, 云服务器只转字节。
+ *   安全组只要放行 SSH 端口(本来就开)和公网端口: frps 控制口只听服务器本机, frpc 经 ssh 端口转发连它(studio_sshtun.c)。
+ *   frps: 我们用 ssh(设置里的账号密码)装到云服务器, systemd 托管(ds4-frps.service), 服务器重启自己起来。流程在 studio_tunnel.c。
+ *   frpc: ds4-train 的子进程(studio_frp.c)。有证书时 frpc 用 https2http 插件在本机解 TLS —— 证书私钥不离开这台机器, 云服务器只转字节。
  *   没证书也能穿: 公网口 = 页面端口, 走 http。能打开, 但浏览器只在 https 下给装 PWA。
- *   注意: 从隧道进来的请求在 ds4-train 看来都来自 127.0.0.1。登录闸(train_auth.c)从不因为"来自本机"放行, 所以公网上照样要登录;
+ *   注意: 从隧道进来的请求在 ds4-train 看来都来自 127.0.0.1。登录闸(studio_auth.c)从不因为"来自本机"放行, 所以公网上照样要登录;
  *   助理接口那道"本机免口令"(asst_api.c)还要求 Host 是 localhost, 隧道带的是公网域名, 也放不进去。
  * 盘上(都在 ~/.ds4/studio/, 和登录文件同目录):
  *   cloud(0600)  "ds4-studio-cloud 1" 之后一行一项: host / port / user / pass <十六进制> / token <frp 令牌 64 hex> / tunnel 0|1 / pub <公网端口, 0 = 没设>
  *               / frp_port <frps 控制口, 0 = 7000> / frp_bind <SSH 转发在服务器那头连的地址, - = 127.0.0.1> / ext_token <复用的 frps 的令牌, 十六进制; 空 = 我们自己装的>(后两项部署时写, 换服务器清空)
  * 公网端口为什么可设(10-12 用户: "再加一个设置对外暴露的端口更合理"): 服务器 443 已被 nginx 之类占着时换个口就绕开;
  *   大陆服务器 + 没备案的域名, 云厂商拦 80/443(https 也按握手里的域名拦), 换成 8443 这类口一般不拦。PWA 只要求 https, 不要求 443。
- *   frp/         frp 二进制缓存、frpc.toml、frpc.log、部署日志 deploy.log;  tls/  证书(train_cert.c)
+ *   frp/         frp 二进制缓存、frpc.toml、frpc.log、部署日志 deploy.log;  tls/  证书(studio_cert.c)
  *   known_hosts  云服务器的 ssh 主机指纹(第一次连自动记; 服务器重装后连不上就删掉这个文件)
- *   ds4-askpass  指向 ds4-train 的符号链接, ssh 问密码时调它(train_exec.c 文件头)
+ *   ds4-askpass  指向 ds4-train 的符号链接, ssh 问密码时调它(studio_exec.c 文件头)
  * 密码为什么可还原地存(十六进制只为不怕空格换行, 不是加密): ssh 要用原文。加密就得把钥匙也放这台盘上, 拿到文件的人一样拿得到钥匙, 白加
- *   (同 train_auth.c 的道理)。护住它的是 0600 权限; 接口永远不回传密码, 只回"存过没有"。
+ *   (同 studio_auth.c 的道理)。护住它的是 0600 权限; 接口永远不回传密码, 只回"存过没有"。
  * 出错会怎样: cloud 文件被改坏 → 接口答 500 cloud_broken, 不当成"没设置"悄悄覆盖掉。 */
-#include "train_internal.h"
+#include "studio_internal.h"
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>

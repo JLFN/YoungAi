@@ -1,4 +1,4 @@
-/* model_serve.c — 模型子进程 ds4-server 的生命周期(2026-10-10, 原 serve_1m_spark.sh start/stop 的 C 版; 脚本留作命令行工具)。总述见 train_internal.h。
+/* model_serve.c — 模型子进程 ds4-server 的生命周期(2026-10-10, 原 serve_1m_spark.sh start/stop 的 C 版; 脚本留作命令行工具)。总述见 model_internal.h。
  * 起 = 起跑清单(实例锁: 大模型进程只许一个; MemAvailable ≥ TR_SERVE_MIN_AVAIL_MB) → 按 gguf/serve_pick.txt 拼参数 exec → 等 /v1/models 可达
  *      → 余量 ≥ TR_SERVE_FLOOR_MB(低于它会 swap/读盘假死) → 冒烟一条中文金融问答(09-19 实撞: /v1/models 正常, 每条 chat 却回 cuda prefill failed)
  *      → 看门狗线程(TR_WD_KILL_MB 连续两次就杀)。没过任何一关就杀掉, 原因在 ui_logs/serve_*.log(模型页日志栏)。

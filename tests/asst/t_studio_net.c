@@ -1,7 +1,7 @@
-/* t_studio_net.c — 设置弹窗(src/train/train_net.c 一族)离线单测: 云服务器设置的校验/存取/不回传密码/0600、askpass 读同目录密码、
+/* t_studio_net.c — 设置弹窗(src/studio/studio_net.c 一族)离线单测: 云服务器设置的校验/存取/不回传密码/0600、askpass 读同目录密码、
  * 证书 zip 的认法(带链优先、不配对拒、过期拒、不是 zip 拒、带密码私钥拒)。不连任何服务器; 要 openssl 与 zip 两个命令造夹具。
  * 真 ssh 部署 + frpc + 公网口那条链在 tests/net/tunnel_e2e.sh(要一台服务器)。由 t_asst_sbx.c 的 main 调用, 返回失败条数。 */
-#include "../../src/train/train_internal.h"
+#include "../../src/studio/studio_internal.h"
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -27,7 +27,7 @@ static int upload(const char *zip, ds4_buf *out) {
     const int c = call("/api/net/cert", z, n, out); free(z); return c;
 }
 
-/* 认服务器上已有东西的纯文本解析(train_frps.c): ss 输出、frps 命令行、toml / ini 两种配置、放行端口 */
+/* 认服务器上已有东西的纯文本解析(studio_frps.c): ss 输出、frps 命令行、toml / ini 两种配置、放行端口 */
 static void test_frps_parse(void) {
     const char *ss =
         "LISTEN 0      4096         0.0.0.0:22        0.0.0.0:*    users:((\"sshd\",pid=812,fd=3))\n"
@@ -55,7 +55,7 @@ static void test_frps_parse(void) {
     CHECKN(tr_ports_allow("", 8443) && tr_ports_allow("2000-3000,8443", 8443) && tr_ports_allow("2000-3000,8443", 2500) && !tr_ports_allow("2000-3000,3001", 8443), "allow ranges");
 }
 
-/* frpc 日志哪些行算连接状态(train_frp.c 的 tr_frpc_line_state)。行取自 10-12 spark 的 frpc.log(带颜色控制码; 对端地址换成了文档专用段 203.0.113.0/24):
+/* frpc 日志哪些行算连接状态(studio_frp.c 的 tr_frpc_line_state)。行取自 10-12 spark 的 frpc.log(带颜色控制码; 对端地址换成了文档专用段 203.0.113.0/24):
    请求级的告警与 TLS 握手报错曾被当成断线, 页面在隧道好好的时候显示"重连中" */
 static void test_frpc_lines(void) {
     CHECKN(tr_frpc_line_state("\x1b[1;34m2026-10-12 12:18:04.315 [I] [client/control.go:174] [3cdca164a3663e7e] [ds4-studio] start proxy success") == 2, "proxy success = up");

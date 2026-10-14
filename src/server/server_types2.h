@@ -297,7 +297,7 @@ struct server {
     /* 监控(server_monitor.c, 2026-10-07): GET /monitor 页与 GET /metrics 的数据面; 起服时 mon_open, 停服 mon_close。 */
     struct server_monitor *mon;
     const char *backend_name;   /* ds4_backend_name(cfg.engine.backend), /metrics 的 engine.backend */
-    int port;                   /* 监听端口: 训练页切到训练时交给 train_cycle.sh, 让 ds4-train 用同一端口接管页面(src/train/) */
+    int port;                   /* 监听端口: 训练页切到训练时交给 train_cycle.sh, 让 ds4-train 用同一端口接管页面(src/studio/) */
 };
 
 /* Jobs are stack-owned by the client thread.  The worker signals completion

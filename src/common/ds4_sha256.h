@@ -1,5 +1,5 @@
 /* ds4_sha256.h — SHA-256 / HMAC-SHA256 / PBKDF2-HMAC-SHA256(FIPS 180-4, RFC 2104, RFC 8018)。
- * 为什么自己写: 工作台登录(src/train/train_auth.c)要存口令哈希、签会话票, 而全仓不链任何加密库
+ * 为什么自己写: 工作台登录(src/studio/studio_auth.c)要存口令哈希、签会话票, 而全仓不链任何加密库
  * (Linux 上 OpenSSL 不保证在, Mac 的 CommonCrypto 又只在一边), 两百行纯 C 两边一样。
  * 只做哈希与派生, 不做加解密。金标向量在 tests/unit/t_sha256.c(NIST / RFC 4231 / RFC 7914)。 */
 #ifndef DS4_SHA256_H

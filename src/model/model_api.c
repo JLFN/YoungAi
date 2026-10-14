@@ -1,4 +1,4 @@
-/* model_api.c — 工作台的路由(主进程 ds4-train 与模型子进程 ds4-server 共用)。总述见 train_internal.h。
+/* model_api.c — 工作台的路由(主进程 ds4-train 与模型子进程 ds4-server 共用)。总述见 model_internal.h。
  * 状态里的 mode: training(有训练链在跑) / serving(模型子进程装着) / loading(在装) / lobby(都没有)。发车不按 mode 拦: 模型装着时发车 = cycle 脚本先停模型子进程(训完自动回来)。
  * 管子进程的操作(发车/换模型/起服)只在主进程做: serving=1(调用方是模型子进程自己)一律拒, 免得两个进程各管各的。 */
 #include "model_internal.h"

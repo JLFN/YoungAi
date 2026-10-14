@@ -1,4 +1,4 @@
-/* model_train_runs.c — ds4-train: 盘上训练产物 → JSON。总述见 train_internal.h。
+/* model_train_runs.c — ds4-train: 盘上训练产物 → JSON。总述见 model_internal.h。
  * 只读, 不解释: train.log 的 step/epoch/probe 行照抄成数组, 漂移文件(两臂全文 + 配对行)抽数与标签照 model_train_pick.c 写的原样带出,
  * pick.txt 是 model_train_pick.c 写的选轮结果。train.log 是追加写的: 同目录重训时以最后一个 "step 0" 为界只认这一趟(与 kdpick 同规矩)。 */
 #include "model_internal.h"

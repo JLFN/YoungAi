@@ -113,7 +113,7 @@ int main(int argc, char **argv) {
     s.batch_max = cfg.batch_max;
     s.backend_name = ds4_backend_name(cfg.engine.backend);
     s.port = cfg.port;
-    {   /* 训练页(GET /train, /api/train/…; src/train/): 根 = 当前目录(--chdir 之后 = 仓库根, 与 web/ 页面同一个约定) */
+    {   /* 训练页(GET /train, /api/train/…; src/model/): 根 = 当前目录(--chdir 之后 = 仓库根, 与 web/ 页面同一个约定) */
         char cwd[1024];
         if (getcwd(cwd, sizeof cwd)) tr_init(cwd);
     }

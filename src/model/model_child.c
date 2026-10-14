@@ -1,5 +1,5 @@
 /* model_child.c — 主进程 ds4-train 管子进程的底座(2026-10-10): fork/setsid/exec + 日志重定向 + 内存看门狗 + 本机 HTTP 一条请求。
- * 总述见 train_internal.h。模型子进程(model_serve.c)、训练/打分/出题的 ./ds4(model_train_job.c / model_train_pick.c)都走这里, 看门狗只写一处。
+ * 总述见 model_internal.h。模型子进程(model_serve.c)、训练/打分/出题的 ./ds4(model_train_job.c / model_train_pick.c)都走这里, 看门狗只写一处。
  * 子进程自成会话: ds4-train 被 Ctrl-C / SIGTERM 时模型子进程留着(下次起主进程直接接上, 与此前 nohup 起服同一语义)。
  * fd≥3 不继承: ★服务的监听 socket 带进子进程树★是 10-10 实撞(训练树攥着 8000, 主进程与回来的服务都绑不上)。
  * 出错会怎样: 看门狗红线 TR_WD_KILL_MB 连续两次 → SIGTERM 子进程(ds4 没有 SIGTERM 处理器, 默认退, 卸 100 GB 映射几秒), 3 秒后 SIGKILL; tr_child_wait 返回 -2。 */

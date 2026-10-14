@@ -1,8 +1,8 @@
-/* t_studio_auth.c — 工作台登录(src/train/train_auth.c)与大模型 API 密钥(train_keys.c)单测: 校验规则、首次设置、票(X-DS4-Session 头)、
+/* t_studio_auth.c — 工作台登录(src/studio/studio_auth.c)与大模型 API 密钥(studio_keys.c)单测: 校验规则、首次设置、票(X-DS4-Session 头)、
  * 闸放行/拦截、连错锁定、删文件重置; 密钥建/列/删、/v1 认 Bearer 与 x-api-key、用量计数、名字清洗、坏文件不放行。
  * 由 t_asst_sbx.c 的 main 调用(临时目录由它建), 返回失败条数。登录文件写在临时目录, 不碰真的 ~/.ds4/studio。
  * 每次登录/设置都要跑一遍 PBKDF2(60 万轮), 整组十来次, 秒级。 */
-#include "../../src/train/train_internal.h"
+#include "../../src/studio/studio_internal.h"
 #include <sys/stat.h>
 #include <unistd.h>
 

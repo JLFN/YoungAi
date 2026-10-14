@@ -1,5 +1,5 @@
-/* train_main.c — ds4-train 入口: 工作台的主进程(永远不退), 一层薄 HTTP 套在 tr_api 上; 模型(ds4-server)与训练链都是它拉起的子进程。总述见 train_internal.h。 */
-#include "train_internal.h"
+/* studio_main.c — ds4-train 入口: 工作台的主进程(永远不退), 一层薄 HTTP 套在 tr_api 上; 模型(ds4-server)与训练链都是它拉起的子进程。总述见 studio_internal.h。 */
+#include "studio_internal.h"
 #include "../assistant/asst_internal.h"
 #include <signal.h>
 #include <sys/stat.h>
@@ -39,7 +39,7 @@ static bool takeover(int fd, const tr_req *rq) {
 static void on_term(int sig) { asst_browser_shutdown(); tr_net_shutdown(); signal(sig, SIG_DFL); raise(sig); }   /* 火狐、frpc 都自成进程组, 主进程被杀它们不会跟着走 */
 
 int main(int argc, char **argv) {
-    /* ssh 问云服务器密码时执行的是 ~/.ds4/studio/ds4-askpass(指向本程序的符号链接, 见 train_exec.c): 只答密码就退, 不起服务 */
+    /* ssh 问云服务器密码时执行的是 ~/.ds4/studio/ds4-askpass(指向本程序的符号链接, 见 studio_exec.c): 只答密码就退, 不起服务 */
     { const char *b = strrchr(argv[0], '/'); if (!strcmp(b ? b + 1 : argv[0], "ds4-askpass")) return tr_askpass_main(argv[0], argc > 1 ? argv[1] : ""); }
     const char *host = "0.0.0.0", *root = NULL;
     for (int i = 1; i < argc; i++) {

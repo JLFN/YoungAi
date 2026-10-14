@@ -1,4 +1,4 @@
-/* train_auth.c — 工作台登录(10-12 用户: "第一次使用必须设置用户名密码, 不要数据库, 加密存本地, 可以手动删除重置, 登录后密文存浏览器免登")。
+/* studio_auth.c — 工作台登录(10-12 用户: "第一次使用必须设置用户名密码, 不要数据库, 加密存本地, 可以手动删除重置, 登录后密文存浏览器免登")。
  *
  * 盘上: ~/.ds4/studio/auth 一个 0600 文本文件, 三行:
  *   ds4-studio-auth 1
@@ -14,15 +14,15 @@
  *   自定义头天然挡 CSRF 与 DNS 重绑定: 别的网站读不到本站的 localStorage, 跨站带自定义头又要预检(我们不答 CORS)。
  *   代价: 页面脚本读得到票, 页面若有 XSS 能偷走(cookie 的 HttpOnly 能挡这个) —— 页面里数据一律 textContent, 唯一 innerHTML 是先整段转义的 markdown。
  *
- * 闸(tr_auth_gate, train_http.c 在一切路由之前调): 只拦数据口 —— /api/…(/api/auth/… 除外)与 /metrics。静态页面(/、/monitor 等)放行:
+ * 闸(tr_auth_gate, studio_http.c 在一切路由之前调): 只拦数据口 —— /api/…(/api/auth/… 除外)与 /metrics。静态页面(/、/monitor 等)放行:
  *   浏览器直接打开一个网址时没法带自定义头, 拦了页面就永远打不开; 页面本身不含数据, 数据都要再走被拦的接口。
  *   /v1/…(大模型的 OpenAI/Anthropic 兼容口, 10-12 用户: "用 API key 管理大模型的请求"): 外部客户端走不了网页登录, 认 API 密钥
- *   (train_keys.c, 页面"API"tab 建/删); 工作台自己的票与本机口令也认。都没有 → 401, 报错照 OpenAI 的格式, 客户端能直接显示。
+ *   (studio_keys.c, 页面"API"tab 建/删); 工作台自己的票与本机口令也认。都没有 → 401, 报错照 OpenAI 的格式, 客户端能直接显示。
  *   拦下的请求要么带有效票, 要么带 Authorization: Bearer <~/.ds4/assistant/token>(本机脚本用, 能读到这个 0600 文件的人本来就拥有这台机器);
  *   都没有就答 401 + X-DS4-Auth: setup|login 头(页面据此弹设置/登录框)。
  * 出错会怎样: 连错 TR_AUTH_MAX_FAIL 次锁 TR_AUTH_LOCK_S 秒, 期间登录一律 429(主进程单线程, 不能用 sleep 拖慢, 只能锁);
  *   auth 文件被改坏(不是上面三行) → 当成"未设置"会让人重设, 所以读不懂时答 500 并在日志说清, 不悄悄回到首次设置。 */
-#include "train_internal.h"
+#include "studio_internal.h"
 #include "../common/ds4_sha256.h"
 #include <ctype.h>
 #include <errno.h>

@@ -1,4 +1,4 @@
-/* train_exec.c — 设置弹窗(train_net.c)要跑的外部命令: ssh、curl、tar、unzip、openssl, 以及常驻的 frpc。
+/* studio_exec.c — 设置弹窗(studio_net.c)要跑的外部命令: ssh、curl、tar、unzip、openssl, 以及常驻的 frpc。
  * 全部 fork + execvp 直接跑, 不经本机 shell: 参数里有什么字符都不会被当成命令解释。输出 stdout+stderr 合并收回来, 出错时原样给页面看。
  * ssh 的密码: 不进命令行(ps 看得到)也不进环境变量, 而是让 ssh 去问"askpass 程序" —— 就是 ds4-train 自己:
  *   ~/.ds4/studio/ds4-askpass 是指向 ds4-train 的符号链接, main 见 argv[0] 叫这个名字, 只把设置文件里的密码打到 stdout 就退(tr_askpass_main)。
@@ -6,7 +6,7 @@
  * frpc 去掉 http_proxy 一类变量再起: frpc 会照这些变量走代理, Mac 上开着 Clash 时 frpc 连云服务器会被转去代理节点, 实测直接
  *   "connect to server error: EOF"(10-12)。curl 下 frp 反而要留着代理(GitHub 在国内要靠它)。
  * 出错会怎样: 命令不存在 → 退出码 127, 输出里有 "exec <名字> failed"; 超时 → 整个进程组被 SIGKILL, 返回 TR_EXEC_TIMEOUT。 */
-#include "train_internal.h"
+#include "studio_internal.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <netdb.h>

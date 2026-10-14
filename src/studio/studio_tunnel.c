@@ -1,24 +1,24 @@
-/* train_tunnel.c — 开穿透的后台线程。总述见 train_net.c。一次一条线程, 页面每秒轮询 /api/net/status 看走到哪一步。
+/* studio_tunnel.c — 开穿透的后台线程。总述见 studio_net.c。一次一条线程, 页面每秒轮询 /api/net/status 看走到哪一步。
  *
  * 部署(deploy = true, 页面打开开关 / 换了服务器):
- *   ssh   连上云服务器: 架构、是不是 root、有没有 systemd、装没装过同版本 frps; 再以 root 看一遍谁在监听哪个口、有没有别的 frps(train_frps.c)。
- *         密码经 askpass 给(train_exec.c); 不是 root 就 sudo -S, 同一个密码从 stdin 喂。
+ *   ssh   连上云服务器: 架构、是不是 root、有没有 systemd、装没装过同版本 frps; 再以 root 看一遍谁在监听哪个口、有没有别的 frps(studio_frps.c)。
+ *         密码经 askpass 给(studio_exec.c); 不是 root 就 sudo -S, 同一个密码从 stdin 喂。
  *   定方案(10-12 用户的服务器实撞: 另一个项目的 frps 已经占着 7000; 用户: "只填 IP 和端口, 穿透能力就要考虑各种情况"):
  *         a) 我们装过的 ds4-frps 还在 → 接着用它;
  *         b) 有别的 frps, 读得到配置、是令牌认证、放行我们的公网端口 → 复用它, 服务器上什么都不装;
  *         c) 否则装我们自己的 ds4-frps: 7000 空着就用 7000, 被占就从 7001 往上找空口(控制口走 SSH, 换口不用动安全组)。
  *         公网端口被别的程序占着 → 直接报是谁占的(常见: nginx 占 443)。
- *   下载  本机 frpc + (方案 c)服务器架构的 frps(train_frp.c, 有缓存)。
+ *   下载  本机 frpc + (方案 c)服务器架构的 frps(studio_frp.c, 有缓存)。
  *   上传  不用 scp: 新版 scp 默认走 SFTP, 有的服务器没开 sftp-server; 改成 ssh 'cat > 文件' 从 stdin 灌。frps 二进制只在版本不对时传。
  *   frps  装进 /usr/local/bin/ds4-frps + /etc/ds4-frp/frps.toml + systemd 单元 ds4-frps.service; ufw / firewalld 开着就顺手放行。
  *         只许 frpc 占公网端口(allowPorts; 没设公网端口时是 443 和页面端口两个, 换证书不用重新部署): 令牌万一泄露, 别人也开不了别的口。
- *   通道  拉起 ssh -L 控制通道(train_sshtun.c): frps 控制口只听服务器本机, 安全组不用为它开口(10-12 用户定)。
+ *   通道  拉起 ssh -L 控制通道(studio_sshtun.c): frps 控制口只听服务器本机, 安全组不用为它开口(10-12 用户定)。
  * 之后(deploy = false 只走这段: 开机自启、换证书):
  *   frpc  起本机 frpc, 等日志出 "start proxy success"(最多 20 秒)。
  *   公网  真发一条 HTTP(S) 请求取 /manifest.webmanifest, 拿到 200 才算通 —— 只连 TCP 在 TUN 模式下永远通过, 安全组没放行也会报"已连通"。
  *         有证书再查域名解析到的是不是这台服务器(不对只提醒)。
  * 出错会怎样: 停在出错那一步, 页面显示错误码 + 原始输出的最后一行; 完整 ssh 输出在 ~/.ds4/studio/frp/deploy.log。 */
-#include "train_internal.h"
+#include "studio_internal.h"
 #include <fcntl.h>
 #include <pthread.h>
 #include <sys/stat.h>
@@ -158,7 +158,7 @@ static bool install_own(const tr_cloud *c, int uid, const char *have, const char
     /* 公网端口: 设了就只有它一个; 没设就 https / http 两个默认口都放(有没有证书随时会变, 换证书只重起 frpc, 不重新部署) */
     const int p1 = tr_pub_port(c, true, page_port), p2 = tr_pub_port(c, false, page_port);
     ds4_buf cfg = {0};
-    ds4_buf_printf(&cfg, "# 由 ds4-train 生成(src/train/train_tunnel.c), 每次开穿透重写\nbindAddr = \"127.0.0.1\"\nbindPort = %d\n"
+    ds4_buf_printf(&cfg, "# 由 ds4-train 生成(src/studio/studio_tunnel.c), 每次开穿透重写\nbindAddr = \"127.0.0.1\"\nbindPort = %d\n"
                          "proxyBindAddr = \"0.0.0.0\"\n"   /* 不写会跟着 bindAddr 走: 公网口也只听本机, 外面全连不上 */
                          "auth.token = \"%s\"\nallowPorts = [ { single = %d }, { single = %d } ]\n", fport, c->token, p1, p2);
     rc = ssh_run(c, "mkdir -p .ds4-frp && umask 077 && cat > .ds4-frp/frps.toml", cfg.ptr, cfg.len, &o);

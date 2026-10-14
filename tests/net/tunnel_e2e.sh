@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tunnel_e2e.sh — 设置弹窗的穿透整条链端到端(src/train/train_net.c 一族): 真 ssh 部署 frps → 本机 frpc → 公网口 → 上传证书变 https。
+# tunnel_e2e.sh — 设置弹窗的穿透整条链端到端(src/studio/studio_net.c 一族): 真 ssh 部署 frps → 本机 frpc → 公网口 → 上传证书变 https。
 # 要一台"云服务器": 有 sshd(开密码登录)和 systemd 的 Linux。没有真云服务器时用 OrbStack 起一台(Mac 上两分钟):
 #   orb create ubuntu:noble ds4cloud
 #   orb -m ds4cloud -u root bash -c 'apt-get update && apt-get install -y openssh-server sudo; printf "PasswordAuthentication yes\nPermitRootLogin yes\n" > /etc/ssh/sshd_config.d/99-test.conf; echo root:<密码> | chpasswd; systemctl restart ssh'

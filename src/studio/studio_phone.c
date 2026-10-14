@@ -1,7 +1,7 @@
-/* train_phone.c — 云手机的 REST(方案稿 docs/assistant_phone.md §3.2): 页面、模型工具、你的脚本三方都只走这张表, 没有私路。
- * 全部在主进程端口、过登录闸(train_auth.c 拦 /api/…); 手机没开 → 409 phone_off。/api/phone/video 是长连接, 走接管(train_main.c)不走这里。
+/* studio_phone.c — 云手机的 REST(方案稿 docs/assistant_phone.md §3.2): 页面、模型工具、你的脚本三方都只走这张表, 没有私路。
+ * 全部在主进程端口、过登录闸(studio_auth.c 拦 /api/…); 手机没开 → 409 phone_off。/api/phone/video 是长连接, 走接管(studio_main.c)不走这里。
  * 出错会怎样: 开关打不开(没准备/内存不够)→ 400 带原因; adb 命令失败 → 502 带原因; 装 apk 失败 → 400 带 pm 的话。 */
-#include "train_internal.h"
+#include "studio_internal.h"
 #include "../assistant/asst_internal.h"
 #include <ctype.h>
 

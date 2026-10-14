@@ -1,7 +1,7 @@
-/* train_keys.c — 大模型 API 密钥(10-12 用户: "加一个 api 子 tab 用来管理, 使用 apikey 管理大模型的请求")。
+/* studio_keys.c — 大模型 API 密钥(10-12 用户: "加一个 api 子 tab 用来管理, 使用 apikey 管理大模型的请求")。
  *
  * 管什么: 外部程序调 /v1/…(OpenAI / Anthropic 兼容口, 主进程转给模型子进程)必须带一把密钥, 放 Authorization: Bearer <密钥>
- *   或 x-api-key: <密钥>(Anthropic SDK 的放法)。闸在 train_auth.c 的 tr_auth_gate; 工作台自己的登录票与本机口令也放行。
+ *   或 x-api-key: <密钥>(Anthropic SDK 的放法)。闸在 studio_auth.c 的 tr_auth_gate; 工作台自己的登录票与本机口令也放行。
  *   页面"API"tab 建、删、看用量(GET /api/keys/list, POST /api/keys/create|delete, 都要先登录)。
  *
  * 盘上: ~/.ds4/studio/apikeys(0600), 首行 "ds4-studio-apikeys 1", 之后一把一行:
@@ -11,7 +11,7 @@
  *   跑 0.27 秒的 PBKDF2 会让每次请求凭空慢这么多。人挑的密码才短才可猜, 才要慢哈希。
  * 删掉一把 = 立刻失效(每条请求都重读这个文件, 不用重启); 删掉整个文件 = 全部失效。和登录文件互不影响: 重置密码不会打断外部客户端。
  * 出错会怎样: 文件被改坏 → 一把都不认(所有 /v1 请求 401, 日志说清), 不会把坏文件当"没有密钥"静默放行。 */
-#include "train_internal.h"
+#include "studio_internal.h"
 #include "../common/ds4_sha256.h"
 #include <errno.h>
 #include <fcntl.h>

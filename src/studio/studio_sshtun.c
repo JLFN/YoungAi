@@ -1,4 +1,4 @@
-/* train_sshtun.c — frp 控制通道走 SSH(10-12 用户定: "走 SSH, 只开公网端口")。总述见 train_net.c。
+/* studio_sshtun.c — frp 控制通道走 SSH(10-12 用户定: "走 SSH, 只开公网端口")。总述见 studio_net.c。
  * 为什么: frpc 直连 frps 的控制口(默认 7000)要求云厂商安全组放行这个口; 7000 被别的程序占着、只能换口时, 用户还得再去控制台开一个
  *   (10-12 用户的服务器实撞: 另一个项目的 frps 占着 7000, 我们换到 7001, 卡在安全组)。改成本机拉一条 ssh -L 端口转发,
  *   frpc 连本机这一头, 服务器那头的 frps 控制口只听 127.0.0.1 —— 安全组只要 22(本来就开)+ 公网端口, 控制口也不再暴露在公网。
@@ -8,7 +8,7 @@
  * pid 记在 frp/sshfwd.pid: 主进程被 kill -9 后 ssh 还活着, 下次起来先按它收掉, 不然两条转发抢同一个本机口。
  * 出错会怎样: 服务器关了端口转发(sshd_config 里 AllowTcpForwarding no)时 ssh 登得上, 但 frpc 一连就报
  *   "administratively prohibited", 日志 frp/sshfwd.log 的最后一行会写这句, 页面据此提示。 */
-#include "train_internal.h"
+#include "studio_internal.h"
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>

@@ -1,8 +1,8 @@
-/* train_http.c — ds4-train(主进程)的 HTTP 层: 自己答的请求单线程阻塞、一次一条(本机工具, 不求并发); 归模型子进程的请求交 train_proxy.c
- * 开线程转发(一条回答几分钟, 不能堵住页面的轮询)。总述见 train_internal.h。
+/* studio_http.c — ds4-train(主进程)的 HTTP 层: 自己答的请求单线程阻塞、一次一条(本机工具, 不求并发); 归模型子进程的请求交 studio_proxy.c
+ * 开线程转发(一条回答几分钟, 不能堵住页面的轮询)。总述见 studio_internal.h。
  * 只认 HTTP/1.1 的 请求行 + 头 + Content-Length 体; 不做 keep-alive(每条 Connection: close), 浏览器照样好用。
  * 出错会怎样: 请求头超 64 KB 或体超 1 MB 直接断开(没有任何正当请求会这么大)。 */
-#include "train_internal.h"
+#include "studio_internal.h"
 #include <arpa/inet.h>
 #include <errno.h>
 #include <netinet/in.h>
@@ -78,7 +78,7 @@ static bool read_request(int fd, tr_req *rq, char **raw, size_t *raw_len) {
     }
     if (in.len < hend + clen) { ds4_buf_free(&in); return false; }
     memset(rq, 0, sizeof *rq);
-    /* 鉴权要的头(助理 asst_api.c, 登录 train_auth.c): 只取, 不在这里判 */
+    /* 鉴权要的头(助理 asst_api.c, 登录 studio_auth.c): 只取, 不在这里判 */
     for (const char *p = strstr(in.ptr, "\r\n"); p && p + 2 < in.ptr + hend; ) {
         p += 2;
         const char *nl = strstr(p, "\r\n");

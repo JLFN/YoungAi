@@ -1,6 +1,6 @@
 <!doctype html>
 <!-- web/studio.html — DwarfStar 工作台(首页): 左侧导航 + 右侧工作区, 七个 tab: 助理 / 记忆 / 活动 / 模型 / 训练 / 语料 / 记录。
-     API(10-12 用户: "加一个 api 子 tab, 用 apikey 管理大模型的请求"): 建/删外部程序调 /v1 用的密钥、看用量, 接口 /api/keys/*(src/train/train_keys.c)。
+     API(10-12 用户: "加一个 api 子 tab, 用 apikey 管理大模型的请求"): 建/删外部程序调 /v1 用的密钥、看用量, 接口 /api/keys/*(src/studio/studio_keys.c)。
      助理/记忆/活动(10-11 用户: "对标 muse, 把聊天页面变成个人 Agent 助理"; 方案 docs/assistant.md): 接口 /api/assistant/*(src/assistant/), 会话与记忆存在服务端 ~/.ds4/assistant/。
      模型 tab(10-10 用户 "少一个模型 tab, 可以下载模型, 跟 unsloth 的客户端页面一样"): 正在使用 / 本机模型卡片(选侧车一键加载) / HF 下载(进度、续传、取消), 接口 /api/models/*(src/model/model_catalog.c)。
      (10-10 用户: "和主流工具一样左右布局 … 主题跟 logo 一致是蓝色 …
@@ -353,7 +353,7 @@
   ::-webkit-scrollbar { width: 10px; height: 10px; } ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
   ::-webkit-scrollbar-thumb { background: #2b3b5e; border-radius: 99px; border: 2px solid transparent; background-clip: padding-box; } ::-webkit-scrollbar-thumb:hover { background-color: #3a4f7a; }
   input[type=checkbox], input[type=radio] { accent-color: var(--accent); }
-  /* ---------- 设置(侧栏最底下的按钮 → 弹窗: 云服务器 / 穿透 / 证书; 服务端 src/train/train_net.c) ---------- */
+  /* ---------- 设置(侧栏最底下的按钮 → 弹窗: 云服务器 / 穿透 / 证书; 服务端 src/studio/studio_net.c) ---------- */
   .setbtn { display: flex; align-items: center; gap: 11px; padding: 9px 11px; margin-top: 6px; border-radius: 9px; color: var(--dim); font-size: 14px; cursor: pointer; }
   .setbtn:hover { background: var(--hover); color: var(--text); }
   #settings { position: fixed; inset: 0; z-index: 90; background: rgba(5,8,15,.72); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; padding: 16px; }
@@ -873,7 +873,7 @@
     <div class="serr" id="amap-err"></div>
     <div class="srow"><div class="spacer"></div><button class="danger" id="amap-del" data-i18n="set_amap_del">删除</button><button class="primary" id="amap-save" data-i18n="set_save">保存</button></div>
   </div>
-  <!-- 危险模式 = 云手机(服务端 src/train/train_phone.c + src/assistant/asst_phone.c; 方案稿 docs/assistant_phone.md) -->
+  <!-- 危险模式 = 云手机(服务端 src/studio/studio_phone.c + src/assistant/asst_phone.c; 方案稿 docs/assistant_phone.md) -->
   <div class="ssec" id="danger-sec">
     <div class="srow"><div class="card-title" style="color:#fca5a5" data-i18n="set_danger">危险模式(云手机)</div><div class="spacer"></div><label class="switch"><input type="checkbox" id="set-danger" disabled><span class="knob"></span></label></div>
     <div class="muted" data-i18n="set_danger_sub"></div>
@@ -883,7 +883,7 @@
 </div></div>
 
 <script>
-/* ---------------- 登录(10-12 用户: 首次必须设用户名密码, 登录后存浏览器免登; 服务端 src/train/train_auth.c) ----------------
+/* ---------------- 登录(10-12 用户: 首次必须设用户名密码, 登录后存浏览器免登; 服务端 src/studio/studio_auth.c) ----------------
    票存 localStorage 的 ds4.studio.session(原样字符串, 监控页 monitor.html 也读它), 下面包一层 fetch, 所有请求自动带 X-DS4-Session 头。
    任何接口答 401 且带 X-DS4-Auth 头(setup = 还没设过, login = 没票/过期/被重置) → 弹设置或登录框, 登完原地继续, 不刷新页面。
    ds4-server 直接开端口时没有登录: /api/auth/status 答 404 → 当作不用登录。 */
@@ -2489,7 +2489,7 @@ function monRender(m) {
   }
 }
 
-/* ---------------- API 密钥(服务端 src/train/train_keys.c) ----------------
+/* ---------------- API 密钥(服务端 src/studio/studio_keys.c) ----------------
    列表 GET /api/keys/list; 建 POST /api/keys/create {name} → {key}(完整密钥只这一次); 删 POST /api/keys/delete {id}。
    调用示例里的地址用当前页面的地址(浏览器怎么连上工作台, 外部程序就怎么连), 模型名取 /v1/models 的第一个, 没装模型时用默认名。 */
 let apiModel = "deepseek-v4-flash";
@@ -2887,7 +2887,7 @@ function authShow(mode) {
   if (was !== mode) { $("auth-err").textContent = ""; $("auth-pass").value = $("auth-pass2").value = ""; }
   if (mode !== "broken") setTimeout(() => $(($("auth-user").value ? "auth-pass" : "auth-user")).focus(), 0);
 }
-/* 与服务端 tr_auth_check(src/train/train_auth.c)同一套规则, 改一处要改两处; 长度按 UTF-8 字节数, 和 C 的 strlen 对齐 */
+/* 与服务端 tr_auth_check(src/studio/studio_auth.c)同一套规则, 改一处要改两处; 长度按 UTF-8 字节数, 和 C 的 strlen 对齐 */
 function authCheck(user, pass) {
   const pl = new TextEncoder().encode(pass).length;
   if (user.length < 3 || user.length > 32) return "user_len";
@@ -2931,7 +2931,7 @@ async function authBoot() {
   await new Promise(res => authDone = res);
 }
 
-/* ---------------- 设置弹窗(服务端 src/train/train_net.c; 一图流程见该文件头) ----------------
+/* ---------------- 设置弹窗(服务端 src/studio/studio_net.c; 一图流程见该文件头) ----------------
    GET /api/net/status 一份全量(服务器 / 穿透 / 证书); POST save | tunnel {on} | cert(原始 zip 体) | cert_delete 都回同样的全量。
    错误一律 "错误码: 原始输出最后一行", 页面按错误码出人话(ne_<码>), 原始那行放在下面小字里 —— 人话猜错了, 用户还能看原文。
    弹窗开着每 1.5 秒拉一次: 部署要走 ssh / 下载 / 装 frps 好几步, 页面要跟着亮。 */
@@ -3019,7 +3019,7 @@ $("btn-set").onclick = openSettings;
 $("set-close").onclick = closeSettings;
 $("settings").onclick = e => { if (e.target === $("settings")) closeSettings(); };   /* 点遮罩关 */
 window.addEventListener("keydown", e => { if (e.key === "Escape" && netT) closeSettings(); });
-/* ---------------- 云手机(服务端 src/train/train_phone.c; 方案稿 docs/assistant_phone.md §3.1/§3.2) ----------------
+/* ---------------- 云手机(服务端 src/studio/studio_phone.c; 方案稿 docs/assistant_phone.md §3.1/§3.2) ----------------
    GET /api/phone/status 每 5 s 一份(设置弹窗开着 1.5 s); 开关 = POST enable|disable; 画面 = GET /api/phone/video 的 H.264 Annex-B 裸流,
    页面自己切 NAL 喂 WebCodecs 的 VideoDecoder 画到 canvas; 浏览器没有 WebCodecs / 解码器报错 → 退回 GET /api/phone/screen 每秒一张。
    点一下 = tap, 按住拖 = swipe(坐标按 720×1280 换算); 三键 / 输入 / 打开 app / 装 apk 都是同一张 REST 表, 模型的工具也只走它。 */

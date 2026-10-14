@@ -1,4 +1,4 @@
-/* model_train_job.c — 训练作业线程(2026-10-10, 原 train_cycle.sh + z_nightly_spark.sh stage_train 的 C 版)。总述见 train_internal.h。
+/* model_train_job.c — 训练作业线程(2026-10-10, 原 train_cycle.sh + z_nightly_spark.sh stage_train 的 C 版)。总述见 model_internal.h。
  * 一次一条作业: 停模型子进程 → fork ./ds4 --ptrain → wt2 门 + 选轮 → 模型子进程按 gguf/serve_pick.txt 装回来。
  * ★训完只产出, 不挂★(10-10 用户: "训练完就是训练完不要直接挂"): 不碰 serve_pick.txt, 装回来的还是训前那套; ③ 关联训练时装着的侧车
  *   (③ 的 base.fnv = 它的指纹), 聊天页切到那份侧车、打开"后训练"开关才挂, 切走就卸。

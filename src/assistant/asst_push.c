@@ -3,7 +3,7 @@
  * 浏览器那头的公钥 p256dh + 16 字节 auth)存 push/subs/<endpoint 的 sha256 前 16 位>.json, 一台设备一份。
  * 发一条 = 对每份订阅: 明文 JSON {title, body, url} 按 RFC 8291 加密(src/push) → curl POST 到 endpoint(推送服务: FCM / Mozilla / Apple), 头带
  * VAPID 的 JWT(aud = endpoint 的 origin, sub = 订阅时页面的 origin)。为什么用 curl 不自己连: endpoint 全是 https, 本项目不引 TLS 库; 下 frp、探公网口已经在用
- * curl(train_frp.c / train_tunnel.c), 这里同一个口径。推送服务答 404/410 = 订阅已失效(用户关了通知、换了浏览器), 当场删掉那份。
+ * curl(studio_frp.c / studio_tunnel.c), 这里同一个口径。推送服务答 404/410 = 订阅已失效(用户关了通知、换了浏览器), 当场删掉那份。
  * 发送在独立线程里跑(curl 一条 1~3 s, 几台设备串行), 调用方不等; 每条结果进 audit.jsonl。 */
 #include "asst_internal.h"
 #include "../common/ds4_sha256.h"

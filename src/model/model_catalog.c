@@ -1,4 +1,4 @@
-/* model_catalog.c — 工作台"模型"页的接口(2026-10-10, 用户 "少一个模型 tab, 可以下载模型, 跟 unsloth 的客户端页面一样")。总述见 train_internal.h。
+/* model_catalog.c — 工作台"模型"页的接口(2026-10-10, 用户 "少一个模型 tab, 可以下载模型, 跟 unsloth 的客户端页面一样")。总述见 model_internal.h。
  *
  * 本机模型 = gguf/ 下三层以内、≥8 GiB 的 .gguf。小于这个的是 MTP/草稿器之类的部件, 单独装不起来, 列出来只会让人点错。
  * 配套侧车 = 与 GGUF 同目录、名字以 "<GGUF 去掉 .gguf>-" 开头、里面有 gr_L*.bin 或 manifest.txt 的目录。

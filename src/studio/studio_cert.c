@@ -1,4 +1,4 @@
-/* train_cert.c — HTTPS 证书(设置弹窗"上传证书")。总述见 train_net.c。
+/* studio_cert.c — HTTPS 证书(设置弹窗"上传证书")。总述见 studio_net.c。
  * 收: 一个 zip, 就是阿里云 / 腾讯云 / 其他 CA 下载下来的证书包。包里常见 Nginx/ Apache/ IIS/ Tomcat/ 好几套, 我们只要 PEM 格式那套, 自己挑。
  * 认: unzip 解到临时目录, 逐个文件看内容(不看扩展名: .pem .crt .cer .key 各家叫法不一):
  *   含 "BEGIN CERTIFICATE" = 证书, 数一下几张 —— 带中间证书的 bundle / fullchain 优先: 只有叶证书时电脑浏览器多半能补全, 手机常报"证书不受信任";
@@ -8,7 +8,7 @@
  * 装: ~/.ds4/studio/tls/cert.pem、key.pem(0600)+ info(域名、到期秒、原文件名)。已过期的证书直接拒。
  * 外部工具: unzip、openssl(Mac 与 Ubuntu 都自带)。没装 → 报 "exec unzip failed", 装上即可。
  * 安全: 解压前先看总大小(压缩炸弹), 解出来的符号链接一律跳过(zip 能存符号链接, 指向 /etc/passwd 之类的文件不能被当证书读进来)。 */
-#include "train_internal.h"
+#include "studio_internal.h"
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>

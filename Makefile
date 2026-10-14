@@ -258,20 +258,20 @@ src/common/ds4_json.o: src/common/ds4_json.c src/common/ds4_json.h
 src/common/ds4_sha256.o: src/common/ds4_sha256.c src/common/ds4_sha256.h
 	$(CC) $(CFLAGS) -c -o $@ src/common/ds4_sha256.c
 
-# 工作台外壳(src/train/): 只有 ds4-train 链; 路由/产物解析/进程控制在模型模块(MODEL_OBJS), ds4-server 也链。
+# 工作台外壳(src/studio/): 只有 ds4-train 链; 路由/产物解析/进程控制在模型模块(MODEL_OBJS), ds4-server 也链。
 # 纯主机 C, 不链引擎; Mac/Linux 同一条规则(nvcc 不参与)
-src/train/%.o: src/train/%.c src/train/train_internal.h src/model/model_internal.h src/common/ds4_json.h
+src/studio/%.o: src/studio/%.c src/studio/studio_internal.h src/model/model_internal.h src/common/ds4_json.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 src/model/%.o: src/model/%.c src/model/model_internal.h src/common/ds4_json.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 src/model/model_llm.o: src/assistant/asst_internal.h
 src/model/model_catalog.o: src/common/ds4_gr_fnv.h
-# 登录(train_auth.o, 只有主进程有): ds4-server 不链它 —— 模型子进程只绑 127.0.0.1, 外面进来的请求都先过主进程的闸
-TRAIN_AUTH_OBJS := src/train/train_auth.o src/train/train_keys.o src/common/ds4_sha256.o
-src/train/train_auth.o src/train/train_keys.o: src/common/ds4_sha256.h
+# 登录(studio_auth.o, 只有主进程有): ds4-server 不链它 —— 模型子进程只绑 127.0.0.1, 外面进来的请求都先过主进程的闸
+STUDIO_AUTH_OBJS := src/studio/studio_auth.o src/studio/studio_keys.o src/common/ds4_sha256.o
+src/studio/studio_auth.o src/studio/studio_keys.o: src/common/ds4_sha256.h
 # 设置弹窗(云服务器 / frp 穿透 / HTTPS 证书, 只有主进程): 外部命令 ssh curl tar unzip openssl 都是 fork+exec, 不链任何库
-TRAIN_NET_OBJS := src/train/train_net.o src/train/train_phone.o src/train/train_exec.o src/train/train_frp.o src/train/train_frps.o src/train/train_sshtun.o src/train/train_tunnel.o src/train/train_cert.o
-src/train/train_frp.o: src/common/ds4_sha256.h
+STUDIO_NET_OBJS := src/studio/studio_net.o src/studio/studio_phone.o src/studio/studio_exec.o src/studio/studio_frp.o src/studio/studio_frps.o src/studio/studio_sshtun.o src/studio/studio_tunnel.o src/studio/studio_cert.o
+src/studio/studio_frp.o: src/common/ds4_sha256.h
 # 云手机运行时(src/sandbox/phone/, 方案稿 docs/assistant_phone.md): 独立小二进制, root 跑(sudoers 一行放行), 只在 Linux 有 —— 用的是 Linux 命名空间/cgroup/binder
 ifneq ($(UNAME_S),Darwin)
 PHONE_OBJS := src/sandbox/phone/phone_main.o src/sandbox/phone/phone_cg.o src/sandbox/phone/phone_net.o src/sandbox/phone/phone_mnt.o src/sandbox/phone/phone_rc.o
@@ -283,8 +283,8 @@ endif
 # 云手机门 0 探针(tests/phone/adbprobe.c): 只链 adb 客户端与 ds4_buf, 不链引擎
 tests/phone/adbprobe: tests/phone/adbprobe.c src/sandbox/sbx_adb.o src/common/ds4_json.o
 	$(CC) $(CFLAGS) -o $@ tests/phone/adbprobe.c src/sandbox/sbx_adb.o src/common/ds4_json.o
-ds4-train: src/train/train_main.o src/train/train_http.o src/train/train_proxy.o $(MODEL_OBJS) $(TRAIN_AUTH_OBJS) $(TRAIN_NET_OBJS) $(ASST_OBJS) $(SANDBOX_OBJS) $(MODEL_CLIENT_OBJS) $(PUSH_OBJS) $(OFFICE_OBJS) $(VIDEO_OBJS) $(TTS_LINK) $(WEB_OBJS) src/common/ds4_json.o
-	$(CC) $(CFLAGS) -o $@ src/train/train_main.o src/train/train_http.o src/train/train_proxy.o $(MODEL_OBJS) $(TRAIN_AUTH_OBJS) $(TRAIN_NET_OBJS) $(ASST_OBJS) $(SANDBOX_OBJS) $(MODEL_CLIENT_OBJS) $(PUSH_OBJS) $(OFFICE_OBJS) $(VIDEO_OBJS) $(TTS_LINK) $(WEB_OBJS) src/common/ds4_json.o $(LDLIBS)
+ds4-train: src/studio/studio_main.o src/studio/studio_http.o src/studio/studio_proxy.o $(MODEL_OBJS) $(STUDIO_AUTH_OBJS) $(STUDIO_NET_OBJS) $(ASST_OBJS) $(SANDBOX_OBJS) $(MODEL_CLIENT_OBJS) $(PUSH_OBJS) $(OFFICE_OBJS) $(VIDEO_OBJS) $(TTS_LINK) $(WEB_OBJS) src/common/ds4_json.o
+	$(CC) $(CFLAGS) -o $@ src/studio/studio_main.o src/studio/studio_http.o src/studio/studio_proxy.o $(MODEL_OBJS) $(STUDIO_AUTH_OBJS) $(STUDIO_NET_OBJS) $(ASST_OBJS) $(SANDBOX_OBJS) $(MODEL_CLIENT_OBJS) $(PUSH_OBJS) $(OFFICE_OBJS) $(VIDEO_OBJS) $(TTS_LINK) $(WEB_OBJS) src/common/ds4_json.o $(LDLIBS)
 src/push/%.o: src/push/%.c src/push/ds4_push.h src/common/ds4_sha256.h
 	$(CC) $(CFLAGS) -c $< -o $@
 ds4_push_test: tests/push/t_push.c $(PUSH_OBJS) src/common/ds4_sha256.o
@@ -312,7 +312,7 @@ endif
 
 # 个人助理(src/assistant/, 方案 docs/assistant.md): 住 ds4-train 主进程; 每次工具调用 fork 子进程先上内核沙盒
 # (Linux = Landlock+seccomp, macOS = Seatbelt; 两个平台文件在对方平台上编成空对象)。纯主机 C, 不链引擎。
-src/train/train_main.o: src/assistant/asst_internal.h
+src/studio/studio_main.o src/studio/studio_phone.o: src/assistant/asst_internal.h
 src/assistant/%.o: src/assistant/%.c src/assistant/asst_internal.h src/common/ds4_json.h src/office/ds4_office.h src/video/ds4_video.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 src/sandbox/%.o: src/sandbox/%.c src/assistant/asst_internal.h src/common/ds4_json.h
@@ -323,8 +323,8 @@ tests/asst/fake/ds4-server: tests/asst/fake_model.c
 asst-e2e: ds4-train tests/asst/fake/ds4-server
 	node tests/asst/e2e_device.mjs
 # 沙盒逃逸单测 + 纯逻辑单测 + 工作台登录单测(不要模型, 秒级; make test 里跑)
-ds4_asst_test: tests/asst/t_asst_sbx.c tests/asst/t_asst_logic.c tests/asst/t_asst_video.c tests/asst/t_studio_auth.c tests/asst/t_studio_net.c tests/asst/t_studio_models.c tests/asst/t_asst_phone.c tests/asst/t_asst_task.c tests/asst/t_asst_push.c $(ASST_OBJS) $(SANDBOX_OBJS) $(MODEL_CLIENT_OBJS) $(PUSH_OBJS) $(OFFICE_OBJS) $(VIDEO_OBJS) $(TTS_LINK) $(WEB_OBJS) $(MODEL_OBJS) $(TRAIN_AUTH_OBJS) $(TRAIN_NET_OBJS) src/common/ds4_json.o
-	$(CC) $(CFLAGS) -o $@ tests/asst/t_asst_sbx.c tests/asst/t_asst_logic.c tests/asst/t_asst_video.c tests/asst/t_studio_auth.c tests/asst/t_studio_net.c tests/asst/t_studio_models.c tests/asst/t_asst_phone.c tests/asst/t_asst_task.c tests/asst/t_asst_push.c $(ASST_OBJS) $(SANDBOX_OBJS) $(MODEL_CLIENT_OBJS) $(PUSH_OBJS) $(OFFICE_OBJS) $(VIDEO_OBJS) $(TTS_LINK) $(WEB_OBJS) $(MODEL_OBJS) $(TRAIN_AUTH_OBJS) $(TRAIN_NET_OBJS) src/common/ds4_json.o $(LDLIBS)
+ds4_asst_test: tests/asst/t_asst_sbx.c tests/asst/t_asst_logic.c tests/asst/t_asst_video.c tests/asst/t_studio_auth.c tests/asst/t_studio_net.c tests/asst/t_studio_models.c tests/asst/t_asst_phone.c tests/asst/t_asst_task.c tests/asst/t_asst_push.c $(ASST_OBJS) $(SANDBOX_OBJS) $(MODEL_CLIENT_OBJS) $(PUSH_OBJS) $(OFFICE_OBJS) $(VIDEO_OBJS) $(TTS_LINK) $(WEB_OBJS) $(MODEL_OBJS) $(STUDIO_AUTH_OBJS) $(STUDIO_NET_OBJS) src/common/ds4_json.o
+	$(CC) $(CFLAGS) -o $@ tests/asst/t_asst_sbx.c tests/asst/t_asst_logic.c tests/asst/t_asst_video.c tests/asst/t_studio_auth.c tests/asst/t_studio_net.c tests/asst/t_studio_models.c tests/asst/t_asst_phone.c tests/asst/t_asst_task.c tests/asst/t_asst_push.c $(ASST_OBJS) $(SANDBOX_OBJS) $(MODEL_CLIENT_OBJS) $(PUSH_OBJS) $(OFFICE_OBJS) $(VIDEO_OBJS) $(TTS_LINK) $(WEB_OBJS) $(MODEL_OBJS) $(STUDIO_AUTH_OBJS) $(STUDIO_NET_OBJS) src/common/ds4_json.o $(LDLIBS)
 
 
 # Standalone capability modules (self-contained, no engine coupling): z 隐变量
@@ -512,7 +512,7 @@ linecount:
 	if [ -n "$$viol" ]; then echo "linecount: 以下文件超 500 行(豁免走 .linecount-exempt, 要带理由):"; echo "$$viol"; exit 1; \
 	else echo "linecount: ok (≤500 行, 豁免清单外零超标)"; fi
 clean:
-	rm -f ds4 ds4-server ds4-bench ds4-eval ds4-agent ds4-phone ds4_cpu ds4_native ds4_server_test ds4_test ds4_unit ds4_asst_test ds4_office_test ds4_video_test ds4_push_test tests/video/vidcheck e0-pingpong mm-ui mm-ocr *.o src/assistant/*.o src/sandbox/*.o src/sandbox/phone/*.o src/model/*.o src/train/*.o src/push/*.o src/office/*.o src/video/*.o src/cli/*.o src/bench/*.o src/kv/*.o src/web/*.o src/eval/*.o src/agent/*.o src/dist/*.o src/server/*.o src/core/*.o src/common/*.o src/metal/*.o tests/server_tests_*.o tests/t_*.o tests/cuda_long_context_smoke tests/cuda_long_context_smoke.o
+	rm -f ds4 ds4-server ds4-bench ds4-eval ds4-agent ds4-phone ds4_cpu ds4_native ds4_server_test ds4_test ds4_unit ds4_asst_test ds4_office_test ds4_video_test ds4_push_test tests/video/vidcheck e0-pingpong mm-ui mm-ocr *.o src/assistant/*.o src/sandbox/*.o src/sandbox/phone/*.o src/model/*.o src/studio/*.o src/push/*.o src/office/*.o src/video/*.o src/cli/*.o src/bench/*.o src/kv/*.o src/web/*.o src/eval/*.o src/agent/*.o src/dist/*.o src/server/*.o src/core/*.o src/common/*.o src/metal/*.o tests/server_tests_*.o tests/t_*.o tests/cuda_long_context_smoke tests/cuda_long_context_smoke.o
 
 # Task 04 / E0: standalone thunderbolt ping-pong latency gate (no core deps, no
 # model). Defined after the default targets so it never becomes the default goal.

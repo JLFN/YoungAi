@@ -1,4 +1,4 @@
-/* model_train_pick.c — 选轮 + 通用漂移报数(2026-10-10 起; 10-11 改口径, 原 z_nightly_spark.sh kd_pick/stage_docgate + v41_judge.sh engine 臂的 C 版)。总述见 train_internal.h。
+/* model_train_pick.c — 选轮 + 通用漂移报数(2026-10-10 起; 10-11 改口径, 原 z_nightly_spark.sh kd_pick/stage_docgate + v41_judge.sh engine 臂的 C 版)。总述见 model_internal.h。
  * ★10-11 口径(用户: "拆开看, 看结果有没有变好, 不要用 wt2 做门")★ —— 三个读数各答一个问题, 互不否决:
  *   ① 学会了没(选轮唯一依据): train.log 各轮的留出损失(给了 eval= 按泛化留出 gen_kl), 最低者胜; 没有一轮低于第 0 步 ⇒ 这趟无效, 不写 pick。
  *   ② 还会不会正常说话: 收口探针(core_ptrain_probe.c, train.log 的 probe 行) —— 挂 ③ 的收口数不得少于部署态在同一组题、同一上限下的收口数;

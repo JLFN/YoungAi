@@ -1,4 +1,4 @@
-/* train_frp.c — frp 二进制与本机 frpc 子进程。总述见 train_net.c。
+/* studio_frp.c — frp 二进制与本机 frpc 子进程。总述见 studio_net.c。
  * 二进制: 第一次开穿透时从 GitHub 发布页下(本机要 frpc, 云服务器要对应架构的 frps), 用同一发布页的 frp_sha256_checksums.txt 校验,
  *   对不上就删掉报错 —— frps 是要以 root 跑在你云服务器上的, 不校验等于把服务器交给下载链路上的任何人。
  *   缓存在 ~/.ds4/studio/frp/<版本>/<系统>_<架构>/, 下过一次不再下。下不动(国内直连 GitHub 慢、主进程没带代理)就把官方包里的
@@ -6,7 +6,7 @@
  * frpc: 自成会话的子进程, pid 记在 frp/frpc.pid —— 主进程被 kill -9 后 frpc 还活着, 下次起来先按 pid 文件杀掉它, 不然两个 frpc 抢同一个公网口
  *   (frps 那边报 "port already used")。loginFailExit = false: 断网、云服务器重启时 frpc 自己一直重连, 不退出。
  *   日志不用 frp 自己的 log.to, 而是 stdout 重定向进 frp/frpc.log: 配置写错时 frpc 的报错只打在 stdout, log.to 里什么都没有。 */
-#include "train_internal.h"
+#include "studio_internal.h"
 #include "../common/ds4_sha256.h"
 #include <errno.h>
 #include <fcntl.h>
@@ -174,7 +174,7 @@ bool tr_frpc_start(const tr_cloud *c, int page_port, char *err, size_t en) {
     char crt[TR_PATH + 32], key[TR_PATH + 32], conf[TR_PATH + 32], logp[TR_PATH + 32], pf[TR_PATH + 32];
     const bool tls = tr_cert_present(crt, sizeof crt, key, sizeof key);
     ds4_buf b = {0};
-    ds4_buf_puts(&b, "# 由 ds4-train 生成(src/train/train_frp.c), 每次开穿透/换证书重写, 手改会被覆盖\nserverAddr = \"127.0.0.1\"");
+    ds4_buf_puts(&b, "# 由 ds4-train 生成(src/studio/studio_frp.c), 每次开穿透/换证书重写, 手改会被覆盖\nserverAddr = \"127.0.0.1\"");
     ds4_buf_printf(&b, "\nserverPort = %d\nauth.token = ", lport); toml_str(&b, tr_frp_token(c));   /* 复用别人的 frps 时令牌是它的, 什么字符都可能有 */
     ds4_buf_puts(&b, "\nloginFailExit = false\nlog.to = \"console\"\nlog.level = \"info\"\n\n");
     ds4_buf_printf(&b, "[[proxies]]\nname = \"ds4-studio\"\ntype = \"tcp\"\nremotePort = %d\n", tr_pub_port(c, tls, page_port));

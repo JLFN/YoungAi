@@ -343,7 +343,7 @@ typedef struct {
     size_t body_len;
     bool peer_local;           /* 对端是 127.0.0.1 / ::1 */
     const char *host, *auth, *xhdr;   /* Host / Authorization / X-DS4-Assistant 头(没有 = 空串) */
-    bool signed_in;            /* 工作台登录票有效(train_auth.c): 票走自定义头, 别的网站读不到也带不上, 当口令用 */
+    bool signed_in;            /* 工作台登录票有效(studio_auth.c): 票走自定义头, 别的网站读不到也带不上, 当口令用 */
 } asst_req;
 bool asst_api_path(const char *path);
 bool asst_authorized(const asst_req *rq, int *code, const char **why);   /* 本机(且 Host 是本机名)或带口令; POST 还要自定义头(挡 CSRF) */
