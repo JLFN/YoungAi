@@ -78,7 +78,7 @@ static bool build_make_video(const asst_tctx *c, ds4_buf *b) {
 static const asst_tool TOOLS[] = {
     { "remember", TOOL("remember", "Save one fact or preference the user explicitly told you, for future conversations. One fact per call. Never store passwords, codes or other people's private details.", S("text", "The fact, as a short sentence"), "\"text\""), MEM, 0, NULL, false, NULL },
     { "forget", TOOL("forget", "Delete remembered lines that contain the given text.", S("text", "Text contained in the lines to delete"), "\"text\""), MEM, 0, NULL, false, NULL },
-    /* 技能(asst_skill.c): 描述里列已装技能的"名字: 一句描述", 正文模型调了才给(渐进披露); 一个都没装这行就不在 */
+    /* 技能(src/skill/skill.c): 描述里列已装技能的"名字: 一句描述", 正文模型调了才给(渐进披露); 一个都没装这行就不在 */
     { "use_skill", NULL, MEM, 0, NULL, false, asst_skill_build_tool },
     { "read_file", TOOL("read_file", "Read a text file with line numbers (up to 400 lines per call). Relative paths are inside the workspace.", S("path", "File path") "," I("start", "First line to show, 1-based (default 1)") "," I("lines", "How many lines (default and max 400)"), "\"path\""), SBX, 0, NULL, false, NULL },
     { "list_dir", TOOL("list_dir", "List a directory. Relative paths are inside the workspace; empty = workspace root.", S("path", "Directory path"), ""), SBX, 0, NULL, false, NULL },

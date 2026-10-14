@@ -1,4 +1,4 @@
-/* asst_skill.c — 技能(方案稿 docs/assistant_skills.md): 用户装进 ~/.ds4/assistant/skills/<名>/ 的"某类活怎么干"说明, 一个文件夹一个技能。
+/* skill.c — 技能(方案稿 docs/assistant_skills.md): 用户装进 ~/.ds4/assistant/skills/<名>/ 的"某类活怎么干"说明, 一个文件夹一个技能。
  * 格式照 Agent Skills 开放标准: 文件夹里必有 SKILL.md(开头 --- name / description --- 的 frontmatter + 正文), 旁边随便放脚本、模板、参考资料。
  * 别处(Claude Code / 各家 agent)写好的技能文件夹原样拷进来就能用, 不用改格式。
  *
@@ -12,7 +12,7 @@
  * 不许有脚本语句(围栏代码块、#!、以 python/bash/node/curl… 开头的命令行、行内代码里的命令或脚本文件名、<script>), 保存/导入时整份拒掉并指出第几行。
  * 为什么: 技能是"怎么干"的说明, 干活的手是助理自己的工具(write_document / write_xlsx / 文件工具…); 带脚本的技能等于往沙盒里塞一段不经审查的程序,
  * 而且别处的技能(pptxgenjs/python-pptx 那类)依赖本机根本没有的库, 模型照着跑只会撞墙。 */
-#include "asst_internal.h"
+#include "../assistant/asst_internal.h"
 #include <dirent.h>
 #include <strings.h>
 #include <sys/stat.h>

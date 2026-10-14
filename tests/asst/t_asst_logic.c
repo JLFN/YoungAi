@@ -375,7 +375,7 @@ static void test_file(void) {
     CHECKL(asst_api(&up, &o, &ct2) == 200 && o.ptr && strstr(o.ptr, "{\"path\":\"inbox/合同-2.docx\""), "upload → inbox path: %s", o.ptr ? o.ptr : "(null)"); ds4_buf_free(&o);
 }
 
-/* 技能(asst_skill.c): 没装 → 工具表没有 use_skill; 装了 → 描述列"名字: 描述"、name 枚举; use_skill 给文件夹路径 + 文件表 + 去掉 frontmatter 的正文;
+/* 技能(src/skill/skill.c): 没装 → 工具表没有 use_skill; 装了 → 描述列"名字: 描述"、name 枚举; use_skill 给文件夹路径 + 文件表 + 去掉 frontmatter 的正文;
  * 守门: 读技能文件放行且不置污点, 写拒; 页面接口 save / 上传 / delete; 名字与路径净化 */
 static void test_skills(void) {
     char *t = asst_tools_json(NULL); CHECKL(t && !strstr(t, "use_skill"), "no skills installed → no use_skill tool"); free(t);
@@ -412,10 +412,10 @@ static void test_skills(void) {
     w = asst_skill_put_file("pdf-forms", "reference/fields.md", "a\n", 2); CHECKL(!w, "put_file nested md"); free(w);
     w = asst_skill_put_file("pdf-forms", "reference/form.pdf", "%PDF-1.4\n", 9); CHECKL(!w, "put_file pdf"); free(w);
     snprintf(body, sizeof body, "%s/pdf-forms/reference/form.pdf", asst_skills); CHECKL(!stat(body, &st) && !(st.st_mode & 0100), "no exec bit ever");
-    /* 仓库自带的 PPT 示例技能(docs/skills/pptx, 纯说明 + 示例稿)必须过检查并装得进 */
-    { char sp[ASST_PATH + 64]; size_t sn = 0; snprintf(sp, sizeof sp, "%s/docs/skills/pptx/SKILL.md", asst_repo); char *smd = asst_slurp(sp, &sn);
-      w = smd ? asst_skill_put_file("pptx", "SKILL.md", smd, sn) : strdup("missing docs/skills/pptx/SKILL.md"); CHECKL(!w, "bundled pptx skill SKILL.md accepted: %s", w ? w : "ok"); free(w); free(smd);
-      snprintf(sp, sizeof sp, "%s/docs/skills/pptx/reference/example-deck.md", asst_repo); smd = asst_slurp(sp, &sn);
+    /* 仓库自带的 PPT 示例技能(skills/pptx, 纯说明 + 示例稿)必须过检查并装得进 */
+    { char sp[ASST_PATH + 64]; size_t sn = 0; snprintf(sp, sizeof sp, "%s/skills/pptx/SKILL.md", asst_repo); char *smd = asst_slurp(sp, &sn);
+      w = smd ? asst_skill_put_file("pptx", "SKILL.md", smd, sn) : strdup("missing skills/pptx/SKILL.md"); CHECKL(!w, "bundled pptx skill SKILL.md accepted: %s", w ? w : "ok"); free(w); free(smd);
+      snprintf(sp, sizeof sp, "%s/skills/pptx/reference/example-deck.md", asst_repo); smd = asst_slurp(sp, &sn);
       w = smd ? asst_skill_put_file("pptx", "reference/example-deck.md", smd, sn) : strdup("missing example-deck.md"); CHECKL(!w, "bundled pptx example accepted: %s", w ? w : "ok"); free(w); free(smd);
       char *pr = asst_skill_load("pptx"); CHECKL(pr && strstr(pr, "  reference/example-deck.md (") && strstr(pr, "---\n# 做一份 PPT\n") && strstr(pr, "write_document"), "bundled pptx skill loads: %.300s", pr ? pr : "(null)");
       if (pr) printf("---- use_skill(pptx) head ----\n%.700s\n----\n", pr);

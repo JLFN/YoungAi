@@ -170,7 +170,7 @@ bool asst_presence_visible(long now);                       /* 有页面正开�
 void asst_notice_add(const char *title, const char *body, const char *url);   /* push/notices.jsonl 追加一条(页面 poll 拉走弹出) */
 void asst_notices_json(ds4_buf *out, long after);           /* {notices:[{t,title,body,url}]} t > after */
 
-/* ---------------- 技能(asst_skill.c, 方案稿 docs/assistant_skills.md): skills/<名>/SKILL.md + 随附文件; 工具只读, 页面"技能"tab 增删改 ---------------- */
+/* ---------------- 技能(src/skill/skill.c, 方案稿 docs/assistant_skills.md): skills/<名>/SKILL.md + 随附文件; 工具只读, 页面"技能"tab 增删改 ---------------- */
 #define ASST_SKILL_NAME_MAX 64
 #define ASST_SKILL_MD_MAX (64u << 10)   /* use_skill 一次给模型的正文上限(≈2 万 token); 更长的指路 read_file 分页 */
 #define ASST_SKILL_FILES 200            /* 文件表最多列这么多条 */
