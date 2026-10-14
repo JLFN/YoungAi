@@ -116,6 +116,28 @@ run on a Mac yet (ours has 16 GB).
 - Sidecars are scored on held-out text, not on end-to-end tasks such as agentic coding or clinical questions.
 - Sites behind a login or a captcha stay closed to the assistant; it says what it could not open instead of guessing.
 
+## Danger mode (experimental) — disclaimer
+
+Settings has a **Danger mode** switch, **off by default**. Turning it on starts a virtual Android 13 phone on the host
+(Linux only: the kernel needs `binder`; macOS cannot run it) and gives the model six `phone_*` tools: look at the screen,
+tap, swipe, press keys, type, open apps. The workbench gets a **Phone** tab with the live screen (H.264 stream decoded by
+your browser), and `/api/phone/*` is a plain REST API that the page, the model and your own scripts all share
+([`docs/assistant_phone.md`](docs/assistant_phone.md)). Read this before you flip the switch:
+
+- **The model acts on its own.** With danger mode on, nobody confirms each tap. The phone starts empty (no SIM, no accounts,
+  no app store), but **any account you sign into and any APK you install there, the model can use** — it may send messages,
+  place orders, pay, or delete things. Whoever turns the switch on bears the consequences.
+- **Screen content is untrusted input.** Text inside apps and web pages can try to instruct the model. The phone runs in its
+  own namespaces with a hard memory cap and cannot reach your LAN or the host, but this is not a guarantee against every misuse.
+- **It will not bypass anti-bot checks.** If an app shows a slide captcha or a risk-control screen, you do it yourself in the
+  Phone tab; the model is not told to get around it. Do not use this to circumvent any app's terms of service or other
+  people's rights.
+- The phone system is a third-party image ([redroid](https://github.com/remote-android/redroid-doc), Apache-2.0) that this
+  project's runtime (`ds4-phone`, ~600 lines of C, no Docker) boots directly; its one-time setup needs `sudo` once
+  (`scripts/phone_prepare_linux.sh`).
+- The live video needs a secure context (https, or the page opened as `localhost`); over plain `http://<LAN-IP>` browsers
+  withhold WebCodecs and the tab falls back to one screenshot per second.
+
 ## Author · acknowledgements · license
 
 Wenzhou Wu (吴文周) · 310066827@qq.com. Questions, reproduction reports and collaboration are welcome; bugs and pull
