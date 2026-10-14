@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="zh-CN" data-l="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title data-zh="使用指南 · YoungAi" data-en="User guide · YoungAi">使用指南 · YoungAi</title>
+<meta name="description" content="YoungAi user guide: install, the Studio tabs, every assistant tool, tasks and notifications, skills, phone app, training and API. 使用指南。">
+<link rel="icon" href="img/logo.jpg">
+<link rel="stylesheet" href="assets/style.css">
+<script src="assets/site.js"></script>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="./"><img src="img/logo.jpg" alt="">YoungAi</a>
+    <nav class="nav-links">
+      <a class="opt" href="./"><span lang="zh-CN">首页</span><span lang="en">Home</span></a>
+      <a class="on" href="guide.html"><span lang="zh-CN">使用指南</span><span lang="en">Guide</span></a>
+      <a href="https://github.com/fodelf/YoungAi">GitHub</a>
+      <button class="lang-btn" type="button">EN</button>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap doc">
+  <aside class="toc">
+    <b><span lang="zh-CN">目录</span><span lang="en">Contents</span></b>
+    <nav>
+      <a href="#install"><span lang="zh-CN">安装与启动</span><span lang="en">Install &amp; start</span></a>
+      <a href="#studio"><span lang="zh-CN">工作台地图</span><span lang="en">Studio map</span></a>
+      <a href="#chat"><span lang="zh-CN">和助理对话</span><span lang="en">Talking to it</span></a>
+      <a href="#tools"><span lang="zh-CN">工具逐个看</span><span lang="en">Every tool</span></a>
+      <a href="#tasks"><span lang="zh-CN">任务与通知</span><span lang="en">Tasks &amp; push</span></a>
+      <a href="#skills"><span lang="zh-CN">技能</span><span lang="en">Skills</span></a>
+      <a href="#memory"><span lang="zh-CN">记忆与文件</span><span lang="en">Memory &amp; files</span></a>
+      <a href="#safety"><span lang="zh-CN">审批与活动</span><span lang="en">Approvals &amp; activity</span></a>
+      <a href="#mobile"><span lang="zh-CN">手机与外网</span><span lang="en">Phone &amp; internet</span></a>
+      <a href="#train"><span lang="zh-CN">用自己的数据训练</span><span lang="en">Train on your data</span></a>
+      <a href="#api">API</a>
+      <a href="#danger"><span lang="zh-CN">危险模式</span><span lang="en">Danger mode</span></a>
+      <a href="#faq"><span lang="zh-CN">出错时看这里</span><span lang="en">When things go wrong</span></a>
+    </nav>
+  </aside>
+
+  <article>
+    <h1 lang="zh-CN">使用指南</h1>
+    <h1 lang="en">User guide</h1>
+    <p class="lede" lang="zh-CN">写给第一次用的人：先说怎么做，再说为什么；每一节都写了出错会怎样。所有界面名字和工作台上的一致。</p>
+    <p class="lede" lang="en">Written for a first-time user: what to do first, why second, and what happens when it goes wrong. Every UI name matches the Studio.</p>
+
+    <!-- ============ 安装 ============ -->
+    <section id="install">
+      <h2><span lang="zh-CN">安装与启动</span><span lang="en">Install and start</span></h2>
+      <h3><span lang="zh-CN">要什么</span><span lang="en">What you need</span></h3>
+      <div class="table-wrap"><table>
+        <tr><th><span lang="zh-CN">项</span><span lang="en">Item</span></th><th><span lang="zh-CN">要求</span><span lang="en">Requirement</span></th></tr>
+        <tr><td><span lang="zh-CN">机器</span><span lang="en">Machine</span></td><td><span lang="zh-CN">NVIDIA DGX Spark（128 GB 统一内存）。本页所有数字都来自它。</span><span lang="en">NVIDIA DGX Spark (128 GB unified memory). Every number on this site comes from it.</span></td></tr>
+        <tr><td><span lang="zh-CN">系统</span><span lang="en">OS</span></td><td><span lang="zh-CN">Linux aarch64 + CUDA 13 运行库</span><span lang="en">Linux aarch64 with the CUDA 13 runtime</span></td></tr>
+        <tr><td><span lang="zh-CN">硬盘</span><span lang="en">Disk</span></td><td><span lang="zh-CN">SSD 空闲约 320 GB（模型约 317 GB）</span><span lang="en">~320 GB free SSD (the model is ~317 GB)</span></td></tr>
+        <tr><td><span lang="zh-CN">火狐</span><span lang="en">Firefox</span></td><td><span lang="zh-CN">上网、做视频要用。Spark 上的 Ubuntu 自带；没有火狐时这几个工具不出现在工具表里，别的照常。</span><span lang="en">Needed for the web and video tools. Ubuntu on the Spark ships it; without it those tools simply do not appear, everything else works.</span></td></tr>
+        <tr><td>Mac</td><td><span lang="zh-CN"><code>make</code> 编出 Metal 版，GPU 核测试全过；整模型还没在 Mac 上跑过。</span><span lang="en"><code>make</code> builds the Metal version and its GPU kernel tests pass; the full model has not run on a Mac yet.</span></td></tr>
+      </table></div>
+
+      <h3><span lang="zh-CN">编译并启动</span><span lang="en">Build and start</span></h3>
+<pre><code>git clone https://github.com/fodelf/YoungAi.git ~/ds4-main
+cd ~/ds4-main
+make cuda-spark
+./ds4-train --host 0.0.0.0 --port 8000</code></pre>
+      <p lang="zh-CN"><code>ds4-train</code> 是工作台主进程，一直开着别关：页面、助理、任务、训练都住在它里面。模型是它拉起的子进程（<code>ds4-server</code>，只听本机 <code>127.0.0.1:8001</code>），换模型、训练时会被停掉再拉起来，主进程不受影响。</p>
+      <p lang="en"><code>ds4-train</code> is the Studio's main process; leave it running. The page, the assistant, tasks and training all live inside it. The model is a child process it starts (<code>ds4-server</code>, listening only on <code>127.0.0.1:8001</code>); switching models or training stops and restarts that child without touching the main process.</p>
+
+      <h3><span lang="zh-CN">第一次打开</span><span lang="en">First visit</span></h3>
+      <ol class="steps">
+        <li lang="zh-CN">浏览器打开 <code>http://主机:8000/</code>，<b>设一个用户名和密码</b>。以后每台浏览器登录一次，30 天免登，天天用会自动续期。</li>
+        <li lang="en">Open <code>http://&lt;host&gt;:8000/</code> and <b>set a username and password</b>. Each browser logs in once and stays logged in for 30 days, renewed as you use it.</li>
+        <li lang="zh-CN"><b>模型</b>页点"下载"（约 317 GB，断点续传，下了一半关掉也不白下），下完点"加载"（约 2 分钟，先自己答对一句才算装好）。</li>
+        <li lang="en">On <b>Models</b>, press Download (~317 GB, resumable — closing halfway loses nothing), then Load (~2 minutes; it must answer a self-test correctly before it counts as loaded).</li>
+        <li lang="zh-CN">去<b>助理</b>页说话。</li>
+        <li lang="en">Go to <b>Assistant</b> and talk.</li>
+      </ol>
+      <div class="note"><span lang="zh-CN"><b>忘了密码：</b>在运行工作台的那台机器上删掉 <code>~/.ds4/studio/auth</code>，刷新页面重新设置，不用重启。所有浏览器的旧登录同时作废。</span>
+        <span lang="en"><b>Forgot the password:</b> on the machine running the Studio, delete <code>~/.ds4/studio/auth</code> and reload the page to set a new one; no restart needed. Every browser's old login is revoked at the same time.</span></div>
+    </section>
+
+    <!-- ============ 工作台地图 ============ -->
+    <section id="studio">
+      <h2><span lang="zh-CN">工作台地图</span><span lang="en">Studio map</span></h2>
+      <p lang="zh-CN">电脑上是左侧栏，手机上是底部四格（助理 / 模型 / 训练 / 更多），其余页签在"更多"里。</p>
+      <p lang="en">On a computer the tabs are in the left sidebar; on a phone there are four at the bottom (Assistant / Models / Train / More) and the rest are under More.</p>
+      <div class="tabs-map">
+        <div><b><span lang="zh-CN">助理</span><span lang="en">Assistant</span></b><span lang="zh-CN">和它说话；左栏是对话列表</span><span lang="en">talk to it; the conversation list is in the sidebar</span></div>
+        <div><b><span lang="zh-CN">任务</span><span lang="en">Tasks</span></b><span lang="zh-CN">交给它持续跟的事；顶上是通知开关</span><span lang="en">jobs it keeps following; notification switch on top</span></div>
+        <div><b><span lang="zh-CN">记忆</span><span lang="en">Memory</span></b><span lang="zh-CN">关于你、你的规矩、日记，都能直接改</span><span lang="en">about you, your rules, the diary — all editable</span></div>
+        <div><b><span lang="zh-CN">技能</span><span lang="en">Skills</span></b><span lang="zh-CN">新建、导入、编辑技能文件夹</span><span lang="en">create, import and edit skill folders</span></div>
+        <div><b><span lang="zh-CN">活动</span><span lang="en">Activity</span></b><span lang="zh-CN">每一次工具调用、允许的目录、永久授权、run 开关、工具箱</span><span lang="en">every tool call, allowed folders, standing approvals, the run switch, the toolbox</span></div>
+        <div><b><span lang="zh-CN">模型</span><span lang="en">Models</span></b><span lang="zh-CN">下载、加载、删除模型与侧车</span><span lang="en">download, load and delete models and sidecars</span></div>
+        <div><b><span lang="zh-CN">训练</span><span lang="en">Train</span></b><span lang="zh-CN">用你的数据训练，看进度</span><span lang="en">train on your data and watch progress</span></div>
+        <div><b><span lang="zh-CN">语料</span><span lang="en">Data</span></b><span lang="zh-CN">拖进 .jsonl 训练数据</span><span lang="en">drop in .jsonl training data</span></div>
+        <div><b><span lang="zh-CN">记录</span><span lang="en">Runs</span></b><span lang="zh-CN">历次训练的结果</span><span lang="en">past training runs</span></div>
+        <div><b>API</b><span lang="zh-CN">给外部程序用的密钥和调用示例</span><span lang="en">keys and examples for outside programs</span></div>
+        <div><b><span lang="zh-CN">监控</span><span lang="en">Monitor</span></b><span lang="zh-CN">实时速度、上下文、内存</span><span lang="en">live speed, context and memory</span></div>
+        <div><b><span lang="zh-CN">设置</span><span lang="en">Settings</span></b><span lang="zh-CN">云服务器、穿透、证书、高德 Key、危险模式</span><span lang="en">cloud server, tunnel, certificate, AMap key, danger mode</span></div>
+      </div>
+    </section>
+
+    <!-- ============ 对话 ============ -->
+    <section id="chat">
+      <h2><span lang="zh-CN">和助理对话</span><span lang="en">Talking to the assistant</span></h2>
+      <ul lang="zh-CN">
+        <li><b>发送</b>：电脑上 Enter 发送、Shift+Enter 换行；手机上回车只换行，点"发送"才发。</li>
+        <li><b>附件</b>：输入框旁的附件按钮。文件存进工作区的 <code>inbox/</code>，消息里自动附一行"附件：inbox/x.docx (123 KB)"，它就知道去哪读。</li>
+        <li><b>停止</b>：随时能停。关掉网页它也照样干完——对话进度存在服务器上，换台设备打开还能接着看。</li>
+        <li><b>思考过程</b>：它默认先想再做，想的内容折叠在"思考过程"里，点开能看。</li>
+        <li><b>工具卡</b>：每次调用工具显示一行（工具名、参数、耗时、守门结果），点开看详情。</li>
+        <li><b>交付</b>：只有它决定交东西时才出卡片或按钮——普通问答就是一段回答，不会硬塞个下载按钮。</li>
+        <li><b>领域下拉</b>：金融 / 编程 / 法律 / 医疗 / 科研，切的是约 40 MB 的侧车，不到 1 秒，不重装模型。</li>
+        <li><b>"后训练"开关</b>：挂上你自己训出来的那份（见<a href="#train">训练</a>）。</li>
+      </ul>
+      <ul lang="en">
+        <li><b>Send</b>: on a computer Enter sends and Shift+Enter adds a line; on a phone Return adds a line and the Send button sends.</li>
+        <li><b>Attachments</b>: the attach button next to the input. Files land in the workspace's <code>inbox/</code> and the message gets a line like "attachment: inbox/x.docx (123 KB)" so it knows where to read.</li>
+        <li><b>Stop</b>: any time. Closing the page does not stop it — the conversation lives on the server, so another device can pick it up.</li>
+        <li><b>Thinking</b>: it thinks before acting by default; the thoughts are folded under "Thinking" and can be expanded.</li>
+        <li><b>Tool cards</b>: every tool call shows one line (name, arguments, time, gatekeeper decision); expand for details.</li>
+        <li><b>Hand-off</b>: cards and buttons appear only when it decides to deliver something. A plain question gets a plain answer, not a forced download button.</li>
+        <li><b>Domain dropdown</b>: finance / code / law / medicine / science switches a ~40 MB sidecar in under a second without reloading the model.</li>
+        <li><b>Post-train switch</b>: mounts the add-on you trained yourself (see <a href="#train">training</a>).</li>
+      </ul>
+      <div class="note"><span lang="zh-CN"><b>提示：</b>一台机器一份模型，后台任务和你的聊天排队跑。任务正在跑时你发消息，会等它这一轮做完。</span>
+        <span lang="en"><b>Note:</b> one machine, one model, so background tasks and your chat take turns. If a task is running when you send a message, yours waits for that round to finish.</span></div>
+    </section>
+
+    <!-- ============ 工具 ============ -->
+    <section id="tools">
+      <h2><span lang="zh-CN">工具逐个看</span><span lang="en">Every tool</span></h2>
+      <p lang="zh-CN">你不用点名工具，正常说话就行，它自己挑。下面每组写了"可以这么说"、要什么前提、拿不到时会怎样。</p>
+      <p lang="en">You never name a tool; just talk and it picks. Each group below lists what you can say, what it needs and what happens when it cannot.</p>
+
+      <h3 id="t-web"><span lang="zh-CN">上网：web_search · visit_page</span><span lang="en">Web: web_search · visit_page</span></h3>
+      <p lang="zh-CN">可以这么说：<i>"查一下今天 DGX Spark 的最低价"</i>、<i>"打开这个链接总结一下"</i>。它用本机的无头火狐搜索（必应）和取正文，网页正文头 16 KB 回给模型，全文留在工作区。</p>
+      <p lang="en">Try: <i>"What's the lowest DGX Spark price today?"</i>, <i>"Open this link and summarize it."</i> It uses headless Firefox on the machine to search (Bing) and fetch page text; the first 16 KB goes to the model and the full text stays in the workspace.</p>
+      <ul lang="zh-CN"><li>要登录或有验证码的网站打不开；它会说哪些没打开，不会去猜内容。</li><li>它不会访问本机或内网地址（防止绕过登录读工作台接口）。</li></ul>
+      <ul lang="en"><li>Sites behind a login or captcha stay closed; it says which ones it could not open instead of guessing.</li><li>It will not visit local or LAN addresses (that would bypass the Studio login).</li></ul>
+
+      <h3 id="t-files"><span lang="zh-CN">文件：read_file · list_dir · search_files · write_file · edit_file</span><span lang="en">Files: read_file · list_dir · search_files · write_file · edit_file</span></h3>
+      <p lang="zh-CN">可以这么说：<i>"把 notes.md 里的 foo 都改成 bar"</i>、<i>"看看 Downloads 里有哪些 PDF"</i>。工作区里自动放行；工作区外的路径会弹审批卡（见<a href="#safety">审批</a>）。想让它常驻管某个目录，在"活动"页加进"允许的目录"。</p>
+      <p lang="en">Try: <i>"Change every foo to bar in notes.md"</i>, <i>"Which PDFs are in Downloads?"</i> Inside the workspace it just proceeds; paths outside raise an approval card (see <a href="#safety">approvals</a>). To let it manage a folder permanently, add it under "Allowed folders" on Activity.</p>
+      <ul lang="zh-CN"><li>改文件前它会先读原文；删除前整份复制到 <code>workspace/.trash/</code>。</li></ul>
+      <ul lang="en"><li>It reads a file before editing it; before deleting, it copies the whole file to <code>workspace/.trash/</code>.</li></ul>
+
+      <h3 id="t-run"><span lang="zh-CN">跑程序：run</span><span lang="en">Programs: run</span></h3>
+      <p lang="zh-CN">可以这么说：<i>"把这份 Word 转成 PDF"</i>、<i>"把 data.csv 按月汇总"</i>。命令在内核沙盒里跑：<b>没有网络、只能写工作区</b>，所以默认不逐次审批。命令里写了别的路径也只是在沙盒里失败。</p>
+      <p lang="en">Try: <i>"Convert this Word file to PDF"</i>, <i>"Sum data.csv by month."</i> Commands run in the kernel sandbox with <b>no network and write access only to the workspace</b>, which is why they do not need per-call approval. A path elsewhere in the command just fails inside the sandbox.</p>
+      <ul lang="zh-CN"><li>它能用的程序取决于你装了什么：启动后第一次用到时会探测 <code>soffice pandoc ffmpeg magick python3 qpdf pdftotext node jq sqlite3 zip</code> 等，"活动"页显示"工具箱：已有 N · 缺 …"。没装的它不会瞎试；装软件是你的事。</li><li>不想让它跑程序：活动页关掉"允许在沙盒里跑程序"。</li></ul>
+      <ul lang="en"><li>What it can run depends on what you installed: on first use it probes <code>soffice pandoc ffmpeg magick python3 qpdf pdftotext node jq sqlite3 zip</code> and more, and Activity shows "Toolbox: have N · missing …". It does not try programs that are absent; installing them is up to you.</li><li>To forbid running programs, turn off "Allow running programs in the sandbox" on Activity.</li></ul>
+
+      <h3 id="t-office"><span lang="zh-CN">办公文档：write_document · write_xlsx</span><span lang="en">Office files: write_document · write_xlsx</span></h3>
+      <p lang="zh-CN">可以这么说：<i>"把这次调研写成 Word 报告，顺便出一份 PDF"</i>、<i>"做一份 6 页的 PPT 讲这个方案"</i>、<i>"把这些数做成 Excel，最后一行求和"</i>。</p>
+      <p lang="en">Try: <i>"Write this research up as a Word report, and a PDF too"</i>, <i>"Make a 6-slide deck on this plan"</i>, <i>"Put these numbers in Excel with a total row."</i></p>
+      <div class="table-wrap"><table>
+        <tr><th><span lang="zh-CN">工具</span><span lang="en">Tool</span></th><th><span lang="zh-CN">出什么</span><span lang="en">Output</span></th><th><span lang="zh-CN">说明</span><span lang="en">Notes</span></th></tr>
+        <tr><td><code>write_document</code></td><td>.docx / .pdf / .pptx</td><td><span lang="zh-CN">按扩展名定格式；内容是 Markdown（标题、列表、粗斜体、代码、引用、表格、图片）。PPT 用 <code>---</code> 分页。A4 / 16:9、版式固定。<code>also</code> 一次多出一种（docx ↔ pdf）。</span><span lang="en">Format from the extension; content is Markdown (headings, lists, bold/italic, code, quotes, tables, images). Slides split on <code>---</code>. Fixed A4 / 16:9 layout. <code>also</code> writes a second format in one go (docx ↔ pdf).</span></td></tr>
+        <tr><td><code>write_xlsx</code></td><td>.xlsx</td><td><span lang="zh-CN">表名 / 列头 / 行；<code>=</code> 开头是公式。SUM、AVERAGE、MIN、MAX、COUNT、四则运算现场算好，手机预览直接看到数；别的函数留给 Excel 打开时算。</span><span lang="en">Sheet name / columns / rows; strings starting with <code>=</code> are formulas. SUM, AVERAGE, MIN, MAX, COUNT and arithmetic are computed on the spot so phone previews show values; other functions are left for Excel.</span></td></tr>
+      </table></div>
+      <ul lang="zh-CN"><li>格式全部是本项目自己用 C 写的，不需要装 Office 或 LibreOffice。</li><li>PDF 里的中文要本机有 TrueType 中文字体（Mac 自带；Linux 上如 Droid Sans Fallback、文泉驿）。找不到时 PDF 不内嵌字体，手机上可能显示成方块，结果里会写明"not embedded"。</li></ul>
+      <ul lang="en"><li>Every format is written by this project's own C code; no Office or LibreOffice needed.</li><li>Chinese text in a PDF needs a TrueType CJK font on the machine (macOS has one; on Linux e.g. Droid Sans Fallback or WenQuanYi). Without one the PDF does not embed fonts and may show boxes on a phone; the result says "not embedded".</li></ul>
+
+      <h3 id="t-video"><span lang="zh-CN">视频：make_video</span><span lang="en">Video: make_video</span></h3>
+      <p lang="zh-CN">可以这么说：<i>"做一个 20 秒的竖屏视频介绍我们的新品，配中文旁白"</i>。模型写一页 HTML 动画，火狐按时间逐帧截图，本项目自写的 H.264 + AAC 编码器出 mp4。这是"模型写动画程序"，不是扩散模型生成实拍画面。</p>
+      <p lang="en">Try: <i>"Make a 20-second portrait video introducing our new product, with narration."</i> The model writes an HTML animation, Firefox captures it frame by frame, and the project's own H.264 + AAC encoder writes the mp4. It is the model writing an animation program, not a diffusion model generating footage.</p>
+      <ul lang="zh-CN"><li>要本机有火狐。旁白：Mac 用系统自带的 <code>say</code>；Linux 用随发布包下载的小语音模型（没有时退回系统自带的 espeak-ng，机械感明显）。背景音乐只认工作区里的 <code>.wav</code>。</li><li>速度参考：30 秒 1080p 带旁白，Mac 约 1 分钟，约 5–6 MB。</li></ul>
+      <ul lang="en"><li>Needs Firefox. Narration: macOS uses the built-in <code>say</code>; Linux uses a small voice model downloaded with the release (falling back to the system espeak-ng, which sounds robotic). Background music must be a <code>.wav</code> in the workspace.</li><li>For scale: a 30-second narrated 1080p clip takes about a minute on a Mac and is 5–6 MB.</li></ul>
+
+      <h3 id="t-geo"><span lang="zh-CN">地点：locate · nearby</span><span lang="en">Places: locate · nearby</span></h3>
+      <p lang="zh-CN">可以这么说（在手机上）：<i>"附近有什么好吃的"</i>、<i>"帮我点个外卖"</i>。<code>locate</code> 向手机要一次定位（同一对话里会记住，下一条消息直接用），地址由服务端反查；<code>nearby</code> 查周边。</p>
+      <p lang="en">Try (on a phone): <i>"Anything good to eat nearby?"</i>, <i>"Order me some takeout."</i> <code>locate</code> asks the phone for a fix (remembered for the rest of the conversation) and the server looks up the address; <code>nearby</code> finds places around it.</p>
+      <ul lang="zh-CN"><li><b>高德 Key</b>：到 lbs.amap.com 建一个"Web 服务"类型的 Key，填进"设置"里的"地图"。有 Key 返回最多 10 家真实店铺（距离、评分、人均、电话、坐标）；没 Key 退成按你所在街道搜网页，名字来自点评页、距离没核过。</li><li>Key 存在本机 <code>~/.ds4/assistant/secrets/</code>，只在发请求的那一刻填进去，模型永远看不到它。</li><li>点外卖：它只负责挑，按钮点开是美团 / 饿了么的搜索页，加购和付款你自己来——它没有登录态，也没有付款工具。</li></ul>
+      <ul lang="en"><li><b>AMap key</b>: create a "Web Service" key at lbs.amap.com and enter it under "Maps" in Settings. With a key you get up to 10 real places (distance, rating, price, phone, coordinates); without one it falls back to a web search around your street, with names from review sites and no verified distances.</li><li>The key is stored in <code>~/.ds4/assistant/secrets/</code> on the machine and filled in only when the request is sent; the model never sees it.</li><li>Takeout: it only picks. The buttons open Meituan / Ele.me search pages; adding to cart and paying are yours — it has no login and no payment tool.</li></ul>
+
+      <h3 id="t-device"><span lang="zh-CN">交给手机：share · copy_text · navigate · call · open_url · open_app · read_clipboard · pick_file</span><span lang="en">To your phone: share · copy_text · navigate · call · open_url · open_app · read_clipboard · pick_file</span></h3>
+      <p lang="zh-CN">这些工具在<b>你正在用的那台设备</b>上执行。页面开页时报告这台设备能做什么，模型只看得到真能用的那些。</p>
+      <p lang="en">These run on <b>the device you are using</b>. When the page opens it reports what the device can do, and the model only sees the tools that really work there.</p>
+      <div class="table-wrap"><table>
+        <tr><th><span lang="zh-CN">工具</span><span lang="en">Tool</span></th><th><span lang="zh-CN">页面上是什么</span><span lang="en">On the page</span></th></tr>
+        <tr><td><code>share</code></td><td><span lang="zh-CN">文件卡（下载 / 分享）或文字卡；分享打开系统面板，选微信、钉钉就是附件</span><span lang="en">a file card (download / share) or a text card; Share opens the system sheet, where WeChat or DingTalk receive it as an attachment</span></td></tr>
+        <tr><td><code>navigate</code></td><td><span lang="zh-CN">导航按钮：iPhone 开苹果地图，安卓交给地图 app（没装就开高德网页），电脑开高德网页</span><span lang="en">a Navigate button: Apple Maps on iPhone, a map app on Android (AMap web if none), AMap web on a computer</span></td></tr>
+        <tr><td><code>call</code> · <code>open_url</code> · <code>copy_text</code></td><td><span lang="zh-CN">拨号 / 打开 / 复制按钮</span><span lang="en">Call / Open / Copy buttons</span></td></tr>
+        <tr><td><code>open_app</code></td><td><span lang="zh-CN">打开抖音（到搜索结果）、微信、钉钉、支付宝、美团、饿了么。电脑上没有</span><span lang="en">opens Douyin (search results), WeChat, DingTalk, Alipay, Meituan, Ele.me. Not on computers</span></td></tr>
+        <tr><td><code>read_clipboard</code> · <code>pick_file</code></td><td><span lang="zh-CN">它要你的剪贴板内容或一个文件，设备交回后它接着干</span><span lang="en">it asks for your clipboard or a file and continues once the device returns it</span></td></tr>
+      </table></div>
+      <div class="note"><span lang="zh-CN"><b>为什么是按钮不是直接跳：</b>浏览器规定打开分享面板、拨号、开新页必须由你的手指点一下。按钮文案写"分享…""打开"，不写"已发送"——微信、钉钉不接受别的 app 直接塞文字，只能经分享面板。</span>
+        <span lang="en"><b>Why buttons rather than jumping straight there:</b> browsers only open share sheets, dialers and new pages on a tap from you. Buttons say "Share…" or "Open", never "Sent" — WeChat and DingTalk do not accept text pushed in by other apps, only through the share sheet.</span></div>
+      <div class="note warn"><span lang="zh-CN"><b>用 http 局域网地址打开时，这些工具大多没有。</b>浏览器只在 https 或 localhost 下给定位、剪贴板、分享。页面会在输入框上方提示。解决：见<a href="#mobile">手机与外网</a>。</span>
+        <span lang="en"><b>Opened over plain http on a LAN address, most of these tools are missing.</b> Browsers only grant location, clipboard and sharing under https or localhost; the page says so above the input box. Fix: see <a href="#mobile">phone and internet</a>.</span></div>
+    </section>
+
+    <!-- ============ 任务 ============ -->
+    <section id="tasks">
+      <h2><span lang="zh-CN">任务与通知</span><span lang="en">Tasks and notifications</span></h2>
+      <h3><span lang="zh-CN">交一件事给它持续跟</span><span lang="en">Hand over a job to keep following</span></h3>
+      <ol class="steps">
+        <li lang="zh-CN">去<b>任务</b>页，输入一句话，比如 <i>"每天看一下这款显卡的价格，降到 3 万以下告诉我"</i>，回车。</li>
+        <li lang="en">On <b>Tasks</b>, type one sentence, e.g. <i>"Check this GPU's price daily and tell me when it drops below X"</i>, and press Enter.</li>
+        <li lang="zh-CN">它马上做第一遍，然后<b>自己决定</b>多久后再看（并给下次的自己留一句话）；做完了自己收口。没说下次几点时，默认一小时后再跟。</li>
+        <li lang="en">It does a first pass right away, then <b>decides itself</b> when to look again (leaving a note for its next run); when done it closes the task. If it forgets to say when, it follows up an hour later.</li>
+        <li lang="zh-CN">列表每行：那句话、跟进了几次、下次几点、它留的话。按钮：打开（进它的专属对话，每一步都在里面）/ 现在跟进 / 暂停 / 完成 / 删除。</li>
+        <li lang="en">Each row shows the sentence, how many follow-ups, the next time and its note. Buttons: Open (its own conversation with every step) / Follow up now / Pause / Done / Delete.</li>
+      </ol>
+      <p lang="zh-CN">只有按时间触发，没有"文件变了就…"这种事件触发。删除的任务挪进回收站目录，不真删。</p>
+      <p lang="en">Triggers are time-based only; there is no "when this file changes…". Deleted tasks move to a trash folder rather than being erased.</p>
+
+      <h3><span lang="zh-CN">把通知推到手机</span><span lang="en">Push notifications to your phone</span></h3>
+      <ol class="steps">
+        <li lang="zh-CN">用 https 打开工作台（iPhone 还要先"添加到主屏幕"、从主屏幕图标打开）。</li>
+        <li lang="en">Open the Studio over https (on iPhone, first Add to Home Screen and open it from the icon).</li>
+        <li lang="zh-CN">任务页顶上"通知"卡，打开"在这台设备上接收通知"，浏览器问一次权限。</li>
+        <li lang="en">In the "Notifications" card at the top of Tasks, turn on "Receive notifications on this device"; the browser asks for permission once.</li>
+        <li lang="zh-CN">点"发一条测试"，看手机有没有弹。</li>
+        <li lang="en">Press "Send a test" and check that it pops up.</li>
+      </ol>
+      <p lang="zh-CN">之后三种情况会推：它用 <code>notify</code> 主动提醒你（可以定时，<i>"明早 7 点半提醒我出发"</i>、<i>"30 秒后提醒我"</i>，准到秒）；任务做完；任何一次回答跑了超过 2 分钟。<b>你正开着页面在看的那台设备不推</b>，直接在页面里显示，切走后再补推。</p>
+      <p lang="en">After that, three things push: it reminds you via <code>notify</code> (schedulable to the second — <i>"remind me at 7:30 tomorrow"</i>, <i>"remind me in 30 seconds"</i>); a task finishes; any answer that took over 2 minutes. <b>A device whose page you are looking at gets no push</b>; it shows in the page and is pushed later if you switch away.</p>
+      <div class="note"><span lang="zh-CN"><b>安卓收不到：</b>安卓 Chrome 的推送整条经过谷歌 FCM，国内直连超时（活动页里是 <code>curl exit 28</code>）。在通知卡里填"推送代理"（如 <code>http://127.0.0.1:7890</code>）。iPhone 走苹果的服务器，一般直连就行。没有任何设备开通知时，它会直接告诉你去任务页打开。</span>
+        <span lang="en"><b>Android receives nothing:</b> Android Chrome push goes through Google FCM, which times out from mainland China (Activity shows <code>curl exit 28</code>). Fill in a "Push proxy" in the notification card (e.g. <code>http://127.0.0.1:7890</code>). iPhones use Apple's servers, usually reachable directly. If no device has notifications on, it tells you to turn them on in Tasks.</span></div>
+    </section>
+
+    <!-- ============ 技能 ============ -->
+    <section id="skills">
+      <h2><span lang="zh-CN">技能</span><span lang="en">Skills</span></h2>
+      <p lang="zh-CN"><b>技能 = 一个文件夹，教它"某类活怎么干"。</b>里面必有 <code>SKILL.md</code>，旁边放模板、示例、参考资料。它平时只看到每个技能的名字和一句描述；任务对上了，自己调 <code>use_skill</code> 读全文，再用自己的工具去干。格式照 Agent Skills 开放标准。</p>
+      <p lang="en"><b>A skill is a folder that teaches it how to do a kind of job.</b> It must contain <code>SKILL.md</code>, plus templates, examples or reference material. Normally it only sees each skill's name and one-line description; when a job matches, it calls <code>use_skill</code> to read the whole thing and then does the work with its own tools. The format follows the Agent Skills open standard.</p>
+<pre><code>---
+name: weekly-report
+description: 写部门周报用这个：按部门汇总本周导出的表格，产出 docx
+---
+# 周报
+
+1. 读 reference/tpl.md 拿版式
+2. 读 inbox 里的表格，按部门汇总
+3. 用 write_document 出 docx，用 share 交出去</code></pre>
+      <ul lang="zh-CN">
+        <li><b>装</b>：技能页点"新建"（名字只能是小写字母、数字、连字符），或"导入文件夹"选那个带 <code>SKILL.md</code> 的文件夹本身。直接拷到 <code>~/.ds4/assistant/skills/</code> 也行。</li>
+        <li><b><code>description</code> 是它决定用不用的唯一依据</b>，写清楚什么活用它。</li>
+        <li><b>不许带脚本</b>：<code>.py .sh .js</code> 等文件不收；md 里有代码块、以命令开头的行（<code>python</code>、<code>bash</code>、<code>curl</code>…）整份拒，报出第几行。把步骤写成"用 write_document / read_file …"这种工具名就能过。所以别处靠脚本干活的技能（比如 Anthropic 的 pptx）导不进来。</li>
+        <li>仓库自带一份合规的 PPT 技能：<a href="https://github.com/fodelf/YoungAi/tree/restructure/skills/pptx"><code>skills/pptx/</code></a>。</li>
+        <li>改了技能，进行中的对话里它已经读过的旧版不会自动刷新；开个新对话最干净。</li>
+      </ul>
+      <ul lang="en">
+        <li><b>Install</b>: on Skills press New (names are lowercase letters, digits and hyphens), or Import folder and pick the folder that itself contains <code>SKILL.md</code>. Copying into <code>~/.ds4/assistant/skills/</code> works too.</li>
+        <li><b><code>description</code> is the only thing it uses to decide</b> whether a skill applies; say plainly which jobs it is for.</li>
+        <li><b>No scripts</b>: <code>.py .sh .js</code> and similar files are rejected; a Markdown file with a code block or a line starting with a command (<code>python</code>, <code>bash</code>, <code>curl</code>…) is rejected whole, with the line number. Write steps in terms of tools ("use write_document / read_file …") and it passes. Skills that work by running scripts (e.g. Anthropic's pptx) cannot be imported.</li>
+        <li>The repo ships a compliant slide-deck skill: <a href="https://github.com/fodelf/YoungAi/tree/restructure/skills/pptx"><code>skills/pptx/</code></a>.</li>
+        <li>After editing a skill, a conversation that already read the old version will not refresh it; a new conversation is cleanest.</li>
+      </ul>
+    </section>
+
+    <!-- ============ 记忆 ============ -->
+    <section id="memory">
+      <h2><span lang="zh-CN">记忆与文件</span><span lang="en">Memory and files</span></h2>
+      <p lang="zh-CN">说 <i>"记住我常住南京"</i>，它调 <code>remember</code> 往"关于你"里加一行，带日期和来源对话；说 <i>"忘掉我住哪"</i> 就删掉。它只记你<b>亲口说</b>的事实和偏好，不记猜测、不记别人的隐私、不记密码。</p>
+      <p lang="en">Say <i>"Remember I mostly live in Nanjing"</i> and it calls <code>remember</code> to add a dated line, with the source conversation, to "About you"; say <i>"Forget where I live"</i> to remove it. It only keeps facts and preferences you <b>stated yourself</b> — no guesses, no other people's private details, no passwords.</p>
+      <div class="table-wrap"><table>
+        <tr><th><span lang="zh-CN">记忆页里的</span><span lang="en">On Memory</span></th><th><span lang="zh-CN">谁写</span><span lang="en">Written by</span></th><th><span lang="zh-CN">怎么用</span><span lang="en">Used how</span></th></tr>
+        <tr><td><span lang="zh-CN">关于你</span><span lang="en">About you</span> <code>profile.md</code></td><td><span lang="zh-CN">它（你可改）</span><span lang="en">it (you can edit)</span></td><td><span lang="zh-CN">每个新对话全文带上</span><span lang="en">included in full in every new conversation</span></td></tr>
+        <tr><td><span lang="zh-CN">规矩</span><span lang="en">Rules</span> <code>rules.md</code></td><td><span lang="zh-CN">你（它只读）</span><span lang="en">you (it only reads)</span></td><td><span lang="zh-CN">比如"回复用中文""别碰 ~/Documents/财务"，优先于一切</span><span lang="en">e.g. "reply in English", "never touch ~/Documents/finance"; overrides everything</span></td></tr>
+        <tr><td><span lang="zh-CN">日记</span><span lang="en">Diary</span></td><td><span lang="zh-CN">自动</span><span lang="en">automatic</span></td><td><span lang="zh-CN">只读</span><span lang="en">read-only</span></td></tr>
+      </table></div>
+      <p lang="zh-CN">记忆在对话开始时拍一次快照：对话中途新记的事，从下一个新对话起才读到。这样整段对话的前缀不变，不用每记一条就重读一遍上下文。</p>
+      <p lang="en">Memory is snapshotted when a conversation starts: something remembered mid-conversation is read from the next new conversation on. That keeps the conversation's prefix stable so the model never has to reread the whole context after each new memory.</p>
+      <h3><span lang="zh-CN">盘上都在哪</span><span lang="en">Where it all lives on disk</span></h3>
+<pre><code>~/.ds4/assistant/
+  memory/profile.md  rules.md  diary/     <span class="c"># 记忆 / memory</span>
+  sessions/&lt;id&gt;/                           <span class="c"># 对话 / conversations</span>
+  workspace/                               <span class="c"># 它的读写地盘 / its working folder (inbox/ = 附件 attachments)</span>
+  tasks/  skills/  push/                   <span class="c"># 任务 · 技能 · 推送 / tasks · skills · push</span>
+  audit.jsonl  approvals.jsonl  policy.json
+  secrets/                                 <span class="c"># 凭证, 0600 / credentials</span></code></pre>
+      <p lang="zh-CN">全是纯文本，能直接打开、改、备份。删除对话是挪进 <code>trash/</code>，不真删。</p>
+      <p lang="en">All plain text you can open, edit and back up. Deleting a conversation moves it into <code>trash/</code> rather than erasing it.</p>
+    </section>
+
+    <!-- ============ 审批 ============ -->
+    <section id="safety">
+      <h2><span lang="zh-CN">审批与活动</span><span lang="en">Approvals and activity</span></h2>
+      <p lang="zh-CN">每次工具调用都过同一个守门函数，按固定顺序判，命中即定：</p>
+      <p lang="en">Every tool call goes through the same gatekeeper function, checked in a fixed order; the first match decides:</p>
+      <ol lang="zh-CN">
+        <li>你在 <code>policy.json</code> 里禁用的工具 → 拒。</li>
+        <li>你的允许 / 拒绝规则（拒绝优先）。</li>
+        <li>参数像密码、卡号、验证码 → 直接拒，不问。它自己的配置目录 → 一律拒。</li>
+        <li>读过网页或工作区外的文件之后，外送类动作只能"仅这次"。</li>
+        <li>只读、工作区内写 → 自动放行；工作区外写、删除 → 要审批。</li>
+        <li>查你以前给过的授权；没有就弹审批卡，等你答复（关页也等着）。</li>
+      </ol>
+      <ol lang="en">
+        <li>A tool you disabled in <code>policy.json</code> → refused.</li>
+        <li>Your allow / deny rules (deny first).</li>
+        <li>Arguments that look like passwords, card numbers or one-time codes → refused, no question. Its own config folder → always refused.</li>
+        <li>After reading a web page or a file outside the workspace, outbound actions can only be approved "this once".</li>
+        <li>Reads and writes inside the workspace → allowed; writes and deletes outside → need approval.</li>
+        <li>Look up approvals you gave before; if none, show an approval card and wait (even with the page closed).</li>
+      </ol>
+      <p lang="zh-CN"><b>审批卡</b>显示工具名和参数原文（不缩写），四个按钮：<b>仅这次 / 本会话都允许 / 总是允许 / 拒绝</b>。"总是"针对一个目标：文件所在目录、网址的域名或命令的第一个词。拒了它会换办法或问你，不会反复撞同一个调用。</p>
+      <p lang="en">The <b>approval card</b> shows the tool and its full arguments (never abbreviated) with four buttons: <b>Allow once / Allow for this chat / Always allow / Deny</b>. "Always" applies to one target: the file's folder, the URL's domain or the command's first word. If denied, it finds another way or asks you instead of retrying the same call.</p>
+      <p lang="zh-CN"><b>活动页</b>：每次工具调用的流水（时间、工具、参数摘要、守门决定、耗时，可按对话筛）；你给过的永久授权（可撤销）；允许的目录（可加可删）；"允许在沙盒里跑程序"开关；工具箱里有哪些程序。</p>
+      <p lang="en"><b>Activity</b>: a log of every tool call (time, tool, argument summary, decision, duration; filter by conversation); your standing approvals (revocable); allowed folders (add / remove); the "Allow running programs in the sandbox" switch; which programs are in the toolbox.</p>
+      <div class="note"><span lang="zh-CN"><b>诚实的边界：</b>没有虚拟机隔离，助理以你的用户身份跑。沙盒保证每次动手只碰得到该碰的；但机器本身被攻破，助理也就被攻破了。</span>
+        <span lang="en"><b>The honest limit:</b> there is no VM; the assistant runs as your user. The sandbox makes each action touch only what it should, but if the machine itself is compromised, so is the assistant.</span></div>
+    </section>
+
+    <!-- ============ 手机 ============ -->
+    <section id="mobile">
+      <h2><span lang="zh-CN">手机与外网</span><span lang="en">Phone and internet access</span></h2>
+      <h3><span lang="zh-CN">装成手机 App</span><span lang="en">Install as a phone app</span></h3>
+      <div class="table-wrap"><table>
+        <tr><th><span lang="zh-CN">设备</span><span lang="en">Device</span></th><th><span lang="zh-CN">操作</span><span lang="en">Steps</span></th></tr>
+        <tr><td><span lang="zh-CN">安卓 Chrome</span><span lang="en">Android Chrome</span></td><td><span lang="zh-CN">底栏"更多" → "安装到主屏幕"（或浏览器菜单里的"安装应用"）</span><span lang="en">More → "Install to home screen" (or "Install app" in the browser menu)</span></td></tr>
+        <tr><td>iPhone / iPad Safari</td><td><span lang="zh-CN">分享按钮 → "添加到主屏幕"</span><span lang="en">Share → "Add to Home Screen"</span></td></tr>
+        <tr><td><span lang="zh-CN">电脑 Chrome / Edge</span><span lang="en">Desktop Chrome / Edge</span></td><td><span lang="zh-CN">地址栏右侧的"安装"图标</span><span lang="en">the Install icon at the right of the address bar</span></td></tr>
+      </table></div>
+      <div class="note warn"><span lang="zh-CN"><b>前提：页面必须是 https 打开的（或者就是 localhost）。</b>这是浏览器的规定：用 <code>http://192.168.x.x:8000</code> 打开时，装不成 App，定位、剪贴板、分享、推送也都没有。页面本身照常能用。</span>
+        <span lang="en"><b>Prerequisite: the page must be opened over https (or as localhost).</b> That is a browser rule: over <code>http://192.168.x.x:8000</code> it cannot be installed, and location, clipboard, sharing and push are all unavailable. The page itself still works.</span></div>
+
+      <h3><span lang="zh-CN">从互联网访问（设置 → 穿透 + 证书）</span><span lang="en">Access from the internet (Settings → tunnel + certificate)</span></h3>
+      <p lang="zh-CN">要一台有公网 IP 的云服务器（Linux、有 systemd、能用密码 SSH 登录）和一张解析到它的域名证书。全在工作台里点，不用登服务器：</p>
+      <p lang="en">You need a cloud server with a public IP (Linux with systemd, SSH password login) and a certificate for a domain pointing at it. Everything is done from the Studio; you never log into the server:</p>
+      <ol class="steps">
+        <li lang="zh-CN"><b>设置</b>里填云服务器的公网 IP、SSH 端口、用户名、密码。"公网端口"留空 = 有证书用 443。服务器 443 被 nginx 占着，或大陆服务器域名没备案（云厂商会拦 80/443），就换成 8443 之类。</li>
+        <li lang="en">In <b>Settings</b>, enter the server's public IP, SSH port, username and password. Leaving "Public port" empty means 443 with a certificate. If nginx already holds 443, or the server is in mainland China with an unregistered domain (providers block 80/443), use something like 8443.</li>
+        <li lang="zh-CN">去云厂商控制台 → 安全组 → 入方向，放行公网端口。这一步只能你自己点。</li>
+        <li lang="en">In your provider's console → security group → inbound, open the public port. Only you can do this step.</li>
+        <li lang="zh-CN">打开<b>穿透</b>开关。第一次约半分钟，弹窗里一步步亮：连服务器 → 装 frp → 建 SSH 通道 → 检查公网端口。</li>
+        <li lang="en">Turn on the <b>Tunnel</b>. The first time takes about half a minute; the dialog lights up each step: connect → install frp → SSH channel → check the public port.</li>
+        <li lang="zh-CN"><b>上传证书压缩包</b>：阿里云 / 腾讯云下载的 zip 直接传，它自己挑对的那套。之后手机打开 <code>https://你的域名/</code> 就能装 App。</li>
+        <li lang="en"><b>Upload the certificate zip</b> as downloaded from Alibaba Cloud / Tencent Cloud; it picks the right files itself. Then open <code>https://your-domain/</code> on the phone and install the app.</li>
+      </ol>
+      <p lang="zh-CN">TLS 在你家这台机器上解开，证书私钥不离开它；公网上照样要登录，<code>/v1</code> 照样要 API 密钥。不想用云服务器：Tailscale 的 <code>tailscale serve --bg 8000</code> 也行。完整排错表见 <a href="https://github.com/fodelf/YoungAi/blob/restructure/docs/pwa.md">docs/pwa.md</a>。</p>
+      <p lang="en">TLS terminates on your own machine, so the private key never leaves it; the internet still has to log in, and <code>/v1</code> still needs an API key. No cloud server? Tailscale's <code>tailscale serve --bg 8000</code> works too. Full troubleshooting table: <a href="https://github.com/fodelf/YoungAi/blob/restructure/docs/pwa.md">docs/pwa.md</a> (Chinese).</p>
+    </section>
+
+    <!-- ============ 训练 ============ -->
+    <section id="train">
+      <h2><span lang="zh-CN">用自己的数据训练</span><span lang="en">Train on your own data</span></h2>
+      <p lang="zh-CN">训练出来的是一个约 100 MB 的小插件，叠在模型上，不改模型本体。一行一个 JSON，两种写法，和 Unsloth 一一对应：</p>
+      <p lang="en">Training produces a small ~100 MB add-on layered on top of the model; the base model is never changed. One JSON object per line, in either of Unsloth's two shapes:</p>
+<pre><code>{"messages":[{"role":"user","content":"入场价是多少？"},{"role":"assistant","content":"30.39"}],"context":"……原文材料……"}
+{"text":"一段原文，原样训（续训）。"}</code></pre>
+      <ol class="steps">
+        <li lang="zh-CN"><b>语料</b>页把 .jsonl 拖进去。</li>
+        <li lang="en">Drop the .jsonl on <b>Data</b>.</li>
+        <li lang="zh-CN"><b>训练</b>页点开始。训练时模型会先停下（聊天暂时不可用），训完自动装回来。</li>
+        <li lang="en">Press Start on <b>Train</b>. The model is stopped during training (chat is unavailable) and comes back when it finishes.</li>
+        <li lang="zh-CN">训了几轮，它自动挑留出损失最低、且没比训练前更差的那一轮存下来。</li>
+        <li lang="en">After the rounds finish it keeps the round with the lowest held-out loss that is not worse than before training.</li>
+        <li lang="zh-CN"><b>训完不会自动挂上。</b>回聊天页，打开输入框旁的"后训练"开关才用它；关掉就回到原样。</li>
+        <li lang="en"><b>Nothing is mounted automatically.</b> Back in the chat, turn on the "Post-train" switch next to the input box to use it; turn it off to go back.</li>
+      </ol>
+      <p lang="zh-CN">完整走一遍：<a href="https://github.com/fodelf/YoungAi/blob/restructure/docs/TECHNICAL.zh-CN.md#43-后训练文件">技术细节 4.3</a>。</p>
+      <p lang="en">Full walk-through: <a href="https://github.com/fodelf/YoungAi/blob/restructure/docs/TECHNICAL.md#43-the-post-training-file">technical notes §4.3</a>.</p>
+    </section>
+
+    <!-- ============ API ============ -->
+    <section id="api">
+      <h2>API</h2>
+      <p lang="zh-CN">四个兼容接口：<code>/v1/chat/completions</code>、<code>/v1/completions</code>、<code>/v1/responses</code>（OpenAI）、<code>/v1/messages</code>（Anthropic）。先在 <b>API</b> 页建一把密钥——它只在新建时完整显示一次，服务端只存哈希，丢了就删掉重建。</p>
+      <p lang="en">Four compatible endpoints: <code>/v1/chat/completions</code>, <code>/v1/completions</code>, <code>/v1/responses</code> (OpenAI) and <code>/v1/messages</code> (Anthropic). First create a key on the <b>API</b> tab — it is shown in full only once and the server keeps only a hash; if lost, delete it and make a new one.</p>
+<pre><code>curl http://&lt;host&gt;:8000/v1/chat/completions \
+  -H "Authorization: Bearer sk-ds4-…" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"deepseek-v4-flash","messages":[{"role":"user","content":"你好"}]}'</code></pre>
+      <ul lang="zh-CN">
+        <li>OpenAI 兼容客户端填 Base URL <code>http://主机:8000/v1</code> + 密钥即可；Anthropic SDK 用 <code>x-api-key</code> 头。API 页上有按你的地址和模型名生成好的示例。</li>
+        <li>本机调也要带密钥，不带回 401。模型没加载时回 404。</li>
+        <li><code>"temperature": 0</code> 每次输出逐字节相同；要思考加 <code>"reasoning_effort": "high"</code>；图片用 OpenAI 的 <code>image_url</code> 或 Anthropic 的 <code>image</code> 块（<code>data:</code> URL）。</li>
+        <li>只要 API、不要工作台、不想编译：<code>curl -fsSLO https://huggingface.co/wenzhouwu/YoungAi-DeepSeek-V4.1-Flash/resolve/main/install.sh &amp;&amp; bash install.sh</code>。</li>
+      </ul>
+      <ul lang="en">
+        <li>OpenAI-compatible clients need Base URL <code>http://&lt;host&gt;:8000/v1</code> plus the key; the Anthropic SDK uses the <code>x-api-key</code> header. The API tab shows ready-made examples with your address and model name.</li>
+        <li>Even local calls need the key, or you get 401. With no model loaded you get 404.</li>
+        <li><code>"temperature": 0</code> gives byte-identical output every run; add <code>"reasoning_effort": "high"</code> for thinking; send images as OpenAI <code>image_url</code> or Anthropic <code>image</code> blocks (<code>data:</code> URLs).</li>
+        <li>API only, no Studio, no build: <code>curl -fsSLO https://huggingface.co/wenzhouwu/YoungAi-DeepSeek-V4.1-Flash/resolve/main/install.sh &amp;&amp; bash install.sh</code>.</li>
+      </ul>
+    </section>
+
+    <!-- ============ 危险模式 ============ -->
+    <section id="danger">
+      <h2><span lang="zh-CN">危险模式（云手机，实验性）</span><span lang="en">Danger mode (cloud phone, experimental)</span></h2>
+      <div class="note warn"><span lang="zh-CN"><b>默认关闭。打开前读完这一节。</b></span><span lang="en"><b>Off by default. Read this section before turning it on.</b></span></div>
+      <p lang="zh-CN">"设置"里打开后，主机上起一部虚拟 Android 13 手机（只在 Linux 主机上有，内核要有 <code>binder</code>；一次性准备要 <code>sudo scripts/phone_prepare_linux.sh</code>），模型多六个工具 <code>phone_screen phone_tap phone_swipe phone_key phone_type phone_open</code>，工作台多一个<b>云手机</b>页签显示实况画面。</p>
+      <p lang="en">Turned on in Settings, it starts a virtual Android 13 phone on the host (Linux only; the kernel needs <code>binder</code>; one-time setup with <code>sudo scripts/phone_prepare_linux.sh</code>). The model gets six tools — <code>phone_screen phone_tap phone_swipe phone_key phone_type phone_open</code> — and the Studio gets a live <b>Phone</b> tab.</p>
+      <ul lang="zh-CN">
+        <li><b>模型自主操作，没人逐步确认。</b>手机起来是空的，但你在里面登录的账号、装的 app，它都能用——可能发消息、下单、付款、删东西。后果由打开开关的人承担。</li>
+        <li><b>屏幕内容是不可信输入。</b>手机跑在独立命名空间里，有内存硬顶，碰不到你的内网和宿主，但这不是对一切滥用的保证。</li>
+        <li><b>它不会替你过风控。</b>遇到滑块验证，你自己在云手机页签上滑。别用它绕过任何 app 的服务条款或他人的权利。</li>
+        <li>实况视频要 https 或 localhost；http 局域网地址打开时退回每秒一张截图。</li>
+      </ul>
+      <ul lang="en">
+        <li><b>The model acts on its own; nobody confirms each tap.</b> The phone starts empty, but any account you sign into and any app you install there, it can use — it may send messages, order, pay or delete things. Whoever flips the switch bears the consequences.</li>
+        <li><b>Screen content is untrusted input.</b> The phone runs in its own namespaces with a hard memory cap and cannot reach your LAN or the host, but that is no guarantee against every misuse.</li>
+        <li><b>It will not get past anti-bot checks for you.</b> Slide captchas are yours to do in the Phone tab. Do not use this to circumvent any app's terms or other people's rights.</li>
+        <li>Live video needs https or localhost; over a plain http LAN address it falls back to one screenshot per second.</li>
+      </ul>
+    </section>
+
+    <!-- ============ 排错 ============ -->
+    <section id="faq">
+      <h2><span lang="zh-CN">出错时看这里</span><span lang="en">When things go wrong</span></h2>
+      <div class="table-wrap"><table>
+        <tr><th><span lang="zh-CN">现象</span><span lang="en">Symptom</span></th><th><span lang="zh-CN">原因</span><span lang="en">Cause</span></th><th><span lang="zh-CN">怎么办</span><span lang="en">Fix</span></th></tr>
+        <tr><td><span lang="zh-CN">助理页顶上提示没有模型</span><span lang="en">Assistant says no model is loaded</span></td><td><span lang="zh-CN">模型没加载，或正在训练</span><span lang="en">not loaded, or training is running</span></td><td><span lang="zh-CN">去模型页点"加载"；训练中就等它训完自动装回</span><span lang="en">press Load on Models; during training wait for it to come back</span></td></tr>
+        <tr><td><span lang="zh-CN">手机上没有定位 / 分享 / 推送</span><span lang="en">No location / sharing / push on the phone</span></td><td><span lang="zh-CN">用 http 局域网地址打开</span><span lang="en">opened over a plain http LAN address</span></td><td><span lang="zh-CN">走 https：设置里的穿透 + 证书，或 Tailscale</span><span lang="en">use https: Settings tunnel + certificate, or Tailscale</span></td></tr>
+        <tr><td><span lang="zh-CN">搜索、做视频的工具不见了</span><span lang="en">Web and video tools are missing</span></td><td><span lang="zh-CN">本机没有火狐</span><span lang="en">no Firefox on the machine</span></td><td><span lang="zh-CN">装火狐</span><span lang="en">install Firefox</span></td></tr>
+        <tr><td><span lang="zh-CN">"附近"只给了网页搜索结果</span><span lang="en">"Nearby" only gives web results</span></td><td><span lang="zh-CN">没填高德 Key，或 Key 失效、额度用完（它会照实说）</span><span lang="en">no AMap key, or it is invalid / out of quota (it says so)</span></td><td><span lang="zh-CN">设置 → 地图，填"Web 服务"类型的 Key</span><span lang="en">Settings → Maps, enter a "Web Service" key</span></td></tr>
+        <tr><td><span lang="zh-CN">PDF 中文是方块</span><span lang="en">Chinese shows as boxes in a PDF</span></td><td><span lang="zh-CN">本机没有 TrueType 中文字体</span><span lang="en">no TrueType CJK font on the machine</span></td><td><span lang="zh-CN">装一个（如 <code>fonts-droid-fallback</code> 或文泉驿）</span><span lang="en">install one (e.g. <code>fonts-droid-fallback</code> or WenQuanYi)</span></td></tr>
+        <tr><td><span lang="zh-CN">安卓收不到通知</span><span lang="en">Android gets no notifications</span></td><td><span lang="zh-CN">连不上谷歌 FCM</span><span lang="en">Google FCM unreachable</span></td><td><span lang="zh-CN">任务页通知卡填"推送代理"</span><span lang="en">set a "Push proxy" in the Tasks notification card</span></td></tr>
+        <tr><td><span lang="zh-CN">技能保存被拒，报 line N</span><span lang="en">Skill rejected with "line N"</span></td><td><span lang="zh-CN">那一行有代码块或命令</span><span lang="en">that line has a code block or command</span></td><td><span lang="zh-CN">改成用工具名描述步骤</span><span lang="en">describe the step with tool names instead</span></td></tr>
+        <tr><td><span lang="zh-CN">外部程序调 /v1 得 401</span><span lang="en">Outside program gets 401 on /v1</span></td><td><span lang="zh-CN">没带密钥或密钥被删</span><span lang="en">no key, or the key was deleted</span></td><td><span lang="zh-CN">API 页建一把，带 <code>Authorization: Bearer</code></span><span lang="en">create one on API and send <code>Authorization: Bearer</code></span></td></tr>
+        <tr><td><span lang="zh-CN">穿透显示连通，手机却打不开</span><span lang="en">Tunnel is up but the phone cannot connect</span></td><td><span lang="zh-CN">大陆服务器 + 域名没备案，80/443 被拦</span><span lang="en">mainland server with unregistered domain; 80/443 blocked</span></td><td><span lang="zh-CN">公网端口换 8443，或去备案</span><span lang="en">switch the public port to 8443, or register the domain</span></td></tr>
+        <tr><td><span lang="zh-CN">忘了工作台密码</span><span lang="en">Forgot the Studio password</span></td><td>—</td><td><span lang="zh-CN">删 <code>~/.ds4/studio/auth</code>，刷新重设</span><span lang="en">delete <code>~/.ds4/studio/auth</code> and reload</span></td></tr>
+      </table></div>
+      <p lang="zh-CN">还没解决：到 <a href="https://github.com/fodelf/YoungAi/issues">GitHub Issues</a> 提问，或写信 310066827@qq.com。活动页的流水里通常有原因原文，一起贴上最好。</p>
+      <p lang="en">Still stuck: open a <a href="https://github.com/fodelf/YoungAi/issues">GitHub issue</a> or write to 310066827@qq.com. The Activity log usually has the exact error; include it.</p>
+    </section>
+  </article>
+</div>
+
+<footer>
+  <div class="wrap">
+    <div lang="zh-CN">YoungAi · 引擎 MIT，权重派生自 DeepSeek V4.1 Flash（MIT）</div>
+    <div lang="en">YoungAi · Engine MIT; weights derive from DeepSeek V4.1 Flash (MIT)</div>
+    <div><a href="./"><span lang="zh-CN">首页</span><span lang="en">Home</span></a> · <a href="https://github.com/fodelf/YoungAi">GitHub</a> · <a href="https://huggingface.co/wenzhouwu/YoungAi-DeepSeek-V4.1-Flash">Hugging Face</a></div>
+  </div>
+</footer>
+</body>
+</html>

@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="zh-CN" data-l="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title data-zh="YoungAi · 住在你自己机器上的个人 AI 助理" data-en="YoungAi · a personal AI assistant on your own machine">YoungAi · 住在你自己机器上的个人 AI 助理</title>
+<meta name="description" content="YoungAi: a personal AI assistant that runs DeepSeek V4.1 Flash on your own machine. Memory, web, Word/PDF/PPT/Excel, video, tasks and push, all local. 住在你自己机器上的个人 AI 助理。">
+<meta property="og:title" content="YoungAi">
+<meta property="og:description" content="A personal AI assistant that lives on your own machine. 住在你自己机器上的个人 AI 助理。">
+<meta property="og:image" content="img/studio-agent-en.png">
+<link rel="icon" href="img/logo.jpg">
+<link rel="stylesheet" href="assets/style.css">
+<script src="assets/site.js"></script>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="./"><img src="img/logo.jpg" alt="">YoungAi</a>
+    <nav class="nav-links">
+      <a class="opt" href="#what"><span lang="zh-CN">能干什么</span><span lang="en">Features</span></a>
+      <a class="opt" href="#safety"><span lang="zh-CN">安全</span><span lang="en">Safety</span></a>
+      <a class="opt" href="#start"><span lang="zh-CN">上手</span><span lang="en">Get started</span></a>
+      <a href="guide.html"><span lang="zh-CN">使用指南</span><span lang="en">Guide</span></a>
+      <a href="https://github.com/fodelf/YoungAi">GitHub</a>
+      <button class="lang-btn" type="button">EN</button>
+    </nav>
+  </div>
+</header>
+
+<main>
+<!-- 首屏 -->
+<section class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <div class="eyebrow">
+        <span lang="zh-CN">开源 · MIT · DeepSeek V4.1 Flash 跑在本机</span>
+        <span lang="en">Open source · MIT · DeepSeek V4.1 Flash on your own box</span>
+      </div>
+      <h1 lang="zh-CN">住在<em>你自己机器上</em>的个人 AI 助理</h1>
+      <h1 lang="en">A personal AI assistant that lives <em>on your own machine</em></h1>
+      <p class="lede" lang="zh-CN">记得你说过的事，会上网、会写 Word / PDF / PPT / Excel、会做视频、会盯着一件事持续跟进，干完把结果交到手机上的下一个 app。模型、记忆、文件全在本机，数据不出门。</p>
+      <p class="lede" lang="en">It remembers what you tell it, browses the web, writes Word / PDF / PowerPoint / Excel files,
+        makes videos, keeps following up on a job, and hands the result to the next app on your phone.
+        Model, memory and files all stay on the machine.</p>
+      <div class="btns">
+        <a class="btn btn-primary" href="guide.html"><span lang="zh-CN">使用指南 →</span><span lang="en">Read the guide →</span></a>
+        <a class="btn btn-ghost" href="https://github.com/fodelf/YoungAi"><span lang="zh-CN">GitHub 源码</span><span lang="en">Source on GitHub</span></a>
+        <a class="btn btn-ghost" href="https://huggingface.co/wenzhouwu/YoungAi-DeepSeek-V4.1-Flash">Hugging Face</a>
+      </div>
+    </div>
+    <div>
+      <div class="shot">
+        <div class="shot-bar"><i></i><i></i><i></i></div>
+        <img lang="zh-CN" src="img/studio-agent.png" width="1440" height="900" alt="YoungAi 工作台：助理在全网找最便宜的 DGX Spark">
+        <img lang="en" src="img/studio-agent-en.png" width="1440" height="900" alt="YoungAi Studio: the assistant hunting for the cheapest DGX Spark">
+      </div>
+      <p class="caption" lang="zh-CN">实拍："帮我找全网最低价的 DGX Spark"。16 分钟、12 轮、43 次工具调用，全在这台机器上跑完；它还认出了一条像诈骗的低价挂单。</p>
+      <p class="caption" lang="en">A real run: "find me the cheapest DGX Spark on the web". 16 minutes, 12 rounds, 43 tool calls, all on the machine itself; it also flagged a too-cheap listing that looked like a scam.</p>
+    </div>
+    <div class="stats">
+      <div class="stat"><b>0 B</b><span lang="zh-CN">上云的数据</span><span lang="en">of your data sent to a cloud</span></div>
+      <div class="stat"><b>1M</b><span lang="zh-CN">token 上下文，满载 KV 只要 0.89 GB</span><span lang="en">token context; full KV cache is 0.89 GB</span></div>
+      <div class="stat"><b>45.5 t/s</b><span lang="zh-CN">写字速度（真实 14k token 请求）</span><span lang="en">generation on a real 14k-token request</span></div>
+      <div class="stat"><b>30+</b><span lang="zh-CN">个工具，每次都在内核沙盒里跑</span><span lang="en">tools, each call in a kernel sandbox</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- 进 干 出 -->
+<section class="block" id="how">
+  <div class="wrap">
+    <div class="kicker"><span lang="zh-CN">怎么工作</span><span lang="en">How it works</span></div>
+    <h2 lang="zh-CN">一句话进来，在沙盒里干完，再交出去</h2>
+    <h2 lang="en">A request comes in, the work happens in a sandbox, the result goes out</h2>
+    <p class="sub" lang="zh-CN">没有为哪个场景写死的提示词。助理能做的每件事都是一个工具，模型看到工具表就知道这台设备、这台机器此刻能做什么。</p>
+    <p class="sub" lang="en">There is no scenario-specific prompt. Everything the assistant can do is a tool; from the tool list the model knows what this device and this machine can do right now.</p>
+    <div class="flow">
+      <div class="stage">
+        <h3><span lang="zh-CN">进</span><span lang="en">In</span></h3>
+        <div class="tag"><span lang="zh-CN">设备 → 助理</span><span lang="en">device → assistant</span></div>
+        <ul lang="zh-CN"><li>打字，或者附一个文件</li><li>别的 app 分享过来的文字和链接</li><li>它自己要：定位、剪贴板、选文件</li><li>每条消息自带一行事实：手机还是电脑、时间、时区、能用哪些能力</li></ul>
+        <ul lang="en"><li>Type, or attach a file</li><li>Text and links shared from other apps</li><li>It asks for more: location, clipboard, a file</li><li>Each message carries one line of facts: phone or computer, time, time zone, what the device can do</li></ul>
+      </div>
+      <div class="arrow">→</div>
+      <div class="stage mid">
+        <h3><span lang="zh-CN">干</span><span lang="en">Do</span></h3>
+        <div class="tag"><span lang="zh-CN">模型 ⇄ 工具，若干轮</span><span lang="en">model ⇄ tools, for a few rounds</span></div>
+        <ul lang="zh-CN"><li>搜网页、读原文、搜周边</li><li>读写工作区里的文件，在沙盒里跑程序</li><li>写 docx / pdf / pptx / xlsx，做 mp4</li><li>每次动手先过守门；越界先弹卡片问你</li></ul>
+        <ul lang="en"><li>Search the web, read pages, look up places</li><li>Read and write workspace files, run programs in the sandbox</li><li>Write docx / pdf / pptx / xlsx, render mp4</li><li>Every action passes the gatekeeper; anything out of bounds asks you first</li></ul>
+      </div>
+      <div class="arrow">→</div>
+      <div class="stage">
+        <h3><span lang="zh-CN">出</span><span lang="en">Out</span></h3>
+        <div class="tag"><span lang="zh-CN">助理 → 你的下一个 app</span><span lang="en">assistant → your next app</span></div>
+        <ul lang="zh-CN"><li>文件卡：下载，或分享到微信 / 钉钉</li><li>按钮：导航、拨号、复制</li><li>打开抖音、美团、饿了么、支付宝……</li><li>到点或做完推送到手机</li></ul>
+        <ul lang="en"><li>File cards: download, or share to WeChat / DingTalk</li><li>Buttons: navigate, call, copy</li><li>Open Douyin, Meituan, Ele.me, Alipay…</li><li>A push to your phone when due or done</li></ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 场景 -->
+<section class="block" id="what">
+  <div class="wrap">
+    <div class="kicker"><span lang="zh-CN">能干什么</span><span lang="en">What it does</span></div>
+    <h2 lang="zh-CN">你说一句，它把活干完</h2>
+    <h2 lang="en">You say one sentence; it does the job</h2>
+    <p class="sub" lang="zh-CN">几个典型的例子。都是同一个助理、同一张工具表，没有哪个是专门写的功能。</p>
+    <p class="sub" lang="en">A few typical examples. Same assistant, same tool list; none of them is a hand-built feature.</p>
+    <div class="scene-head"><span lang="zh-CN">你说</span><span lang="en">You say</span><span lang="zh-CN">它做</span><span lang="en">It does</span><span lang="zh-CN">你拿到</span><span lang="en">You get</span></div>
+    <div class="scenes">
+      <div class="scene">
+        <div class="say"><span lang="zh-CN">附近有什么好吃的</span><span lang="en">Anything good to eat nearby?</span></div>
+        <div class="do"><small lang="zh-CN">它做</small><small lang="en">It does</small><span lang="zh-CN">定位 → 搜周边 → 挑 3 家写理由</span><span lang="en">locate → nearby places → picks 3 with reasons</span></div>
+        <div class="get"><small lang="zh-CN">你拿到</small><small lang="en">You get</small><span lang="zh-CN">每家一个导航按钮、一个"打开美团 / 饿了么"按钮</span><span lang="en">a Navigate and an "Open in Meituan / Ele.me" button for each</span></div>
+      </div>
+      <div class="scene">
+        <div class="say"><span lang="zh-CN">把这份 Word 转成 PDF</span><span lang="en">Turn this Word file into a PDF</span></div>
+        <div class="do"><small lang="zh-CN">它做</small><small lang="en">It does</small><span lang="zh-CN">文件进工作区，在沙盒里转</span><span lang="en">the file lands in the workspace and is converted in the sandbox</span></div>
+        <div class="get"><small lang="zh-CN">你拿到</small><small lang="en">You get</small><span lang="zh-CN">文件卡：下载，或分享到微信 / 钉钉</span><span lang="en">a file card: download, or share to WeChat / DingTalk</span></div>
+      </div>
+      <div class="scene">
+        <div class="say"><span lang="zh-CN">查一下 X，整理成报告发给同事</span><span lang="en">Look into X and write it up for my colleague</span></div>
+        <div class="do"><small lang="zh-CN">它做</small><small lang="en">It does</small><span lang="zh-CN">搜网页、读原文、写 docx</span><span lang="en">searches, reads the sources, writes a docx</span></div>
+        <div class="get"><small lang="zh-CN">你拿到</small><small lang="en">You get</small><span lang="zh-CN">报告文件 + 系统分享面板</span><span lang="en">the report and the system share sheet</span></div>
+      </div>
+      <div class="scene">
+        <div class="say"><span lang="zh-CN">按月汇总这张表</span><span lang="en">Sum this table by month</span></div>
+        <div class="do"><small lang="zh-CN">它做</small><small lang="en">It does</small><span lang="zh-CN">读 csv，写带公式的 xlsx</span><span lang="en">reads the csv, writes an xlsx with formulas</span></div>
+        <div class="get"><small lang="zh-CN">你拿到</small><small lang="en">You get</small><span lang="zh-CN">手机上预览就能看到数的 Excel</span><span lang="en">an Excel file whose numbers show in a phone preview</span></div>
+      </div>
+      <div class="scene">
+        <div class="say"><span lang="zh-CN">做一个 30 秒的产品介绍视频，配旁白</span><span lang="en">Make a 30-second product video with narration</span></div>
+        <div class="do"><small lang="zh-CN">它做</small><small lang="en">It does</small><span lang="zh-CN">写一页动画，逐帧渲染、自己编码</span><span lang="en">writes an HTML animation, renders and encodes it frame by frame</span></div>
+        <div class="get"><small lang="zh-CN">你拿到</small><small lang="en">You get</small><span lang="zh-CN">带旁白的 mp4</span><span lang="en">a narrated mp4</span></div>
+      </div>
+      <div class="scene">
+        <div class="say"><span lang="zh-CN">盯着这个价格，降到 3 万以下告诉我</span><span lang="en">Watch this price; tell me when it drops below X</span></div>
+        <div class="do"><small lang="zh-CN">它做</small><small lang="en">It does</small><span lang="zh-CN">建成任务，自己定多久再看一次</span><span lang="en">turns it into a task and decides when to look again</span></div>
+        <div class="get"><small lang="zh-CN">你拿到</small><small lang="en">You get</small><span lang="zh-CN">一条推送到手机的通知</span><span lang="en">a push notification on your phone</span></div>
+      </div>
+      <div class="scene">
+        <div class="say"><span lang="zh-CN">记住我常住南京</span><span lang="en">Remember I mostly live in Nanjing</span></div>
+        <div class="do"><small lang="zh-CN">它做</small><small lang="en">It does</small><span lang="zh-CN">写进记忆文件</span><span lang="en">writes it to the memory file</span></div>
+        <div class="get"><small lang="zh-CN">你拿到</small><small lang="en">You get</small><span lang="zh-CN">以后推荐三日游自动从南京出发</span><span lang="en">trip plans start from Nanjing from then on</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 工具 -->
+<section class="block" id="tools">
+  <div class="wrap">
+    <div class="kicker"><span lang="zh-CN">工具箱</span><span lang="en">Toolbox</span></div>
+    <h2 lang="zh-CN">助理手里的工具</h2>
+    <h2 lang="en">The assistant's tools</h2>
+    <p class="sub" lang="zh-CN">每张卡下面是模型真正调用的工具名。怎么用、要什么前提、出错会怎样，见<a href="guide.html#tools">使用指南</a>。</p>
+    <p class="sub" lang="en">Under each card are the tool names the model actually calls. How to use them, what they need and what happens when they fail: <a href="guide.html#tools">the guide</a>.</p>
+    <div class="grid">
+      <div class="card">
+        <h3><span class="ico"><svg viewBox="0 0 24 24"><path d="M12 4a4 4 0 0 1 4 4c0 1.5-.8 2.7-2 3.4V13h-4v-1.6A4 4 0 0 1 12 4z"/><path d="M10 17h4M10.5 20h3"/></svg></span><span lang="zh-CN">记忆</span><span lang="en">Memory</span></h3>
+        <p lang="zh-CN">只记你亲口说的事实和偏好。纯文本文件，你能打开改、能删。</p>
+        <p lang="en">Only facts and preferences you stated yourself. Plain text files you can open, edit and delete.</p>
+        <div class="tools">remember · forget</div>
+      </div>
+      <div class="card">
+        <h3><span class="ico"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg></span><span lang="zh-CN">上网</span><span lang="en">Web</span></h3>
+        <p lang="zh-CN">本机的无头火狐搜索、打开网页取正文。网页内容一律当不可信输入。</p>
+        <p lang="en">Headless Firefox on the machine searches and reads pages. Page content is always treated as untrusted.</p>
+        <div class="tools">web_search · visit_page</div>
+      </div>
+      <div class="card">
+        <h3><span class="ico"><svg viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></svg></span><span lang="zh-CN">文件</span><span lang="en">Files</span></h3>
+        <p lang="zh-CN">默认只在工作区里读写；碰工作区外的路径会先弹审批卡。删除前自动留副本。</p>
+        <p lang="en">Reads and writes inside the workspace by default; paths outside it raise an approval card. Deletes keep a copy first.</p>
+        <div class="tools">read_file · list_dir · search_files · write_file · edit_file</div>
+      </div>
+      <div class="card">
+        <h3><span class="ico"><svg viewBox="0 0 24 24"><path d="M4 17l6-6-6-6M12 19h8"/></svg></span><span lang="zh-CN">跑程序</span><span lang="en">Run programs</span></h3>
+        <p lang="zh-CN">在内核沙盒里执行命令：没网络、只能写工作区。本机装了 soffice、pandoc、python3 等，它就会用。</p>
+        <p lang="en">Runs commands in the kernel sandbox: no network, writes only to the workspace. Uses soffice, pandoc, python3 and friends if installed.</p>
+        <div class="tools">run</div>
+      </div>
+      <div class="card">
+        <h3><span class="ico"><svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></span><span lang="zh-CN">办公文档</span><span lang="en">Office files</span></h3>
+        <p lang="zh-CN">Markdown 一次出 Word / PDF / PPT，JSON 出带公式的 Excel。格式全部自己用 C 写，不用装 Office。</p>
+        <p lang="en">Markdown straight to Word / PDF / PowerPoint, JSON to Excel with formulas. Every format is written in our own C; no Office needed.</p>
+        <div class="tools">write_document · write_xlsx</div>
+      </div>
+      <div class="card">
+        <h3><span class="ico"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="14" height="14" rx="2"/><path d="M17 10l4-2v8l-4-2"/></svg></span><span lang="zh-CN">视频</span><span lang="en">Video</span></h3>
+        <p lang="zh-CN">模型写一页 HTML 动画，火狐逐帧渲染，自写的 H.264 / AAC 编码器出 mp4，可配旁白。不装 ffmpeg。</p>
+        <p lang="en">The model writes an HTML animation; Firefox renders it frame by frame and our own H.264 / AAC encoder makes the mp4, optionally narrated. No ffmpeg.</p>
+        <div class="tools">make_video</div>
+      </div>
+      <div class="card">
+        <h3><span class="ico"><svg viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg></span><span lang="zh-CN">地点</span><span lang="en">Places</span></h3>
+        <p lang="zh-CN">手机定位，配合高德查周边。填了高德 Key 给真实店铺；没填就按你所在的街道搜网页。</p>
+        <p lang="en">Phone location plus AMap nearby search. With an AMap key you get real places; without one it searches the web around your street.</p>
+        <div class="tools">locate · nearby</div>
+      </div>
+      <div class="card">
+        <h3><span class="ico"><svg viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M11 18h2"/></svg></span><span lang="zh-CN">交给手机</span><span lang="en">Hand off to your phone</span></h3>
+        <p lang="zh-CN">在你正用的那台设备上执行：分享、复制、导航、拨号、打开链接、打开抖音 / 微信 / 钉钉 / 支付宝 / 美团 / 饿了么，读剪贴板、选文件。</p>
+        <p lang="en">Run on the device you are holding: share, copy, navigate, call, open links, open Douyin / WeChat / DingTalk / Alipay / Meituan / Ele.me, read the clipboard, pick a file.</p>
+        <div class="tools">share · copy_text · navigate · call · open_url · open_app · read_clipboard · pick_file</div>
+      </div>
+      <div class="card">
+        <h3><span class="ico"><svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg></span><span lang="zh-CN">任务与通知</span><span lang="en">Tasks &amp; notifications</span></h3>
+        <p lang="zh-CN">一句话交给它持续跟，它自己定下次几点再看；提醒和完成消息用 Web Push 推到手机。</p>
+        <p lang="en">Hand over a job in one sentence; it picks its own next check. Reminders and "done" notices reach your phone by Web Push.</p>
+        <div class="tools">task_check_in · task_done · notify</div>
+      </div>
+      <div class="card">
+        <h3><span class="ico"><svg viewBox="0 0 24 24"><path d="M10 4h4v3a2 2 0 1 0 4 0h2v4h-3a2 2 0 1 0 0 4h3v5h-5v-2a2 2 0 1 0-4 0v2H6v-5H4a2 2 0 1 0 0-4h2V7h4z"/></svg></span><span lang="zh-CN">技能</span><span lang="en">Skills</span></h3>
+        <p lang="zh-CN">一个文件夹、一份 SKILL.md，教它某类活怎么干。格式照 Agent Skills 开放标准，不许带脚本。</p>
+        <p lang="en">One folder, one SKILL.md, teaching it how to do a kind of job. Agent Skills format; scripts are not allowed.</p>
+        <div class="tools">use_skill</div>
+      </div>
+      <div class="card">
+        <h3><span class="ico"><svg viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg></span><span lang="zh-CN">后训练</span><span lang="en">Post-training</span></h3>
+        <p lang="zh-CN">拖进一个 .jsonl（和 Unsloth 同格式）点开始，用你自己的数据训一个小插件，开关一拨就挂上。</p>
+        <p lang="en">Drop in a .jsonl (Unsloth's format) and press Start to train a small add-on on your own data; flip a switch to use it.</p>
+        <div class="tools">Data · Train</div>
+      </div>
+      <div class="card">
+        <h3><span class="ico"><svg viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M15 8l2 2"/></svg></span>API</h3>
+        <p lang="zh-CN">OpenAI / Anthropic 兼容接口，带密钥就能让别的程序调本机的大模型。</p>
+        <p lang="en">OpenAI- and Anthropic-compatible endpoints; any program with a key can use the local model.</p>
+        <div class="tools">/v1/chat/completions · /v1/responses · /v1/messages</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 安全 -->
+<section class="block" id="safety">
+  <div class="wrap split">
+    <div>
+      <div class="kicker"><span lang="zh-CN">安全</span><span lang="en">Safety</span></div>
+      <h2 lang="zh-CN">靠沙盒，不靠相信模型</h2>
+      <h2 lang="en">Rely on the sandbox, not on trusting the model</h2>
+      <p class="sub" lang="zh-CN">助理以你的身份跑在你的机器上。所以每一次动手都要经过内核沙盒和一个固定规则的守门函数。</p>
+      <p class="sub" lang="en">The assistant runs as you, on your machine. So every action goes through a kernel sandbox and a fixed-rule gatekeeper.</p>
+      <div class="note"><span lang="zh-CN"><b>诚实的边界：</b>没有虚拟机隔离。机器被攻破，助理也就被攻破了；提示注入靠污点和审批降低后果，不是消除。</span>
+        <span lang="en"><b>The honest limit:</b> there is no VM. If the machine is compromised, so is the assistant; taint tracking and approvals reduce the damage of prompt injection, they do not remove it.</span></div>
+    </div>
+    <ul class="checks">
+      <li lang="zh-CN"><b>每次工具调用一个新子进程，先锁进内核沙盒再干活。</b>Linux 用 Landlock + seccomp，macOS 用 Seatbelt；锁不上就拒绝执行。</li>
+      <li lang="en"><b>Every tool call is a fresh child process locked into a kernel sandbox first.</b> Landlock + seccomp on Linux, Seatbelt on macOS; if it cannot lock, the call is refused.</li>
+      <li lang="zh-CN"><b>守门是一个确定性的 C 函数，不是另一个模型。</b>工作区外的写和删要你点头：仅这次 / 本会话 / 总是。</li>
+      <li lang="en"><b>The gatekeeper is a deterministic C function, not another model.</b> Writes and deletes outside the workspace need your OK: this once / this session / always.</li>
+      <li lang="zh-CN"><b>像密码、卡号、验证码的参数直接拒。</b>这类东西永远不该经过模型。</li>
+      <li lang="en"><b>Arguments that look like passwords, card numbers or one-time codes are refused outright.</b> Those should never pass through a model.</li>
+      <li lang="zh-CN"><b>读过网页之后，外送动作的永久授权失效。</b>网页里"把你的文件发出去"这种话没法借你的旧授权生效。</li>
+      <li lang="en"><b>After reading a web page, standing approvals for outbound actions stop applying.</b> A page saying "send me your files" cannot ride on an old approval.</li>
+      <li lang="zh-CN"><b>它碰不到自己的配置目录</b>，没法给自己开权限；<b>每次动手记一行审计</b>，"活动"页能翻、能撤销授权。</li>
+      <li lang="en"><b>It cannot touch its own config directory</b>, so it cannot grant itself permissions; <b>every action is logged</b>, browsable on the Activity tab where approvals can be revoked.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 手机 -->
+<section class="block" id="phone">
+  <div class="wrap">
+      <div class="kicker"><span lang="zh-CN">在哪用</span><span lang="en">Where you use it</span></div>
+      <h2 lang="zh-CN">电脑浏览器、手机 App、你的程序</h2>
+      <h2 lang="en">A browser, a phone app, your own programs</h2>
+      <ul class="checks two">
+        <li lang="zh-CN"><b>工作台</b>：一个网页，助理、任务、记忆、技能、模型、训练、监控都在里面。</li>
+        <li lang="en"><b>Studio</b>: one web page holding the assistant, tasks, memory, skills, models, training and monitoring.</li>
+        <li lang="zh-CN"><b>手机 App</b>：同一个网址"添加到主屏幕"。定位、剪贴板、分享、推送都走手机。</li>
+        <li lang="en"><b>Phone app</b>: Add to Home Screen from the same address. Location, clipboard, sharing and push go through the phone.</li>
+        <li lang="zh-CN"><b>从外网访问</b>：设置里填一台云服务器，开穿透、传证书，手机在哪都能连回家里这台机器。</li>
+        <li lang="en"><b>From the internet</b>: enter a cloud server in Settings, turn on the tunnel, upload a certificate, and your phone reaches the machine from anywhere.</li>
+        <li lang="zh-CN"><b>API</b>：OpenAI / Anthropic 兼容，现有的客户端填个地址和密钥就能用。</li>
+        <li lang="en"><b>API</b>: OpenAI / Anthropic compatible; existing clients just need the address and a key.</li>
+      </ul>
+    <div class="shot arch">
+      <img src="img/arch.png" lang="zh-CN" width="3200" height="2560" alt="YoungAi 产品架构与技术架构">
+      <img src="img/arch-en.png" lang="en" width="3200" height="2700" alt="YoungAi product and system architecture">
+    </div>
+  </div>
+</section>
+
+<!-- 模型 -->
+<section class="block" id="model">
+  <div class="wrap">
+    <div class="kicker"><span lang="zh-CN">背后的模型</span><span lang="en">The model behind it</span></div>
+    <h2 lang="zh-CN">510 GB 的前沿模型，装进一台 128 GB 的机器</h2>
+    <h2 lang="en">A 510 GB frontier model on a 128 GB machine</h2>
+    <p class="sub" lang="zh-CN">DeepSeek V4.1 Flash 原样发布是 510 GB。我们自己写的推理引擎（纯 C99 + CUDA / Metal，一个 Makefile）把它压到 113.6 GB，跑在一台 DGX Spark 上。</p>
+    <p class="sub" lang="en">DeepSeek V4.1 Flash is 510 GB as released. Our own inference engine (plain C99 + CUDA / Metal, one Makefile) shrinks it to 113.6 GB and runs it on one DGX Spark.</p>
+    <div class="table-wrap"><table>
+      <tr><th><span lang="zh-CN">项</span><span lang="en">Item</span></th><th><span lang="zh-CN">数</span><span lang="en">Number</span></th></tr>
+      <tr><td lang="zh-CN">体积</td><td lang="en">Size</td>
+          <td lang="zh-CN">官方 510 GB → 基座 113.6 GB（每 8 个权重一起向量量化，约 1.6 bit/权重，不用训练数据）</td>
+          <td lang="en">510 GB → 113.6 GB base (8 weights vector-quantized together, ~1.6 bit/weight, no training data)</td></tr>
+      <tr><td lang="zh-CN">读提示</td><td lang="en">Reading</td><td>1,055 token/s <span lang="zh-CN">（12.5k token 提示）</span><span lang="en">(12.5k-token prompt)</span></td></tr>
+      <tr><td lang="zh-CN">写回答</td><td lang="en">Writing</td><td>45.5 token/s <span lang="zh-CN">（真实 14k token Agent 请求，投机解码开）</span><span lang="en">(real 14k-token agent request, speculative decoding on)</span></td></tr>
+      <tr><td lang="zh-CN">上下文</td><td lang="en">Context</td><td>1M token <span lang="zh-CN">· 满载 KV 缓存 0.89 GB</span><span lang="en">· full KV cache 0.89 GB</span></td></tr>
+      <tr><td lang="zh-CN">领域侧车</td><td lang="en">Domain sidecars</td>
+          <td lang="zh-CN">金融 / 编程 / 法律 / 医疗 / 科研，各约 40 MB；挂上后与原版全精度模型下一个字的一致率高 2.9–3.7 个百分点</td>
+          <td lang="en">finance / code / law / medicine / science, ~40 MB each; next-token agreement with the full-precision original rises 2.9–3.7 points</td></tr>
+    </table></div>
+    <p lang="zh-CN">测法和完整结果表：<a href="https://github.com/fodelf/YoungAi/blob/restructure/docs/TECHNICAL.zh-CN.md">技术细节</a>。</p>
+    <p lang="en">Method and full tables: <a href="https://github.com/fodelf/YoungAi/blob/restructure/docs/TECHNICAL.md">technical notes</a>.</p>
+  </div>
+</section>
+
+<!-- 上手 -->
+<section class="block" id="start">
+  <div class="wrap split">
+    <div>
+      <div class="kicker"><span lang="zh-CN">上手</span><span lang="en">Get started</span></div>
+      <h2 lang="zh-CN">三条命令，然后打开浏览器</h2>
+      <h2 lang="en">Three commands, then open a browser</h2>
+      <p lang="zh-CN">需要一台 DGX Spark（Linux aarch64 + CUDA 13 运行库，SSD 空闲约 320 GB）。上网工具要火狐，Spark 上的 Ubuntu 自带。</p>
+      <p lang="en">You need a DGX Spark (Linux aarch64 with the CUDA 13 runtime, ~320 GB free SSD). The web tools need Firefox, which Ubuntu on the Spark ships.</p>
+      <ol class="steps">
+        <li lang="zh-CN">第一次打开页面，先设一个用户名和密码。</li>
+        <li lang="en">The first visit asks you to set a username and password.</li>
+        <li lang="zh-CN"><b>模型</b>页点"下载"（约 317 GB，断点续传），再点"加载"（约 2 分钟）。</li>
+        <li lang="en">On <b>Models</b>, press Download (~317 GB, resumable), then Load (~2 minutes).</li>
+        <li lang="zh-CN"><b>助理</b>页，直接说话。</li>
+        <li lang="en">On <b>Assistant</b>, just talk.</li>
+      </ol>
+      <p><a class="btn btn-primary" href="guide.html"><span lang="zh-CN">完整使用指南 →</span><span lang="en">Full user guide →</span></a></p>
+    </div>
+    <div>
+<pre><code>git clone https://github.com/fodelf/YoungAi.git ~/ds4-main
+cd ~/ds4-main
+make cuda-spark
+./ds4-train --host 0.0.0.0 --port 8000
+<span class="c"># → http://&lt;host&gt;:8000/</span></code></pre>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div lang="zh-CN">YoungAi · 吴文周 · 310066827@qq.com · 引擎 MIT，权重派生自 DeepSeek V4.1 Flash（MIT）</div>
+    <div lang="en">YoungAi · Wenzhou Wu · 310066827@qq.com · Engine MIT; weights derive from DeepSeek V4.1 Flash (MIT)</div>
+    <div>
+      <a href="guide.html"><span lang="zh-CN">使用指南</span><span lang="en">Guide</span></a> ·
+      <a href="https://github.com/fodelf/YoungAi">GitHub</a> ·
+      <a href="https://huggingface.co/wenzhouwu/YoungAi-DeepSeek-V4.1-Flash">Hugging Face</a> ·
+      <span lang="zh-CN">起步于 <a href="https://github.com/antirez/ds4">antirez/ds4</a></span><span lang="en">Started as a fork of <a href="https://github.com/antirez/ds4">antirez/ds4</a></span>
+    </div>
+  </div>
+</footer>
+</body>
+</html>
