@@ -51,13 +51,28 @@ static void serve(int fd) {
         char h[256]; const int n = snprintf(h, sizeof h, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: %zu\r\nConnection: close\r\n\r\n", strlen(m));
         send(fd, h, (size_t)n, 0); send(fd, m, strlen(m), 0); close(fd); return;
     }
+    /* 语音识别(10-14, 页面"按住 说话"的 e2e): GET 报能力; POST 不识别, 只核页面拼的 WAV 头(RIFF/WAVE, PCM 单声道 16 位 16 kHz, 44 字节头)
+     * 并按 data 长度回"假识别: 收到 N 毫秒音频" —— e2e 拿 N 核页面录到的时长, 头不对回 400 */
+    if (!strncmp(in, "GET /v1/audio/transcriptions", 28) || !strncmp(in, "POST /v1/audio/transcriptions", 29)) {
+        const unsigned char *b = (const unsigned char *)body;
+        const unsigned rate = clen >= 44 ? (unsigned)(b[24] | b[25] << 8 | b[26] << 16 | (unsigned)b[27] << 24) : 0;
+        const unsigned dlen = clen >= 44 ? (unsigned)(b[40] | b[41] << 8 | b[42] << 16 | (unsigned)b[43] << 24) : 0;
+        const bool get = in[0] == 'G', wav = clen >= 44 && !memcmp(b, "RIFF", 4) && !memcmp(b + 8, "WAVE", 4) && (b[20] | b[21] << 8) == 1 &&
+                         (b[22] | b[23] << 8) == 1 && rate == 16000 && (b[34] | b[35] << 8) == 16 && dlen + 44 == clen;
+        char m[256];
+        if (get) snprintf(m, sizeof m, "{\"ok\":true,\"sample_rate\":16000,\"max_seconds\":30}");
+        else if (wav) snprintf(m, sizeof m, "{\"text\":\"假识别: 收到 %u 毫秒音频\"}", dlen / 32);
+        else snprintf(m, sizeof m, "{\"error\":{\"message\":\"bad wav header\"}}");
+        char h[256]; const int n = snprintf(h, sizeof h, "HTTP/1.1 %s\r\nContent-Type: application/json\r\nContent-Length: %zu\r\nConnection: close\r\n\r\n", get || wav ? "200 OK" : "400 Bad Request", strlen(m));
+        send(fd, h, (size_t)n, 0); send(fd, m, strlen(m), 0); close(fd); return;
+    }
     if (strncmp(in, "POST /v1/chat/completions", 25)) { const char *h = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"; send(fd, h, strlen(h), 0); close(fd); return; }
     const char *h = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n";
     send(fd, h, strlen(h), 0);
     const int tools = count(body, "\"role\":\"tool\"");
     const bool has = strstr(body, "\"name\":\"locate\"") != NULL;   /* 工具表里有设备工具(页面报了能力)才走设备那几步 */
     sse(fd, "{\"reasoning_content\":\"假模型在想。\"}");
-    if (tools == 0 && strstr(body, "通知我")) {   /* 任务页 e2e: 那句话里有"通知我" → 先调 notify(页面开着 → 服务端落 notices, 页面弹), 下一轮直接终稿 */
+    if (tools == 0 && strstr(body, "通知我")) {   /* 任务页 e2e: 那句话里有"通知我" → 先调 notify(e2e 浏览器没订阅 → 工具答没设备), 下一轮直接终稿 */
         sse(fd, "{\"content\":\"先通知你一声。\"}");
         call1(fd, "call_ntf", "notify", "{\\\"text\\\":\\\"e2e 通知: 价格降了\\\"}");
     } else if (tools == 0 && strstr(body, "\"name\":\"read_clipboard\"")) {

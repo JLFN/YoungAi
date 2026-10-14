@@ -110,7 +110,7 @@
   .ok { color: #4ade80; } .bad { color: #f87171; }
   pre.box { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 11px 12px; font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-word; max-height: 460px; overflow: auto; margin: 0; }
   #toast { position: fixed; right: 20px; bottom: 20px; max-width: 420px; background: var(--panel-2); border: 1px solid var(--accent-line); border-radius: 10px; padding: 10px 14px; font-size: 13.5px; box-shadow: 0 10px 30px rgba(0,0,0,.4); opacity: 0; transform: translateY(8px); transition: .2s; pointer-events: none; z-index: 50; }
-  #toast.on { opacity: 1; transform: none; pointer-events: auto; cursor: pointer; }   /* 页内通知(pollNotices)点了进那个对话 */
+  #toast.on { opacity: 1; transform: none; }
   #toast.err { border-color: rgba(239,68,68,.6); }
 
   /* ---------- 聊天 ---------- */
@@ -209,6 +209,26 @@
   .attach .chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 3px 8px; border: 1px solid var(--accent-line); background: var(--accent-soft); border-radius: 999px; color: var(--accent-2); max-width: 100%; }
   .attach .chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .attach .chip button { border: 0; background: none; color: inherit; padding: 0 2px; font-size: 14px; line-height: 1; cursor: pointer; }
   #btn-attach { padding: 4px 9px; font-size: 15px; line-height: 1; }
+  /* 输入条最右一个圆钮, 四种状态(语音方案稿 docs/assistant_asr.md §3): 空输入 = 麦克风, 语音模式 = 键盘, 有字 = 发送, 助理在跑 = 停止 */
+  #btn-send { width: 36px; height: 36px; padding: 0; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+  #btn-send svg.i { width: 20px; height: 20px; }
+  #btn-send.danger svg.i rect { fill: currentColor; }
+  /* 语音模式: 输入框换成"按住 说话"长条。长按不许弹系统菜单/选中文字/被当成滚动, 否则手机上按不住 */
+  .composer { position: relative; }
+  .composer .hold { display: none; width: 100%; min-height: 40px; margin: 2px 0; border-radius: 10px; font-weight: 600; background: var(--panel-2);
+    user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: none; }
+  .composer.voice .hold { display: block; }
+  .composer.voice textarea { display: none; }
+  .composer .hold.on { background: var(--accent-soft); border-color: var(--accent); }
+  .composer .hold.cancel { background: rgba(239,68,68,.18); border-color: var(--err); }
+  /* 录音时浮在输入条上方的提示: 音量条 + 提示语 + 秒数; 上滑进取消区变红 */
+  .mic-ov { display: none; position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%); min-width: 200px; padding: 14px 18px 12px;
+    border-radius: 14px; background: var(--panel); border: 1px solid var(--border); box-shadow: 0 8px 28px rgba(0,0,0,.28); text-align: center; z-index: 30; pointer-events: none; }
+  .mic-ov.on { display: block; }
+  .mic-ov .lvl { height: 6px; border-radius: 3px; background: var(--panel-2); overflow: hidden; margin-bottom: 10px; }
+  .mic-ov .lvl i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .08s linear; }
+  .mic-ov .t { font-size: 14px; font-weight: 600; } .mic-ov .s { font-size: 12px; color: var(--dim); margin-top: 4px; }
+  .mic-ov.cancel { border-color: var(--err); } .mic-ov.cancel .t { color: var(--err); } .mic-ov.cancel .lvl i { background: var(--err); }
   .sdot.waiting_device { background: var(--accent-2); animation: pulse .9s infinite; }
   @media (max-width: 760px) { .deliver { margin-left: 0; } }
   .tk-list .row { display: flex; align-items: flex-start; gap: 10px; padding: 11px 10px; border-radius: 9px; border: 1px solid var(--line); margin-bottom: 8px; }
@@ -382,7 +402,7 @@
   [data-shell=app] .phscreen { border-radius: 0; }
   /* 沉浸(⛶ 在没有元素全屏接口的浏览器上, 典型 iOS Safari/PWA): 藏顶栏底栏和右栏, 画面吃满整个窗口, 角上浮一个退出键 */
   [data-immersive] .topbar, [data-immersive] .tabbar, [data-immersive] .phside, [data-immersive] aside { display: none !important; }
-  [data-immersive] .view { padding: 0; overflow: hidden; } [data-immersive] .phwrap { padding: 0; margin: 0; width: 100%; justify-content: center; align-items: center; min-height: 100vh; background: #000; }
+  [data-immersive] .view { padding: 0; overflow: hidden; } [data-immersive] .phwrap { padding: 0; margin: 0; width: 100%; justify-content: center; align-items: center; min-height: var(--app-h, 100dvh); background: #000; }   /* 不用 100vh: iOS 的 100vh 按收起工具栏后的最大高度算, 比看得见的高一截, 画面居中后底下被切掉 */
   [data-immersive] .phscreen, .phscreen:fullscreen { border: 0; border-radius: 0; }
   #ph-exit { position: absolute; top: 8px; right: 8px; z-index: 2; display: none; width: 34px; height: 34px; border-radius: 17px; background: rgba(0,0,0,.55); color: #fff; border: 1px solid rgba(255,255,255,.4); font-size: 16px; line-height: 32px; text-align: center; padding: 0; }
   [data-immersive] #ph-exit, .phscreen:fullscreen #ph-exit { display: block; }
@@ -427,15 +447,31 @@
   .tb-btn { display: none; }
   [data-shell=app] .desk-only { display: none !important; }
   [data-shell=app] .app-only { display: revert; }
-  [data-shell=app] { -webkit-tap-highlight-color: transparent; }
-  /* 安卓 Chrome 的"轻触搜索": 点到不是真链接/按钮的文字就当成要查词, 底部弹 Google 搜那个字。底栏这些 <a> 没 href, 靠 onclick 跳,
-     浏览器不认它可点 ⇒ 点"模型""训练"就弹搜索。文字不可选它就无词可查——所以 UI 骨架一律禁选, 正文/消息/代码不在此列, 照常能长按复制 */
+  /* touch-action: manipulation = 保留拖动和双指缩放, 关掉双击放大(连点两下按钮/文字整页突然放大, 还要等 300 ms 判是不是双击)。
+     overscroll-behavior 写在根上才管得住安卓 Chrome 的下拉刷新: 消息区拉到顶再往下拽, 整页刷新、对话流断掉 */
+  [data-shell=app] { -webkit-tap-highlight-color: transparent; touch-action: manipulation; overscroll-behavior: none; }
+  /* 误选文字: 整页一律不可选, 只有输入框例外; 复制正文改成长按整块(脚本 PRESS_COPY)。
+     为什么连消息正文也禁: 安卓 Chrome 的"轻触搜索"(developer.chrome.com/blog/tap-to-search)对可选文字两种都触发 ——
+     轻点文字弹、长按选中文字也弹(底部冒"点按可查看更多"那条), 后一种页面关不掉, 官方给的唯一办法就是 user-select: none。
+     10-14 只禁了界面骨架、正文留着可选, spark 上一长按消息照样弹(用户实撞)。
+     -webkit-touch-callout: none = iOS 长按图片/链接不弹"存储图像/打开链接"系统菜单; 消息里的链接、图片放回来。
+     输入框必须显式放开: iOS 上祖先 user-select: none 会让输入框点了不弹键盘、打不进字 */
+  [data-shell=app] body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  [data-shell=app] :is(input, textarea, [contenteditable=true]) { -webkit-user-select: text; user-select: text; }
+  [data-shell=app] .newkey code { -webkit-user-select: none; user-select: none; }   /* 电脑上点一下全选密钥(user-select: all); 手机上旁边有"复制"键 */
+  [data-shell=app] .bubble :is(a[href], img) { -webkit-touch-callout: default; }
+  /* 长按复制: 按满 0.5 秒这一块描边, 意思是"松手就复制" */
+  [data-shell=app] .pressing { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 8px; }   /* 描边不用变底色: 自己的消息气泡本来就是蓝底, 变底色看不出来 */
   [data-shell=app] :is(a:not([href]), button, summary, .sitem, .mrow, .setbtn, .tb-sub, #pick .pi, .tool .thead, .drop, .switch, tr.click) { -webkit-user-select: none; user-select: none; }
+  /* 手指点过的东西 :hover 会一直挂着(要点别处才掉), 列表行点完返回还亮着一条。没有悬停能力的屏上把背景类 hover 撤掉, 按下(:active)照常亮 */
+  @media (hover: none) {
+    [data-shell=app] :is(.mrow, .sitem:not(.on), .setbtn, #pick .pi, .sk-list .row:not(.sel)):hover:not(:active) { background: transparent; }
+    [data-shell=app] tbody tr:hover td { background: none; }
+  }
   /* 高度跟着可视区走(--app-h 由脚本按 visualViewport 写): iOS 弹键盘时布局视口不缩, 不这么做输入框会被键盘盖住 */
   [data-shell=app] body { flex-direction: column; height: var(--app-h, 100dvh); font-size: 15px; overscroll-behavior: none; }
   [data-shell=app] .main { min-height: 0; }   /* 竖排 flex 的子项默认不肯比内容矮: 不写这句, 长对话把输入框和底栏挤到屏幕外 */
   [data-shell=app] input, [data-shell=app] select, [data-shell=app] textarea { font-size: 16px; }   /* iOS: 小于 16px 的输入框一聚焦整页就放大 */
-  [data-shell=app] button { touch-action: manipulation; }
   [data-shell=app] .view { padding: 14px 14px 28px; overscroll-behavior: contain; }
   [data-shell=app] .card { padding: 14px; border-radius: 14px; }
   /* 顶栏: 左键(对话页 = 抽屉, 二级页 = 返回) · 标题 + 引擎状态 · 右键(对话页 = 新对话); 状态栏透明(standalone)时让出刘海 */
@@ -479,7 +515,7 @@
   [data-shell=app] .composer { padding: 6px 10px 8px; }
   [data-shell=app] .composer .box { border-radius: 20px; padding: 8px 8px 6px 14px; }
   [data-shell=app] .composer .tools select { max-width: 42vw; }
-  [data-shell=app] #btn-send { border-radius: 16px; padding: 6px 16px; }
+  [data-shell=app] .composer .hold { min-height: 42px; font-size: 16px; }
   [data-shell=app] .codeblock pre { font-size: 12.5px; }
   [data-shell=app] .tool .thead { padding: 10px 12px; }
   [data-shell=app] .abtns button { flex: 1 1 40%; padding: 9px 10px; }   /* 审批按钮: 手指点得准, 两两一行 */
@@ -500,6 +536,14 @@
   [data-shell=app] .mem-grid { gap: 14px; }
   [data-shell=app] textarea.memtxt { min-height: 42vh; }
   [data-shell=app] #toast { left: 14px; right: 14px; bottom: calc(70px + env(safe-area-inset-bottom)); max-width: none; text-align: center; }
+  /* iOS 弹键盘不缩布局视口, position: fixed 的东西仍按整屏高度摆: 登录框/确认框/设置页的下半截和提示条都压在键盘底下。
+     --kb = 键盘挡住的高度(脚本按 visualViewport 算, 安卓布局视口自己会缩, 那边是 0), 底边抬到键盘上沿 */
+  [data-shell=app] :is(#auth, #ask, #settings) { bottom: var(--kb, 0px); }
+  /* 抬起来后只剩三四百像素, 登录框(头像+三个输入框)比这高。align-items: center 溢出时上下各切一半, 顶上那半截滚不到;
+     换成 margin: auto: 放得下照样居中, 放不下从顶上排、往下滚 */
+  [data-shell=app] :is(#auth, #ask) { overflow-y: auto; align-items: flex-start; }
+  [data-shell=app] :is(#auth form, #ask .abox) { margin: auto 0; }
+  [data-shell=app][data-kb] #toast { bottom: calc(var(--kb) + 12px); }
   /* 表格 → 卡片: 一行一张卡, 每格左边是表头(data-label, 脚本按 thead 自动填), 首格当卡片标题; 没有表头的表(.flow)各格顺排 */
   [data-shell=app] table.cards, [data-shell=app] table.cards tbody { display: block; }
   [data-shell=app] table.cards thead { display: none; }
@@ -560,9 +604,11 @@
     <div class="chat-scroll" id="chat-scroll"><div class="chat-inner" id="chat"></div></div>
     <div class="composer">
       <div class="devnote" id="dev-note"></div>
+      <div class="mic-ov" id="mic-ov"><div class="lvl"><i id="mic-lvl"></i></div><div class="t" id="mic-ov-t"></div><div class="s" id="mic-ov-s"></div></div>
       <div class="box">
         <div class="attach" id="attach-list"></div>
         <textarea id="input" rows="1"></textarea>
+        <button class="hold" id="btn-hold" type="button"></button>
         <div class="tools">
           <button class="ghost" id="btn-attach" title="附件">📎</button><input type="file" id="attach-in" multiple style="display:none">
           <select id="plug" class="picked" style="display:none"></select><button class="ghost pickbtn" id="plug-btn" style="display:none"></button><label id="pt-sw" class="switch" style="display:none"><input type="checkbox" id="pt-on"><span class="knob"></span><span data-i18n="pt">后训练</span></label><span class="muted" id="plug-st" style="font-size:12px"></span>
@@ -577,12 +623,14 @@
        一句话 = 一个任务(~/.ds4/assistant/tasks/<id>.json) + 一个专属对话; 助理到点往那个对话里发"继续这个任务", 什么时候再看由模型自己定(task_check_in), 做完了 task_done。
        列表 = GET /api/assistant/tasks; 操作 POST tasks {op}; "打开"就是进它的对话(助理页), 工具卡/审批卡全是现成的。 -->
   <section class="view" id="v-tasks">
-    <!-- 通知(10-14): 开关 = 这台设备订阅浏览器推送(VAPID 公钥从 GET /api/assistant/push 来, 订阅 POST 回去); 有页面开着时服务端不推, 改成页面里弹(poll 拉 /notices) -->
+    <!-- 通知(10-14): 开关 = 这台设备订阅浏览器推送(VAPID 公钥从 GET /api/assistant/push 来, 订阅 POST 回去); 这台设备正开着页面时服务端先压着, 切走后补推, 页面里不弹 -->
     <div class="card"><div class="card-title" data-i18n="nt_title">通知</div><div class="muted" data-i18n="nt_sub" style="margin-bottom:10px"></div>
       <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
         <label class="switch" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="nt-on"><span class="knob"></span><span data-i18n="nt_switch">在这台设备上接收通知</span></label>
         <button id="nt-test" data-i18n="nt_test">发一条测试</button><span class="muted" id="nt-state"></span></div>
-      <div class="muted" id="nt-devices" style="margin-top:8px"></div></div>
+      <div class="muted" id="nt-devices" style="margin-top:8px"></div>
+      <!-- 推送代理(10-15): 安卓 Chrome 的推送要经谷歌 FCM, 服务端国内直连不通; 填了发送走它, 空 = 直连(iPhone 的苹果推送直连就通) -->
+      <div style="display:flex;gap:10px;align-items:center;margin-top:10px"><input id="nt-proxy" data-i18n-ph="nt_proxy_ph" style="flex:1" spellcheck="false" autocapitalize="off"><button id="nt-proxy-save" data-i18n="nt_proxy_save">保存</button></div></div>
     <div class="card"><div class="card-title" data-i18n="tk_new">新任务</div><div class="muted" data-i18n="tk_new_sub" style="margin-bottom:10px"></div>
       <div style="display:flex;gap:10px;align-items:center"><input id="tk-text" data-i18n-ph="tk_ph" style="flex:1" autocapitalize="off"><button class="primary" id="tk-add" data-i18n="tk_add">创建</button></div></div>
     <div class="card"><div class="card-title" data-i18n="tk_list">任务</div><div class="muted" data-i18n="tk_list_sub" style="margin-bottom:10px"></div>
@@ -995,7 +1043,7 @@ const I18N = {
     tk_open: "打开", tk_pause: "暂停", tk_resume: "继续", tk_run: "现在跟进", tk_done: "完成", tk_del: "删除", tk_del_confirm: "删除这个任务和它的对话? (挪进 ~/.ds4/assistant/trash/, 盘上还能找回)",
     tk_runs: "跟进 {0} 次", tk_next: "下次 {0}", tk_running: "进行中", tk_queued: "排队中", tk_waiting: "等你批准", tk_paused: "已暂停", tk_done_s: "已完成", tk_err: "上次出错", tk_note: "助理的话: {0}", tk_created: "创建于 {0}",
     nt_title: "通知", nt_sub: "任务做完、跑了很久的回答好了、助理安排的提醒到点, 推到开了通知的设备上(手机装成 App 也收得到)。正开着页面在看时不推, 直接在页面里弹。", nt_switch: "在这台设备上接收通知", nt_test: "发一条测试",
-    nt_devices: "已开通知的设备: {0} 台 {1}", nt_unsupported: "这个浏览器或打开方式不支持推送(要 https 或 localhost 打开)", nt_ios: "iPhone 上要先\"添加到主屏幕\", 从主屏幕打开才能开通知", nt_denied: "通知权限被拒绝了, 到浏览器设置里允许后再开", nt_on: "已打开", nt_sent: "测试通知已发, 看设备", nt_subfail: "开不了: {0}",
+    nt_devices: "已开通知的设备: {0} 台 {1}", nt_unsupported: "这个浏览器或打开方式不支持推送(要 https 或 localhost 打开)", nt_ios: "iPhone 上要先\"添加到主屏幕\", 从主屏幕打开才能开通知", nt_denied: "通知权限被拒绝了, 到浏览器设置里允许后再开", nt_on: "已打开", nt_sent: "测试通知已发, 看设备", nt_subfail: "开不了: {0}", nt_proxy_ph: "推送代理(安卓收不到时填, 如 http://127.0.0.1:7890; 留空 = 直连)", nt_proxy_save: "保存", nt_proxy_saved: "推送代理已保存",
     rm_title: "定时提醒", rm_sub: "助理用 notify 工具安排的: 到点推到设备(页面开着就在页面里弹)。不想要的删掉。", rm_empty: "没有待发的提醒", rm_del: "删除", rm_open: "打开", rm_at: "{0} · 来自对话",
     au_setup_t: "首次使用: 设置用户名和密码", au_setup_sub: "以后打开工作台都要用它登录。只以单向哈希存在运行工作台的那台机器上({0}); 忘了就删掉这个文件, 刷新页面重新设置。",
     au_login_t: "登录", au_login_sub: "登录后这个浏览器 30 天内免登, 常用会自动续期。", au_broken_t: "登录文件读不懂",
@@ -1011,8 +1059,11 @@ const I18N = {
     dec_auto: "自动放行", dec_once: "你批准了", dec_session: "本会话已允许", dec_always: "永久允许", dec_denied: "你拒绝了", dec_blocked: "规则拦下", dec_cancelled: "已取消",
     a_end_stopped: "已停止", a_end_error: "出错了", a_usage: "提示 {0} · 生成 {1} token", s_running: "进行中", s_waiting_approval: "等你批准", s_waiting_device: "等设备回答", s_queued: "排队中…", ph_busy: "助理正在干活, 点停止可打断",
     dec_device: "设备答复了", dev_doing: "这台设备正在做…", dev_other: "在等发消息的那台设备回答; 它不在了就用这台:", dev_mine: "用这台设备回答", dev_tap_read_clipboard: "需要你点一下才能读剪贴板:", dev_tap_pick_file: "请选一个文件:", dev_tap_pick_photo: "请选一张照片:",
-    dev_btn_read_clipboard: "读取剪贴板", dev_btn_pick_file: "选择文件", dev_btn_pick_photo: "选择照片", dev_tap_locate: "需要你点一下才能定位:", dev_btn_locate: "定位", dev_no_api: "这个浏览器不支持", dev_http: "位置、剪贴板、分享这些能力浏览器只在 https(或本机地址)下开放; 现在是 http 打开的, 助理拿不到位置、读不了剪贴板、分享不了文件",
-    dl_download: "下载", dl_share: "分享", dl_preview: "预览", dl_fail: "取文件失败: {0}", share_fail: "分享没成: {0}", share_type_blocked: "这个浏览器不让分享 .{0} 文件, 点文件卡上的「下载」, 再从文件夹里发", copied_answer: "回答已复制到剪贴板", attach_fail: "附件没传上: {0}", attach_title: "附件",
+    dev_btn_read_clipboard: "读取剪贴板", dev_btn_pick_file: "选择文件", dev_btn_pick_photo: "选择照片", dev_tap_locate: "需要你点一下才能定位:", dev_btn_locate: "定位", dev_no_api: "这个浏览器不支持", dev_http: "位置、剪贴板、分享、麦克风这些能力浏览器只在 https(或本机地址)下开放; 现在是 http 打开的, 助理拿不到位置、读不了剪贴板、分享不了文件, 也没有语音输入",
+    dl_download: "下载", dl_share: "分享", dl_preview: "预览", file_fail: "取文件失败: {0}", share_fail: "分享没成: {0}", share_type_blocked: "这个浏览器不让分享 .{0} 文件, 点文件卡上的「下载」, 再从文件夹里发", copied_answer: "回答已复制到剪贴板", attach_fail: "附件没传上: {0}", attach_title: "附件",
+    mic_title: "语音输入", kb_title: "切换到文字输入", mic_hold: "按住 说话", mic_release: "松开 发送", mic_cancel_zone: "松开 取消", mic_recog: "识别中…",
+    ov_hint: "松开发送, 上滑取消", ov_cancel: "松开手指, 取消发送", ov_left: "还能说 {0} 秒", mic_short: "说话时间太短",
+    mic_denied: "麦克风权限被拒了, 去浏览器设置里打开", mic_fail: "语音识别没成: {0}", mic_empty: "没听到话",
     act_copy_text: "复制", act_share: "分享", act_open_url: "打开", act_navigate: "导航", act_call: "拨打", act_open_app: "打开",
     mem_profile: "关于你", mem_profile_sub: "助理用 remember 记下的事, 每行一条, 方括号里是记下的日期和会话号。删掉一行 = 让它忘掉; 改完点保存, 新开的对话生效。",
     mem_rules: "规矩", mem_rules_sub: "你给助理定的规矩, 只有你能写, 优先于一切。例如: 回复用中文; 不要碰 ~/Documents/财务。新开的对话生效。", save: "保存", saved: "已保存", mem_path: "文件: {0}",
@@ -1048,7 +1099,7 @@ const I18N = {
     set_danger: "危险模式(云手机)", set_danger_sub: "打开后起一部虚拟安卓手机(Android 13, 没有 SIM、没有账号、没有应用商店), 模型可以自主在上面点击、滑动、输入、安装和打开 app, 没有人逐步确认。你在手机里登录的账号、装的 app 它都能用 —— 可能发消息、下单、付款、删东西, 后果由打开开关的人承担。只在 Linux 主机上有。",
     ph_confirm: "确定打开危险模式? 模型将自主操作一部虚拟手机, 可能发消息、下单、付款。", ph_on: "打开", ph_st_off: "已关", ph_st_starting: "启动中…", ph_st_ready: "运行中", ph_st_stopping: "停止中…", ph_st_error: "出错",
     ph_mem: "内存 {0} / {1} MB", ph_off_t: "云手机没开", ph_off: "在设置里打开危险模式, 手机起来后这里就是它的屏幕", ph_type: "输入", ph_install: "安装 APK", ph_installing: "安装中…", ph_installed: "已装: {0}",
-    ph_info: "内存 {0}/{1} MB · {2} 人在看", ph_novideo: "这个浏览器不支持视频流(WebCodecs), 退回每秒一张截图", ph_apps: "打开 app:", ph_busy: "手机忙, 稍后再试", ph_secure: "这个页面禁止截屏(登录/支付类页面), 系统不给画面; 控件和点击照常",
+    ph_info: "内存 {0}/{1} MB · {2} 人在看", ph_novideo: "这个浏览器不支持视频流(WebCodecs), 退回每秒一张截图", ph_apps: "打开 app:", phone_busy: "手机忙, 稍后再试", ph_secure: "这个页面禁止截屏(登录/支付类页面), 系统不给画面; 控件和点击照常",
     set_amap_key: "Key", set_amap_del: "删除", set_amap_on: "已保存: 附近搜索与门牌级地址反查已开", set_amap_off: "没有 Key: 地址反查走高德网页版接口(免 Key, 到路名), 附近店铺搜索要 Key", set_amap_nobrowser: "这台机器没有火狐(请求经火狐走 https): 地址反查与附近搜索都用不了",
     set_cert_ok: "证书已装上", set_cert_info: "{0} · {1} 到期 · {2} 张证书链", set_cert_files: "来自压缩包里的 {0} 与 {1}", set_cert_expired: "已过期",
     tun_off: "未开启", tun_busy: "部署中", tun_up: "已连通", tun_reconn: "连接断了, frpc 正在重连", tun_err: "出错了", tun_open: "打开", tun_http_note: "现在是 http: 能访问, 但浏览器只在 https 下给装 App —— 下面传一个证书",
@@ -1155,7 +1206,7 @@ const I18N = {
     tk_open: "Open", tk_pause: "Pause", tk_resume: "Resume", tk_run: "Follow up now", tk_done: "Done", tk_del: "Delete", tk_del_confirm: "Delete this task and its conversation? (moved to ~/.ds4/assistant/trash/, still recoverable on disk)",
     tk_runs: "{0} follow-ups", tk_next: "next {0}", tk_running: "Running", tk_queued: "Queued", tk_waiting: "Waiting for you", tk_paused: "Paused", tk_done_s: "Done", tk_err: "Last run failed", tk_note: "Assistant's note: {0}", tk_created: "created {0}",
     nt_title: "Notifications", nt_sub: "A finished task, a long answer that is ready, a reminder the assistant scheduled: pushed to the devices that turned notifications on (an installed phone app gets them too). While a page is open and visible nothing is pushed; it pops up in the page instead.", nt_switch: "Receive notifications on this device", nt_test: "Send a test",
-    nt_devices: "Devices with notifications on: {0} {1}", nt_unsupported: "This browser or way of opening does not support push (open over https or localhost)", nt_ios: "On iPhone, add to the home screen first and open from there to turn notifications on", nt_denied: "Notification permission was denied; allow it in the browser settings, then turn on", nt_on: "On", nt_sent: "Test sent, check the device", nt_subfail: "Could not turn on: {0}",
+    nt_devices: "Devices with notifications on: {0} {1}", nt_unsupported: "This browser or way of opening does not support push (open over https or localhost)", nt_ios: "On iPhone, add to the home screen first and open from there to turn notifications on", nt_denied: "Notification permission was denied; allow it in the browser settings, then turn on", nt_on: "On", nt_sent: "Test sent, check the device", nt_subfail: "Could not turn on: {0}", nt_proxy_ph: "Push proxy (fill in if Android gets nothing, e.g. http://127.0.0.1:7890; empty = direct)", nt_proxy_save: "Save", nt_proxy_saved: "Push proxy saved",
     rm_title: "Scheduled reminders", rm_sub: "Scheduled by the assistant with the notify tool: pushed to your devices at the time (shown in the page if it is open). Delete the ones you do not want.", rm_empty: "No pending reminders", rm_del: "Delete", rm_open: "Open", rm_at: "{0} · from a conversation",
     au_setup_t: "First run: set a username and password", au_setup_sub: "You'll sign in with these every time. Only a one-way hash is stored, on the machine running the studio ({0}); if you forget, delete that file and reload to set them again.",
     au_login_t: "Sign in", au_login_sub: "This browser stays signed in for 30 days, renewed while you keep using it.", au_broken_t: "Login file unreadable",
@@ -1171,8 +1222,11 @@ const I18N = {
     dec_auto: "Auto-allowed", dec_once: "You allowed it", dec_session: "Allowed for this chat", dec_always: "Always allowed", dec_denied: "You denied it", dec_blocked: "Blocked by rules", dec_cancelled: "Cancelled",
     a_end_stopped: "Stopped", a_end_error: "Error", a_usage: "prompt {0} · generated {1} tokens", s_running: "Running", s_waiting_approval: "Waiting for you", s_waiting_device: "Waiting for your device", s_queued: "Queued…", ph_busy: "The assistant is working; press Stop to interrupt",
     dec_device: "Answered by your device", dev_doing: "This device is doing it…", dev_other: "Waiting for the device that sent the message; if it's gone, use this one:", dev_mine: "Answer from this device", dev_tap_read_clipboard: "Tap to let it read the clipboard:", dev_tap_pick_file: "Pick a file:", dev_tap_pick_photo: "Pick a photo:",
-    dev_btn_read_clipboard: "Read clipboard", dev_btn_pick_file: "Choose file", dev_btn_pick_photo: "Choose photo", dev_tap_locate: "Tap to share your position:", dev_btn_locate: "Locate", dev_no_api: "Not supported by this browser", dev_http: "Browsers only expose location, clipboard and sharing over https (or this machine's own address); this page was opened over http, so the assistant can't get your location, read the clipboard or share files",
-    dl_download: "Download", dl_share: "Share", dl_preview: "Preview", dl_fail: "Could not fetch the file: {0}", share_fail: "Share failed: {0}", share_type_blocked: "This browser won't share .{0} files; use Download on the file card and send it from your files", copied_answer: "Answer copied to the clipboard", attach_fail: "Upload failed: {0}", attach_title: "Attach",
+    dev_btn_read_clipboard: "Read clipboard", dev_btn_pick_file: "Choose file", dev_btn_pick_photo: "Choose photo", dev_tap_locate: "Tap to share your position:", dev_btn_locate: "Locate", dev_no_api: "Not supported by this browser", dev_http: "Browsers only expose location, clipboard, sharing and the microphone over https (or this machine's own address); this page was opened over http, so the assistant can't get your location, read the clipboard, share files, or take voice input",
+    dl_download: "Download", dl_share: "Share", dl_preview: "Preview", file_fail: "Could not fetch the file: {0}", share_fail: "Share failed: {0}", share_type_blocked: "This browser won't share .{0} files; use Download on the file card and send it from your files", copied_answer: "Answer copied to the clipboard", attach_fail: "Upload failed: {0}", attach_title: "Attach",
+    mic_title: "Voice input", kb_title: "Switch to keyboard", mic_hold: "Hold to talk", mic_release: "Release to send", mic_cancel_zone: "Release to cancel", mic_recog: "Recognizing…",
+    ov_hint: "Release to send, slide up to cancel", ov_cancel: "Release to cancel", ov_left: "{0} s left", mic_short: "Too short",
+    mic_denied: "Microphone access was denied; allow it in the browser settings", mic_fail: "Speech recognition failed: {0}", mic_empty: "Didn't hear anything",
     act_copy_text: "Copy", act_share: "Share", act_open_url: "Open", act_navigate: "Directions", act_call: "Call", act_open_app: "Open",
     mem_profile: "About you", mem_profile_sub: "Things the assistant saved with remember, one per line; the brackets show the date and conversation. Delete a line to make it forget; save, and new conversations pick it up.",
     mem_rules: "Rules", mem_rules_sub: "Rules you give the assistant; only you write them, and they override everything. E.g.: reply in English; never touch ~/Documents/finance. New conversations pick them up.", save: "Save", saved: "Saved", mem_path: "File: {0}",
@@ -1208,7 +1262,7 @@ const I18N = {
     set_danger: "Danger mode (virtual phone)", set_danger_sub: "Starts a virtual Android phone (Android 13, no SIM, no accounts, no app store). The model can tap, swipe, type, install and open apps on it on its own, with nobody confirming each step. Any account you sign into and any app you install there, it can use: it may send messages, place orders, pay or delete things. Whoever turns this on bears the consequences. Linux hosts only.",
     ph_confirm: "Turn on danger mode? The model will operate a virtual phone on its own and may send messages, order or pay.", ph_on: "Turn on", ph_st_off: "off", ph_st_starting: "starting…", ph_st_ready: "running", ph_st_stopping: "stopping…", ph_st_error: "error",
     ph_mem: "memory {0} / {1} MB", ph_off_t: "The phone is off", ph_off: "Turn on danger mode in Settings; once the phone is up, its screen shows here", ph_type: "Type", ph_install: "Install APK", ph_installing: "Installing…", ph_installed: "Installed: {0}",
-    ph_info: "memory {0}/{1} MB · {2} watching", ph_novideo: "This browser has no WebCodecs; falling back to one screenshot per second", ph_apps: "Open app:", ph_busy: "The phone is busy, try again", ph_secure: "This screen forbids capture (login/payment pages); no picture, but elements and taps still work",
+    ph_info: "memory {0}/{1} MB · {2} watching", ph_novideo: "This browser has no WebCodecs; falling back to one screenshot per second", ph_apps: "Open app:", phone_busy: "The phone is busy, try again", ph_secure: "This screen forbids capture (login/payment pages); no picture, but elements and taps still work",
     set_amap_key: "Key", set_amap_del: "Delete", set_amap_on: "Saved: nearby search and street-number address lookup are on", set_amap_off: "No key: address lookup uses Amap's web endpoint (free, to street level); nearby place search needs a key", set_amap_nobrowser: "No Firefox on this machine (requests go through it for https): neither address lookup nor nearby search works",
     set_cert_ok: "Certificate installed", set_cert_info: "{0} · expires {1} · chain of {2}", set_cert_files: "from {0} and {1} in the zip", set_cert_expired: "expired",
     tun_off: "Off", tun_busy: "Setting up", tun_up: "Connected", tun_reconn: "Connection lost, frpc is reconnecting", tun_err: "Error", tun_open: "Open", tun_http_note: "This is http: reachable, but browsers only install apps over https — upload a certificate below",
@@ -1302,11 +1356,30 @@ window.addEventListener("resize", () => {
   document.documentElement.dataset.shell = s; drawer(false); if (shownTab) showTab(curTab() || "chat"); devNote();
   if (!view || !view.items.length) renderChat();   /* 空对话页的例子分手机/电脑两句(empty_sub_app / empty_sub), 换外壳要换过来 */
 });
-/* iOS 弹键盘只缩可视区(visualViewport), 不缩布局视口: 把可视区高度写给 body(--app-h), 输入框才会贴在键盘上沿而不是被盖住。
-   Chrome 安卓有 interactive-widget=resizes-content(见 viewport meta), 两边读数一致, 写了也无害 */
+/* iOS 弹键盘只缩可视区(visualViewport), 不缩布局视口: 把可视区高度写给 body(--app-h), 输入框才会贴在键盘上沿而不是被盖住;
+   键盘挡住的高度写进 --kb, 给 position: fixed 的弹窗/提示条抬底边用(它们按布局视口摆, 不跟 body 走)。
+   Chrome 安卓有 interactive-widget=resizes-content(见 viewport meta), 布局视口自己会缩, 读出来 --kb = 0, 写了也无害 */
 if (window.visualViewport) {
-  const fit = () => { document.documentElement.style.setProperty("--app-h", visualViewport.height + "px"); if (isApp()) window.scrollTo(0, 0); };
-  visualViewport.addEventListener("resize", fit); fit();
+  const vv = visualViewport, root = document.documentElement;
+  let raf = 0, lastH = 0;
+  const fit = () => {
+    raf = 0;
+    /* 乘 scale: 双指放大 2 倍时可视区读数减半, 不乘的话整页高度跟着缩成半屏 */
+    const h = vv.height * vv.scale, kb = Math.max(0, root.clientHeight - h);
+    root.style.setProperty("--app-h", h + "px"); root.style.setProperty("--kb", kb + "px");
+    root.toggleAttribute("data-kb", kb > 120);   /* 120: 低于这个是地址栏伸缩之类的小抖动, 不是键盘 */
+    if (!isApp()) return;
+    /* iOS 聚焦输入框会把整页往上推(offsetTop > 0), 顶栏被推出屏幕、底下空一截; 推完不一定发 resize, 只发 scroll, 所以两个事件都听。
+       放大状态不拉回: 那是用户自己在拖着看 */
+    if (vv.scale < 1.01 && (vv.offsetTop > 0 || window.scrollY > 0)) window.scrollTo(0, 0);
+    /* 弹窗/设置页里的输入框: 高度收到键盘上沿以后它可能落在可见区外(上一行刚把 iOS 自己的推页撤了), 滚进来。
+       底部输入条(#input)永远贴在键盘上, 不用管; 只在高度变了时滚一次, 不然用户自己往上翻又被拽回来 */
+    const a = document.activeElement;
+    if (h !== lastH && kb > 120 && a && a.id !== "input" && a.matches("input, textarea, select")) a.scrollIntoView({ block: "nearest" });
+    lastH = h;
+  };
+  const later = () => { if (!raf) raf = requestAnimationFrame(fit); };
+  vv.addEventListener("resize", later); vv.addEventListener("scroll", later); fit();
 }
 /* 训练页在 app 外壳里分"进度 / 设置"两段, 一屏只看一样; 第一次进按有没有训过选(有就看进度) */
 let trainPane = null;
@@ -1394,7 +1467,7 @@ async function poll() {
     if (curTab() === "train" || curTab() === "chat") await loadDetail();
     if (curTab() === "models" || st.downloading || !mdata) loadModels();   /* 下载中也拉: 侧栏"模型"旁的百分比要跟着走 */
     else if (curTab() === "chat") loadModels(true);   /* 聊天页的侧车下拉与切换状态 */
-    loadSessions(); if (curTab() === "act") loadAct(); if (curTab() === "tasks") loadTasks(); pollNotices();   /* 对话列表在侧栏、每页都看得见 */   /* 会话状态点 / 审计流水 / 任务进展 / 页内通知与在场心跳跟着走 */
+    loadSessions(); if (curTab() === "act") loadAct(); if (curTab() === "tasks") loadTasks(); presenceBeat();   /* 对话列表在侧栏、每页都看得见 */   /* 会话状态点 / 审计流水 / 任务进展 / 在场心跳跟着走 */
   } catch (e) { status = null; failCount++; renderEngine(); }
 }
 async function act(url, body, okMsg, sw) {
@@ -1822,8 +1895,9 @@ function renderSessions() {
 $("btn-new").onclick = () => selectSession(null);
 function renderChatGate() {
   const serving = status && status.mode === "serving" && !switching, ban = $("chat-banner"), b = busy();
-  sendBtn.disabled = !serving && !b; inputEl.disabled = !serving;
-  sendBtn.textContent = t(b ? "stop" : "send"); sendBtn.className = b ? "danger" : "primary";
+  inputEl.disabled = !serving;
+  if (serving) asrProbe();   /* 模型子进程起来了才知道装没装识别模型 */
+  renderRightBtn();
   inputEl.placeholder = t(serving ? (b ? "ph_busy" : "ph_input") : "ph_noinput");
   if (serving || !status && !switching) { ban.classList.remove("on"); return; }
   ban.classList.add("on");
@@ -1837,14 +1911,33 @@ function renderChatGate() {
   } else if (status.mode === "loading") { $("chat-banner-text").textContent = t("ban_loading");
   } else { $("chat-banner-text").textContent = t("ban_lobby"); $("btn-load2").style.display = ""; }
 }
-function autosize() { inputEl.style.height = "auto"; inputEl.style.height = Math.min(220, inputEl.scrollHeight) + "px"; inputEl.style.overflowY = inputEl.scrollHeight > 220 ? "auto" : "hidden"; }
-inputEl.oninput = autosize;
+/* 输入框随字数长高, 封顶 220 px; 手机上再封到可视高度的 30%: 小屏弹键盘后只剩三百多像素, 220 px 的输入框把消息区挤得只剩一两行 */
+function autosize() {
+  const cap = isApp() && window.visualViewport ? Math.min(220, Math.round(visualViewport.height * visualViewport.scale * .3)) : 220;
+  inputEl.style.height = "auto"; inputEl.style.height = Math.min(cap, inputEl.scrollHeight) + "px"; inputEl.style.overflowY = inputEl.scrollHeight > cap ? "auto" : "hidden";
+}
+if (window.visualViewport) visualViewport.addEventListener("resize", () => { if (isApp() && inputEl.value) autosize(); });
+inputEl.oninput = () => { autosize(); renderRightBtn(); };   /* 打了字麦克风换成发送, 删光了换回来 */
+/* 消息区变矮(弹键盘、输入框长高、横幅冒出来)时, 原本贴着底的继续贴底: 不然键盘一弹, 最后几条消息被压在输入框下面, 得手动往下拉。
+   贴不贴底按用户最后一次滚动时的位置算; 变矮那一刻距底距离已经被撑大了, 那时再算就判成"没贴底" */
+let chatPinned = true;
+scrollEl.addEventListener("scroll", () => { chatPinned = scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight < 160; }, { passive: true });
+if (window.ResizeObserver) new ResizeObserver(() => { if (chatPinned) scrollEl.scrollTop = scrollEl.scrollHeight; }).observe(scrollEl);
 /* 回车发送只在电脑上: 手机软键盘的回车是换行(微信也这样), 发送只走按钮。
    不这么做会怎样(10-13 spark 手机实撞): 回车已经把消息发了出去, 用户不知道, 再点按钮 —— 这时按钮已经是"停止"(发送键兼停止键), 刚起跑的任务被停掉,
    页面看到的就是"直接发了就显示已停止"(usage 0/0, 盘上 end=stopped)。 */
 const touchKeyboard = () => isApp() || matchMedia("(pointer: coarse)").matches;
-inputEl.onkeydown = e => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing && !touchKeyboard()) { e.preventDefault(); send(); } };
-sendBtn.onclick = () => busy() ? stopRun("button") : send();
+/* 回车是不是在给输入法上屏: Safari 先结束组字再发 keydown, 那一下 isComposing 已经是 false, 只剩 keyCode 229 能认出来。
+   只看 isComposing 的话, Mac Safari 上打拼音按回车选英文, 半截拼音连同消息直接发出去 */
+function imeEnter(e) { return e.isComposing || e.keyCode === 229; }
+inputEl.onkeydown = e => { if (e.key === "Enter" && !e.shiftKey && !imeEnter(e) && !touchKeyboard()) { e.preventDefault(); send(); } };
+sendBtn.onclick = () => {
+  const m = rightMode();
+  if (m === "stop") stopRun("button");
+  else if (m === "mic") voiceMode(true);
+  else if (m === "kb") voiceMode(false);
+  else send();
+};
 /* 键盘弹着时按输入条上的按钮(发送/停止/附件/侧车/后训练开关), 不许把焦点从输入框抢走(10-12 用户: "第一次点发送没有反应, 非要把键盘关掉才可以点")。
    抢走会怎样: 按下那一刻输入框失焦 → 底栏的 body:has(textarea:focus) 不再成立、底栏冒回来, 键盘也开始收 → 输入条被往上顶,
    手指抬起时按钮已不在指尖下, click 落到别处; 第二次点时键盘已收、布局不动, 才点得中。焦点的转移是 pointerdown/mousedown 的默认动作, 拦住它布局就不动,
@@ -1857,14 +1950,20 @@ async function stopRun(how) {
   openStream(curSid, true);   /* 停止后换条连接接着读: 页面要是因为旧连接死了才一直显示"进行中", 这一下就把漏掉的 end 读回来 */
 }
 let sending = false;
-async function send() {
-  const msg = inputEl.value.trim(); if (!msg || inputEl.disabled || sending) return;
+/* voice = 语音识别出来的字(松手即发): 不碰输入框里的草稿; 发失败时把它放进输入框并切回文字模式, 话不丢 */
+async function send(voice) {
+  const msg = voice != null ? voice : inputEl.value.trim(); if (!msg || inputEl.disabled || sending) return;
   if (busy()) { toast(t("ph_busy"), true); return; }
-  sending = true; sendBtn.disabled = true; inputEl.value = ""; autosize();
+  sending = true; sendBtn.disabled = true; if (voice == null) { inputEl.value = ""; autosize(); }
   try {
     const files = pendingFiles.slice(), n0 = view && view.sid === curSid ? view.items.length : 0;
     const r = await aFetch("send", { session: curSid || "", text: msg, client: clientId, device: deviceInfo(), caps: deviceCaps(), apps: deviceApps(), files });
-    if (r.error) { toast(t("fail", r.error), true); inputEl.value = msg; autosize(); return; }
+    if (r.error) {
+      toast(t("fail", r.error), true);
+      if (voice != null) { const cur = inputEl.value.replace(/\s*$/, ""); inputEl.value = cur ? cur + " " + msg : msg; voiceMode(false); }
+      else inputEl.value = msg;
+      autosize(); return;
+    }
     pendingFiles = []; renderAttach();
     if (r.session !== curSid || !view) { curSid = r.session; lsSet("ds4.asst.sid", curSid); openStream(curSid); }
     /* 流比回包快是常事: 工人线程拿到就写 user 事件, 页面可能先读到它(状态已是 running / 等审批)。那时再写状态就把真状态盖掉,
@@ -1960,6 +2059,166 @@ $("attach-in").onchange = async () => {
   $("attach-in").value = ""; renderAttach(); if (!isApp()) inputEl.focus();
 };
 $("btn-attach").title = t("attach_title");
+/* ---------------- 语音输入(10-14, 方案稿 docs/assistant_asr.md §3; 用户: 照微信的交互) ----------------
+   最右一个圆钮四种状态(rightMode): 助理在跑 = 停止; 语音模式 = 键盘(点了回文字); 输入框有字 = 发送; 空着且能语音 = 麦克风(点了进语音模式)。
+   语音模式: 输入框换成"按住 说话"长条。按住录 → 手指上滑超过 MIC_CANCEL_PX 进取消区(浮层变红"松开手指, 取消发送") → 松手: 在取消区就丢, 否则识别完直接发。
+   不到 MIC_MIN_S 当误触丢掉(提示"说话时间太短"); 到服务端给的 max_seconds(30 s, 模型训练上限)自动当松手发出。切后台 / 系统打断(来电) = 取消。
+   出麦克风要三条都成立: 模型子进程装了识别模型(GET /v1/audio/transcriptions 200, ds4-train 现有 /v1/ 转发)、isSecureContext、浏览器有 getUserMedia + AudioWorklet。
+   麦克风权限在点麦克风图标切模式时就要(那一下是点击手势): 放到按住时才要, 权限框会把第一次按压打断, 用户以为坏了。
+   采样: AudioWorklet 收原生采样率 f32 → 页内线性重采样到模型采样率 → Int16 WAV → POST。为什么页内重采样: 手机原生 48 kHz 是 3 倍字节, 穿透口 1 MB/s。
+   这些状态在 renderChatGate 里也会读, 而它可能在本段执行前被调到 —— 所以用 var(提升为 undefined)并在 renderRightBtn 开头判空, 用 let/const 会撞暂时性死区直接抛错。 */
+var holdBtn = $("btn-hold"), micOv = $("mic-ov"), composerEl = $("v-chat").querySelector(".composer");
+var MIC_ICONS = {
+  mic: '<svg class="i" viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>',
+  kb: '<svg class="i" viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6.5 10h.01M10 10h.01M13.5 10h.01M17 10h.01M7.5 14h9"/></svg>',
+  send: '<svg class="i" viewBox="0 0 24 24"><path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/></svg>',
+  stop: '<svg class="i" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>' };
+var MIC_MIN_S = 0.6, MIC_CANCEL_PX = 60;
+var asrInfo = null, asrProbed = false, voiceOn = lsGet("ds4.asst.voice", "") === "1", press = null, micUploading = false, micCtx = null, micMute = null, micReady = null, rightShown = "";
+async function asrProbe() {
+  if (asrProbed || !secure || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.AudioWorkletNode) return;
+  asrProbed = true;
+  try {
+    const r = await fetch("/v1/audio/transcriptions", { cache: "no-store" });
+    if (r.ok) asrInfo = await r.json(); else if (r.status !== 404) asrProbed = false;   /* 404 = 没装(定论); 502 这类 = 子进程在换, 下回再探 */
+  } catch (_) { asrProbed = false; }
+  renderRightBtn();
+}
+function rightMode() {
+  if (busy()) return "stop";
+  if (voiceOn && asrInfo) return "kb";
+  if (inputEl.value.trim() || !asrInfo) return "send";
+  return "mic";
+}
+function renderRightBtn() {
+  if (!holdBtn) return;
+  const serving = status && status.mode === "serving" && !switching, m = rightMode(), b = busy();
+  composerEl.classList.toggle("voice", voiceOn && !!asrInfo);
+  if (m !== rightShown) { sendBtn.innerHTML = MIC_ICONS[m]; rightShown = m; }   /* 状态没变不换节点: 按下到抬起之间换节点会丢点击(10-12 同类实撞) */
+  sendBtn.className = m === "stop" ? "danger" : m === "send" ? "primary" : "ghost";
+  sendBtn.title = t({ stop: "stop", send: "send", mic: "mic_title", kb: "kb_title" }[m]); sendBtn.setAttribute("aria-label", sendBtn.title);
+  sendBtn.disabled = m !== "stop" && (!serving || (m === "send" && !inputEl.value.trim()));
+  holdBtn.textContent = t(micUploading ? "mic_recog" : !serving ? "ph_noinput" : b ? "ph_busy" : press ? (press.cancel ? "mic_cancel_zone" : "mic_release") : "mic_hold");
+  holdBtn.disabled = !press && (!serving || b || micUploading);
+}
+async function voiceMode(on) {
+  if (on) {
+    try { const s = await navigator.mediaDevices.getUserMedia({ audio: true }); s.getTracks().forEach(tr => tr.stop()); }   /* 先把权限要了, 理由见段首 */
+    catch (e) { toast(t(e && e.name === "NotAllowedError" ? "mic_denied" : "mic_fail", e && e.message || e), true); return; }
+    inputEl.blur();   /* 收键盘: 语音模式下不打字 */
+  }
+  voiceOn = on; lsSet("ds4.asst.voice", on ? "1" : "");
+  renderRightBtn();
+  if (!on) { autosize(); inputEl.focus(); }
+}
+var MIC_WORKLET = `class P extends AudioWorkletProcessor { process(i) { const c = i[0] && i[0][0]; if (c) this.port.postMessage(c.slice(0)); return true; } } registerProcessor("ds4-mic", P);`;
+/* 一个 AudioContext 用到底, worklet 模块只装一次; 每次按住只新开麦克风流。
+   worklet 节点接一个 0 增益再进 destination: 不接到 destination 的节点 Safari/部分 Chrome 不调 process, 一个样本都收不到 */
+function micAudio() {
+  if (!micReady) {
+    micCtx = new (window.AudioContext || window.webkitAudioContext)();
+    micMute = micCtx.createGain(); micMute.gain.value = 0; micMute.connect(micCtx.destination);
+    micReady = micCtx.audioWorklet.addModule(URL.createObjectURL(new Blob([MIC_WORKLET], { type: "application/javascript" }))).catch(e => { micReady = null; throw e; });
+  }
+  return micReady;
+}
+function micOvShow(p) {
+  micOv.classList.toggle("on", !!p);
+  holdBtn.classList.toggle("on", !!p && !p.cancel); holdBtn.classList.toggle("cancel", !!p && p.cancel); micOv.classList.toggle("cancel", !!p && p.cancel);
+  if (!p) { $("mic-lvl").style.width = "0"; return; }
+  $("mic-ov-t").textContent = t(p.cancel ? "ov_cancel" : "ov_hint");
+  const el = (performance.now() - p.t0) / 1000, left = Math.ceil((asrInfo.max_seconds || 30) - el);
+  $("mic-ov-s").textContent = left <= 5 ? t("ov_left", Math.max(0, left)) : Math.floor(el) + "″";
+}
+holdBtn.addEventListener("contextmenu", e => e.preventDefault());   /* 长按别弹系统菜单 */
+holdBtn.addEventListener("pointerdown", async e => {
+  if (e.button !== 0 || press || holdBtn.disabled || !asrInfo) return;
+  e.preventDefault();
+  try { holdBtn.setPointerCapture(e.pointerId); } catch (_) {}   /* 手指滑出长条也继续收 move/up, 上滑取消靠它 */
+  const p = press = { id: e.pointerId, t0: performance.now(), y0: holdBtn.getBoundingClientRect().top, cancel: false, ended: false, chunks: [], rate: 0, stream: null, src: null, node: null, timer: null, tick: null };
+  micAudio().catch(() => {});
+  micCtx.resume().catch(() => {});   /* iOS: resume 必须在手势的同步段里调, 否则 context 一直 suspended、一个样本都不来 */
+  p.tick = setInterval(() => micOvShow(p), 250);
+  micOvShow(p); renderRightBtn();
+  try {
+    await micReady;
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+    if (p.ended) { stream.getTracks().forEach(tr => tr.stop()); return; }   /* 流还没开手已经松了 */
+    p.stream = stream; p.rate = micCtx.sampleRate;
+    p.src = micCtx.createMediaStreamSource(stream);
+    p.node = new AudioWorkletNode(micCtx, "ds4-mic", { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] });
+    p.node.port.onmessage = ev => {
+      const c = ev.data; p.chunks.push(c);
+      let s = 0; for (let i = 0; i < c.length; i++) s += c[i] * c[i];
+      $("mic-lvl").style.width = Math.min(100, Math.sqrt(s / c.length) * 400) + "%";   /* 音量条: 让人看见"在收", 说话 RMS ~0.05~0.2 */
+    };
+    p.src.connect(p.node); p.node.connect(micMute);
+    p.timer = setTimeout(() => micEnd(p, "max"), (asrInfo.max_seconds || 30) * 1000);
+  } catch (err) {
+    micEnd(p, "error");
+    toast(t(err && err.name === "NotAllowedError" ? "mic_denied" : "mic_fail", err && err.message || err), true);
+  }
+});
+holdBtn.addEventListener("pointermove", e => {
+  const p = press; if (!p || e.pointerId !== p.id) return;
+  const c = e.clientY < p.y0 - MIC_CANCEL_PX;
+  if (c !== p.cancel) { p.cancel = c; micOvShow(p); renderRightBtn(); }
+});
+holdBtn.addEventListener("pointerup", e => { const p = press; if (p && e.pointerId === p.id) micEnd(p, p.cancel ? "cancel" : "release"); });
+holdBtn.addEventListener("pointercancel", e => { const p = press; if (p && e.pointerId === p.id) micEnd(p, "cancel"); });   /* 系统打断(来电/手势被浏览器接管) */
+document.addEventListener("visibilitychange", () => { if (document.hidden && press) micEnd(press, "cancel"); });
+/* 收尾: 关麦克风 → 取消/误触就丢 → 否则识别, 有字就直接发(send(text): 不动输入框里的草稿) */
+async function micEnd(p, why) {
+  if (p.ended) return;
+  p.ended = true; if (press === p) press = null;
+  clearTimeout(p.timer); clearInterval(p.tick);
+  try { if (p.src) p.src.disconnect(); if (p.node) p.node.disconnect(); } catch (_) {}
+  if (p.stream) p.stream.getTracks().forEach(tr => tr.stop());
+  micOvShow(null);
+  const dur = (performance.now() - p.t0) / 1000;
+  if (why === "cancel" || why === "error") { renderRightBtn(); return; }
+  if (dur < MIC_MIN_S || !p.chunks.length) { toast(t("mic_short"), true); renderRightBtn(); return; }
+  micUploading = true; renderRightBtn();
+  let text = "";
+  try {
+    const resp = await fetch("/v1/audio/transcriptions", { method: "POST", headers: { "Content-Type": "audio/wav" }, body: micWav(p.chunks, p.rate, asrInfo.sample_rate) });
+    const j = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error((j.error && (j.error.message || j.error)) || "HTTP " + resp.status);
+    text = (j.text || "").trim();
+    if (!text) toast(t("mic_empty"), true);
+  } catch (e) { toast(t("mic_fail", e.message || e), true); }
+  micUploading = false; renderRightBtn();
+  if (text) send(text);
+}
+/* f32 块 → 低通 + 重采样 → 16 位 PCM WAV(44 字节头)。
+   ★降采样前必须低通★: 原来直接线性插值, outRate/2(8 kHz)以上的能量原样折叠进语音带 —— 擦音 s/sh/h/x 的能量正好在那,
+   10-14 真机"两分钟后"识别成"两分钟臭"; e2e 量过: 48 kHz 下 12 kHz 纯音折叠到 4 kHz 的残留 0.0 dB(等幅)。
+   低通 = Blackman 窗 sinc, 截止 0.45·outRate(7.2 kHz), 抽头 2·round(24·ratio)+1(48→16 kHz 是 145 个, 过渡带约 1.8 kHz, 阻带 -74 dB);
+   只在要用的输入位置上算卷积(整数比时每个输出一次), 30 s 录音在手机上约 0.1~0.3 s。 */
+function micWav(chunks, inRate, outRate) {
+  let n = 0; for (const c of chunks) n += c.length;
+  const x = new Float32Array(n); let o = 0; for (const c of chunks) { x.set(c, o); o += c.length; }
+  const ratio = inRate / outRate, m = n ? Math.floor((n - 1) / ratio) + 1 : 0, pcm = new Int16Array(m);
+  let at = k => x[k];
+  if (ratio > 1) {
+    const N = 2 * Math.round(24 * ratio) + 1, M = (N - 1) / 2, fc = 0.45 / ratio, h = new Float32Array(N); let s = 0;
+    for (let j = 0; j < N; j++) {
+      const t = j - M, sinc = t === 0 ? 2 * fc : Math.sin(2 * Math.PI * fc * t) / (Math.PI * t);
+      h[j] = sinc * (0.42 - 0.5 * Math.cos(2 * Math.PI * j / (N - 1)) + 0.08 * Math.cos(4 * Math.PI * j / (N - 1))); s += h[j];
+    }
+    for (let j = 0; j < N; j++) h[j] /= s;   /* 直流增益 1: 不改音量 */
+    at = k => { let acc = 0; const j0 = Math.max(0, M - k), j1 = Math.min(N, n - k + M); for (let j = j0; j < j1; j++) acc += h[j] * x[k + j - M]; return acc; };
+  }
+  for (let i = 0; i < m; i++) {
+    const p = i * ratio, k = Math.floor(p), f = p - k, a = at(k), b = f > 1e-9 && k + 1 < n ? at(k + 1) : a;
+    pcm[i] = Math.max(-32768, Math.min(32767, Math.round((a + (b - a) * f) * 32767)));
+  }
+  const buf = new ArrayBuffer(44 + m * 2), dv = new DataView(buf), str = (off, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(off + i, s.charCodeAt(i)); };
+  str(0, "RIFF"); dv.setUint32(4, 36 + m * 2, true); str(8, "WAVE"); str(12, "fmt "); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+  dv.setUint32(24, outRate, true); dv.setUint32(28, outRate * 2, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true); str(36, "data"); dv.setUint32(40, m * 2, true);
+  new Int16Array(buf, 44).set(pcm);
+  return buf;
+}
 /* 分享文件的两道墙(10-12 实撞 "Permission denied"):
    ① 手势: navigator.share 必须在点击的同步段里调。点了再 await 取文件, 手势就过期了(Safari 立刻拒, Chrome 超 5 秒拒), 所以卡一画出来就先把文件取好(sharePrep)。
    ② Chrome 白名单(chromium share_service_impl.cc kPermitted): 只收 txt/csv/html/pdf/图片/音视频这些扩展名和 MIME, 别的一律 NotAllowedError "Permission denied",
@@ -2066,7 +2325,7 @@ async function fileBlob(path) {
 function deliverEl(it) {
   const p = deliverPath(it); if (!p) return null;
   const w = node("div", "deliver"); w.appendChild(node("span", "fname", p));
-  const btn = (label, fn) => { const b = node("button", "", label); b.onclick = () => fn().catch(e => toast(t("dl_fail", e.message || e), true)); w.appendChild(b); };
+  const btn = (label, fn) => { const b = node("button", "", label); b.onclick = () => fn().catch(e => toast(t("file_fail", e.message || e), true)); w.appendChild(b); };
   btn(t("dl_download"), async () => { const f = await fileBlob(p); const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 60000); });
   if (/\.(md|txt|csv|json|html)$/i.test(p)) btn(t("dl_preview"), async () => { let pre = w.querySelector("pre"); if (pre) { pre.remove(); return; } const f = await fileBlob(p); pre = node("pre", "box", await f.text()); w.appendChild(pre); });
   return w;   /* 分享按钮不在这里: share 这个动作本身在上面的设备卡上(deviceBox), 点了开系统分享面板 */
@@ -2101,20 +2360,24 @@ async function loadTasks() {
 /* ---------------- 通知(10-14 用户: "使用 pwa 推送; 在当前页面肯定不通知") ----------------
    开关 = 这台浏览器向推送服务订阅(pushManager.subscribe, 用服务端的 VAPID 公钥), 订阅交给 POST /api/assistant/push {op:subscribe}; 关 = 两边都退订。
    密码学全在服务端 C 里(src/push), 浏览器只做它原生会做的事。
-   在场心跳: 页面可见时每 20 s POST presence {visible:true}, 切后台/关页立刻报 false(keepalive) —— 服务端看到有页面在看就不推设备, 改落 notices, 这里 poll 拉来当场弹 toast, 点了进那个对话。
+   在场心跳(10-14 用户: "在 app 里什么都不弹, 离开后再推"): 页面可见时每 20 s POST presence {visible:true, endpoint}, 切后台/关页立刻报 false(keepalive)。
+   endpoint = 这台浏览器的推送订阅: 服务端只压这台设备的推送, 页面里不弹任何东西; 切走/锁屏后服务端把压着的补推过来。别的设备照常推。
    通知点开: service worker 把 url 递过来(message), 或新开窗口带 ?session=, 两条路都走 gotoNotice。 */
-let pushKey = "", pushSub = null, lastNotice = Math.floor(Date.now() / 1000), presenceT = 0;
+let pushKey = "", pushSub = null, presenceT = 0;
 const pushSupported = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window && window.isSecureContext;
 const b64uToU8 = s => { const b = atob(s.replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from(b, c => c.charCodeAt(0)); };
 const deviceLabel = () => (isIOS() ? "iPhone" : /Android/i.test(navigator.userAgent) ? "Android" : /Mac/.test(navigator.platform) ? "Mac" : "PC") + (document.documentElement.dataset.standalone === "1" ? " App" : " " + (lang === "zh" ? "浏览器" : "browser"));
 async function loadPush() {
   const r = await aFetch("push"); if (r.error) return;
   pushKey = r.key; const devs = r.devices || [];
+  if (document.activeElement !== $("nt-proxy")) $("nt-proxy").value = r.proxy || "";   /* 2.5 s 一轮会重拉: 正在输入时别把字冲掉 */
   $("nt-devices").textContent = t("nt_devices", devs.length, devs.length ? "(" + devs.map(d => d.label || d.id).join(", ") + ")" : "");
   $("nt-test").disabled = !devs.length;
   const sw = $("nt-on"), st = $("nt-state");
   if (!pushSupported()) { sw.disabled = true; sw.checked = false; st.textContent = t(isIOS() && document.documentElement.dataset.standalone !== "1" ? "nt_ios" : "nt_unsupported"); return; }
+  const had = pushSub && pushSub.endpoint;
   try { const reg = await navigator.serviceWorker.ready; pushSub = await reg.pushManager.getSubscription(); } catch (e) { pushSub = null; }
+  if ((pushSub && pushSub.endpoint) !== had && document.visibilityState === "visible") { presenceT = Date.now(); presence(true); }   /* 刚开/关了通知: 在场里的 endpoint 马上换, 不等下一拍心跳 */
   sw.disabled = false; sw.checked = !!pushSub;
   st.textContent = Notification.permission === "denied" ? t("nt_denied") : pushSub ? t("nt_on") : "";
 }
@@ -2134,6 +2397,7 @@ $("nt-on").onchange = async () => {
   } catch (e) { toast(t("nt_subfail", e.message || String(e)), true); }
   await loadPush();
 };
+$("nt-proxy-save").onclick = async () => { const r = await aFetch("push", { op: "proxy", url: $("nt-proxy").value.trim() }); if (r.error) { toast(t("fail", r.error), true); return; } toast(t("nt_proxy_saved")); };
 $("nt-test").onclick = async () => { const r = await aFetch("push", { op: "test", lang }); r.error ? toast(t("fail", r.error), true) : toast(t("nt_sent")); };
 let reminders = [];
 async function loadReminders() {
@@ -2157,22 +2421,17 @@ function gotoNotice(url) {   /* 通知里的 url: /?session=<id>#chat → 不刷
   try { const u = new URL(url, location.origin), s = u.searchParams.get("session"); if (s && /^[0-9a-f]{12}$/.test(s)) { selectSession(s); return; } if (u.hash) location.hash = u.hash; } catch (_) {}
 }
 function presence(visible) {
-  const body = JSON.stringify({ client: clientId, visible });
+  const body = JSON.stringify({ client: clientId, visible, endpoint: pushSub ? pushSub.endpoint : "" });
   fetch("/api/assistant/presence", { method: "POST", headers: aHeaders(true), body, keepalive: true }).catch(() => {});
 }
-async function pollNotices() {
+function presenceBeat() {   /* 2.5 s 一轮的 poll 带着调, 20 s 才真发一次 */
   if (document.visibilityState !== "visible") return;
   const now = Date.now();
   if (now - presenceT > 20000) { presenceT = now; presence(true); }
-  const r = await aFetch("notices?after=" + lastNotice).catch(() => null); if (!r || !r.notices) return;
-  for (const n of r.notices) {
-    lastNotice = Math.max(lastNotice, n.t);
-    toast((n.title ? n.title + " · " : "") + (n.body || "")); $("toast").onclick = () => { $("toast").className = ""; gotoNotice(n.url || "/"); };
-  }
-  if (curTab() === "tasks" && r.notices.length) loadReminders();
 }
-document.addEventListener("visibilitychange", () => { presenceT = 0; if (document.visibilityState === "hidden") presence(false); else pollNotices(); });
+document.addEventListener("visibilitychange", () => { presenceT = 0; if (document.visibilityState === "hidden") presence(false); else presenceBeat(); });
 window.addEventListener("pagehide", () => presence(false));
+if (pushSupported()) navigator.serviceWorker.ready.then(r => r.pushManager.getSubscription()).then(s => { pushSub = s; presenceT = 0; presenceBeat(); }).catch(() => {});   /* 不进任务页也要知道自己是哪台设备 */
 if ("serviceWorker" in navigator) navigator.serviceWorker.addEventListener("message", e => { if (e.data && e.data.notice) gotoNotice(e.data.notice); });
 (function openFromNotice() {   /* 通知点开时新开的窗口: /?session=<id>#chat */
   const q = new URLSearchParams(location.search), s = q.get("session");
@@ -2221,7 +2480,7 @@ $("tk-add").onclick = async () => {
   if (r.error) { toast(t("fail", r.error), true); return; }
   $("tk-text").value = ""; tasks = r.tasks || []; renderTasks();
 };
-$("tk-text").onkeydown = e => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); $("tk-add").click(); } };
+$("tk-text").onkeydown = e => { if (e.key === "Enter" && !imeEnter(e)) { e.preventDefault(); $("tk-add").click(); } };
 
 /* ---------------- 记忆 ----------------
    两个纯文本文件(~/.ds4/assistant/memory/profile.md / rules.md), 这里就是它们的编辑框; 改完对新开的对话生效(进行中的对话 system 已冻结, 为了 KV 前缀复用)。 */
@@ -2534,15 +2793,46 @@ $("k-create").onclick = async () => {
   $("k-name").value = ""; $("k-new-key").textContent = j.key; $("k-new").classList.add("on");
   loadApi();
 };
-$("k-name").onkeydown = e => { if (e.key === "Enter") $("k-create").click(); };
+$("k-name").onkeydown = e => { if (e.key === "Enter" && !imeEnter(e)) $("k-create").click(); };
 $("k-hide").onclick = () => { $("k-new").classList.remove("on"); $("k-new-key").textContent = ""; };   /* 原文从页面上抹掉, 只剩用户自己抄走的那份 */
 async function copyText(s, btn) {
   try { await navigator.clipboard.writeText(s); }
   catch (_) {   /* 非 https 且非 localhost 时 clipboard 接口不可用(局域网 IP 打开就是): 退回老办法 */
     const ta = node("textarea"); ta.value = s; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); } catch (_) {} ta.remove();
   }
+  if (!btn) return;
   const old = btn.textContent; btn.textContent = t("copied"); setTimeout(() => btn.textContent = old, 1200);
 }
+/* 手机外壳里正文不可选(为什么见 CSS 里 user-select 那段), 复制改成长按整块: 按住 0.5 秒不动 → 这块描边 → 松手复制, 底部提示"已复制"。
+   复制放在松手那一下而不是计时器里: iOS 只认"手指抬起"算用户操作, 计时器里调剪贴板会被拒、什么也没复制上。
+   手指挪了 10px 以上当成在滚, 作废。助理消息复制原文(markdown)而不是渲染后的字: 渲染结果里混着代码块的"复制"按钮字样和语言标签;
+   长按代码块只复制那段代码, 长按"思考过程"复制思考 */
+const PRESS_COPY = ".bubble, pre, td, dd, .serr, .swarn, .pv .row";
+let lp = null;
+function pressText(el) {
+  const m = el.closest(".msg.assistant");
+  return m && el.classList.contains("bubble") ? m._c : el.innerText;
+}
+document.addEventListener("pointerdown", e => {
+  /* 可点的表格行(tr.click)不参与: 点它是打开详情, 长按复制会和松手那下的 click 撞在一起 */
+  if (!isApp() || e.pointerType === "mouse" || e.target.closest("a[href], button, input, textarea, select, label, summary, tr.click")) return;
+  const el = e.target.closest(PRESS_COPY); if (!el) return;
+  /* 落在"思考过程"那段里时, 描边和复制都只对那段(松手时取 _r) */
+  const tgt = e.target.closest("details.think") && el.classList.contains("bubble") ? e.target.closest("details.think") : el;
+  const p = lp = { el, tgt, x: e.clientX, y: e.clientY, armed: false, t: 0 };
+  p.t = setTimeout(() => { p.armed = true; tgt.classList.add("pressing"); if (navigator.vibrate) navigator.vibrate(12); }, 500);
+}, { passive: true });
+function pressEnd(copy) {
+  if (!lp) return; const p = lp; lp = null; clearTimeout(p.t); p.tgt.classList.remove("pressing");
+  if (!copy || !p.armed) return;
+  const s = (p.tgt.matches("details.think") ? p.el.closest(".msg")._r : pressText(p.el) || "").trim();
+  if (s) { copyText(s); toast(t("copied")); }
+}
+document.addEventListener("pointermove", e => { if (lp && Math.hypot(e.clientX - lp.x, e.clientY - lp.y) > 10) pressEnd(false); }, { passive: true });
+document.addEventListener("pointerup", () => pressEnd(true));
+document.addEventListener("pointercancel", () => pressEnd(false));
+/* 安卓长按会发 contextmenu: 内容块上拦掉, 免得浏览器自己的长按菜单和这里的复制叠在一起; 链接和图片放行, 照常能长按打开/保存 */
+document.addEventListener("contextmenu", e => { if (isApp() && e.target.closest(PRESS_COPY) && !e.target.closest("a[href], img")) e.preventDefault(); });
 $("k-copy").onclick = () => copyText($("k-new-key").textContent, $("k-copy"));
 document.querySelectorAll("#v-api .snip .copy").forEach(b => b.onclick = () => copyText($(b.dataset.snip).textContent, b));
 
@@ -3155,7 +3445,7 @@ function phPollStart() {   /* 退路: 每秒一张 PNG */
   $("ph-exit").onclick = e => { e.stopPropagation(); if (document.fullscreenElement) document.exitFullscreen(); else immersive(false); };
   $("ph-exit").onpointerdown = e => e.stopPropagation();   /* 别当成在手机上点了一下 */
   const send = async () => { const v = $("ph-text").value; if (!v) return; const j = await phFetch("text", { text: v }); if (j.error) { $("ph-err").textContent = j.error; return; } $("ph-err").textContent = ""; $("ph-text").value = ""; };
-  $("ph-send").onclick = send; $("ph-text").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); send(); } };
+  $("ph-send").onclick = send; $("ph-text").onkeydown = e => { if (e.key === "Enter" && !imeEnter(e)) { e.preventDefault(); send(); } };
   $("ph-apk").onclick = () => $("ph-apk-file").click();
   $("ph-apk-file").onchange = async () => {
     const f = $("ph-apk-file").files[0]; if (!f) return;

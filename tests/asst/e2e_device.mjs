@@ -22,11 +22,25 @@ const free = p => new Promise(res => { const s = createServer().once("error", ()
 let PORT = 18000; while (!(await free(PORT)) || !(await free(PORT + 1))) PORT += 10;
 const ROOT = process.cwd(), HOME = homedir();
 const ASST = path.join(HOME, ".ds4", "assistant"), AUTH = path.join(HOME, ".ds4", "studio", "auth");
-const pwDir = process.argv[2] || readdirSync(path.join(HOME, ".npm", "_npx")).map(d => path.join(HOME, ".npm", "_npx", d, "node_modules", "playwright")).find(existsSync);
+/* 参数: [playwright 包路径] [--shots 目录](给了就在语音段关键时刻截图, 人眼看样子用; 门不看图) */
+const argv = process.argv.slice(2), si = argv.indexOf("--shots"), SHOTS = si >= 0 ? argv.splice(si, 2)[1] : null;
+const pwDir = argv[0] || readdirSync(path.join(HOME, ".npm", "_npx")).map(d => path.join(HOME, ".npm", "_npx", d, "node_modules", "playwright")).find(existsSync);
 if (!pwDir) { console.error("找不到 playwright 包; 给路径当第一个参数, 或 npx playwright 一次让它进缓存"); process.exit(2); }
 const { chromium, devices } = await import(path.join(pwDir, "index.mjs"));
 
 let fails = 0; const ok = (c, m) => { console.log((c ? "ok   " : "FAIL ") + m); if (!c) fails++; };
+
+/* 文案表不许重名键(10-14 真机实撞): JS 对象字面量里重名是后写的静默覆盖前面的 —— 云手机加的 ph_busy:"手机忙, 稍后再试" 盖掉了助理的
+   ph_busy:"助理正在干活…", 助理一跑输入框和"按住 说话"长条就写"手机忙"。先把字符串内容剥空再数键, 值里的冒号不会误判 */
+{
+  const src = readFileSync(path.join(ROOT, "web/studio.html"), "utf8"), a = src.indexOf("const I18N = {"), b = src.indexOf("\n};", a);
+  const body = src.slice(a, b).replace(/"(?:[^"\\\n]|\\.)*"/g, '""').replace(/`(?:[^`\\]|\\.)*`/g, "``");
+  for (const [loc, blk] of [["zh", body.slice(body.indexOf("zh: {"), body.indexOf("\n  en: {"))], ["en", body.slice(body.indexOf("\n  en: {"))]]) {
+    const seen = new Map(), dup = [];
+    for (const m of blk.matchAll(/(?:^|[{,\s])([A-Za-z_]\w*)\s*:/gm)) { if (seen.has(m[1])) dup.push(m[1]); seen.set(m[1], true); }
+    ok(seen.size > 300 && dup.length === 0, `文案表 ${loc}: ${seen.size} 个键, 重名 ${dup.length} 个${dup.length ? ": " + dup.join(",") : ""}`);
+  }
+}
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const hadAuth = existsSync(AUTH);
 const before = new Set(existsSync(path.join(ASST, "sessions")) ? readdirSync(path.join(ASST, "sessions")) : []);
@@ -36,7 +50,8 @@ const cleanup = () => { try { fake.kill(); } catch (_) {} try { train.kill(); } 
 process.on("exit", cleanup);
 for (let i = 0; i < 50; i++) { try { if ((await fetch(`http://127.0.0.1:${PORT}/manifest.webmanifest`)).ok) break; } catch (_) {} await sleep(200); }
 
-const browser = await chromium.launch({ channel: "chrome", headless: true });
+/* 假麦克风(语音段用): Chrome 把 tests/fixtures/asr/demo.wav 循环当麦克风输入, 不弹权限框 */
+const browser = await chromium.launch({ channel: "chrome", headless: true, args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream", "--use-file-for-fake-audio-capture=" + path.join(ROOT, "tests/fixtures/asr/demo.wav")] });
 async function openPhone(url, geo) {
   const ctx = await browser.newContext({ ...devices["iPhone 13"], geolocation: geo, permissions: ["geolocation", "clipboard-read", "clipboard-write"], locale: "zh-CN" });
   await ctx.addInitScript(() => {
@@ -199,7 +214,6 @@ const tasksDir = path.join(ASST, "tasks");
   await sleep(600);
   ok(await p5.locator("#nt-on").count() === 1 && !(await p5.locator("#nt-on").isDisabled()) && !(await p5.locator("#nt-on").isChecked()) && /0/.test(await p5.locator("#nt-devices").textContent()) && await p5.locator("#nt-test").isDisabled(), "通知卡: 开关在、未订阅、设备 0 台、测试键灰: " + await p5.locator("#nt-devices").textContent());
   ok(await p5.locator("#rm-list .muted").count() === 1, "定时提醒卡: 空");
-  const presenceBefore = (await p5.evaluate(async () => (await aFetch("notices?after=0")).notices.length));
   await p5.locator("#tk-text").fill("盯着 e2e 的价格, 降了通知我"); await p5.locator("#tk-text").press("Enter"); await sleep(500);
   const newTask = readdirSync(tasksDir).filter(f => !beforeTasks.has(f));
   ok(newTask.length === 1, "回车创建 → tasks/ 多一个文件: " + newTask.join(","));
@@ -214,13 +228,11 @@ const tasksDir = path.join(ASST, "tasks");
   ok(done && tk2.end === "done" && tk2.last.includes("龙井草堂") && tk2.next > Date.now() / 1000 + 3000, "第一遍跑完: runs=1, 上次进展=终稿头部, 没调 check_in 就排到一小时后");
   const msgs = readFileSync(path.join(ASST, "sessions", tk.session, "messages.jsonl"), "utf8").split("\n").filter(Boolean).map(l => JSON.parse(l));
   ok(msgs[0].role === "user" && /\[任务: 第 1 次跟进 · 创建于 /.test(msgs[0].content) && msgs[0].content.endsWith("盯着 e2e 的价格, 降了通知我"), "第一条 user 带任务事实行, 正文是原句");
-  /* 通知(10-14 用户: "在当前页面肯定不通知"): 页面开着在看 → 假模型调的 notify 不推设备, 落 notices.jsonl, 页面 poll 拉来弹 toast */
-  const ntf = msgs.find(m => m.role === "tool" && typeof m.content === "string" && m.content.includes("shown on the page"));
-  ok(!!ntf, "notify 工具结果: 页面开着 → 'shown on the page', 没推设备");
-  const notices = await p5.evaluate(async () => (await aFetch("notices?after=0")).notices);
-  ok(notices.length === presenceBefore + 1 && notices[notices.length - 1].body === "e2e 通知: 价格降了" && notices[notices.length - 1].url === "/?session=" + tk.session + "#chat", "notices.jsonl 多一条, 带那个对话的 url: " + JSON.stringify(notices[notices.length - 1]));
-  let toastText = ""; for (let i = 0; i < 20 && !toastText.includes("e2e 通知"); i++) { await sleep(300); toastText = await p5.locator("#toast").textContent(); }
-  ok(toastText.includes("e2e 通知: 价格降了"), "页面里弹出了这条通知: " + toastText);
+  /* 通知(10-14 用户: "在 app 里什么都不弹, 离开后再推"): 这台浏览器没订阅 → notify 如实说没设备(不再假称"页面上显示了"), 页面里也不弹 */
+  const ntf = msgs.find(m => m.role === "tool" && typeof m.content === "string" && m.content.includes("no device has notifications turned on"));
+  ok(!!ntf, "notify 工具结果: 没设备开通知 → 直说, 模型会让用户去任务页打开");
+  await sleep(1500);
+  ok(!(await p5.locator("#toast").textContent()).includes("e2e 通知"), "页面里没弹这条通知");
   await p5.locator("#tk-list .row b", { hasText: "盯着 e2e 的价格" }).waitFor(); await sleep(2800);   /* 等一轮 poll 把 runs/next 刷进行里 */
   const line = await p5.locator("#tk-list .row small").first().textContent();
   ok(/跟进 1 次/.test(line) && /下次 /.test(line), "行里: 跟进 1 次 · 下次 …: " + line);
@@ -231,6 +243,65 @@ const tasksDir = path.join(ASST, "tasks");
   ok(!existsSync(path.join(tasksDir, newTask[0])) && readdirSync(path.join(ASST, "trash", "tasks")).some(f => f.startsWith(newTask[0].replace(".json", "") + "-")) && !existsSync(path.join(ASST, "sessions", tk.session)), "删除 → 任务进 trash/tasks, 会话进 trash/sessions");
   ok(await p5.locator("#tk-list .row b", { hasText: "盯着 e2e 的价格" }).count() === 0, "删完列表里没了");
   await ctx5.close();
+}
+
+/* ---- 语音输入(10-14, 用户: 照微信): 最右圆钮 麦克风 ⇄ 键盘 / 有字变发送; 按住说话 → 上滑取消 / 太短丢 / 松手识别完直接发 ----
+   macOS 上主进程认不出假模型(tr_model_live 假): 页面不进 serving、/v1/ 也不转发。这里两处拦截, 页面代码不碰:
+   /api/train/status 的 mode 改成 serving; /v1/audio/transcriptions 直接打到假模型端口(主进程转发这一段 10-14 在 spark 生产上实测过: 经 8000 转发 47 ms 同文本) */
+{
+  const ctx6 = await browser.newContext({ ...devices["iPhone 13"], permissions: ["microphone"], locale: "zh-CN" });
+  await ctx6.route("**/api/train/status", async r => { const res = await r.fetch(); const j = await res.json(); j.mode = "serving"; await r.fulfill({ response: res, json: j }); });
+  await ctx6.route("**/v1/audio/transcriptions", async r => r.fulfill({ response: await r.fetch({ url: `http://127.0.0.1:${PORT + 1}/v1/audio/transcriptions` }) }));
+  const p6 = await ctx6.newPage(); p6.on("pageerror", e => console.log("pageerror:", e.message));
+  const shot = async n => { if (SHOTS) { mkdirSync(SHOTS, { recursive: true }); await sleep(300); await p6.screenshot({ path: path.join(SHOTS, n + ".png") }); } };   /* 等一帧画完: 刚切新对话就截是空白 */
+  const asrPosts = []; p6.on("request", r => { if (r.method() === "POST" && r.url().endsWith("/v1/audio/transcriptions")) asrPosts.push(r.url()); });
+  await p6.goto(`http://127.0.0.1:${PORT}/?shell=app#chat`); await login(p6);
+  await p6.evaluate(() => { lsSet("ds4.asst.voice", ""); voiceOn = false; selectSession(null); });
+  await p6.waitForFunction(() => rightShown === "mic", null, { timeout: 8000 }).catch(() => {});
+  const right = () => p6.evaluate(() => rightShown + "|" + sendBtn.className + "|" + document.querySelector(".composer").classList.contains("voice"));
+  ok(await right() === "mic|ghost|false", "空输入 + 装了识别: 最右是麦克风: " + await right()); await shot("1-text-mic");
+  await p6.locator("#input").fill("你好"); ok((await right()).startsWith("send|primary"), "打了字变发送: " + await right()); await shot("2-text-send");
+  await p6.locator("#input").fill(""); ok((await right()).startsWith("mic|"), "删光变回麦克风");
+  await p6.locator("#btn-send").click(); await sleep(400);
+  ok(await right() === "kb|ghost|true" && await p6.locator("#btn-hold").isVisible() && await p6.locator("#input").isHidden() && (await p6.locator("#btn-hold").textContent()) === "按住 说话", "点麦克风: 输入框换成'按住 说话', 最右变键盘: " + await right()); await shot("3-voice-hold");
+  const hb = await p6.locator("#btn-hold").boundingBox(), cx = hb.x + hb.width / 2, cy = hb.y + hb.height / 2;
+  /* 上滑取消: 按住 → 上移 120 px → 浮层变红"松开手指, 取消发送" → 松手, 不上传 */
+  await p6.mouse.move(cx, cy); await p6.mouse.down(); await sleep(900);
+  ok(await p6.locator("#mic-ov").isVisible() && (await p6.locator("#mic-ov-t").textContent()) === "松开发送, 上滑取消" && (await p6.locator("#btn-hold").textContent()) === "松开 发送", "按住: 浮层'松开发送, 上滑取消', 长条'松开 发送'"); await shot("4-recording");
+  await p6.mouse.move(cx, cy - 120, { steps: 4 }); await sleep(150);
+  ok(await p6.evaluate(() => document.getElementById("mic-ov").classList.contains("cancel")) && (await p6.locator("#mic-ov-t").textContent()) === "松开手指, 取消发送" && (await p6.locator("#btn-hold").textContent()) === "松开 取消", "上滑: 浮层变红'松开手指, 取消发送'"); await shot("5-cancel-zone");
+  await p6.mouse.up(); await sleep(600);
+  ok(asrPosts.length === 0 && await p6.locator("#mic-ov").isHidden(), "上滑松手 = 取消: 没上传, 浮层收起");
+  /* 太短: 0.2 s 就松 → "说话时间太短", 不上传 */
+  await p6.mouse.move(cx, cy); await p6.mouse.down(); await sleep(200); await p6.mouse.up(); await sleep(500);
+  ok(asrPosts.length === 0 && (await p6.locator("#toast").textContent()).includes("说话时间太短"), "按 0.2 s: 提示说话时间太短, 不上传");
+  /* 正常: 按 2 s 松手 → 上传 WAV(假模型核头, 回时长) → 直接发出去, 输入框草稿不动 */
+  await p6.evaluate(() => { inputEl.value = "草稿别动"; });
+  await p6.mouse.move(cx, cy); await p6.mouse.down(); await sleep(2000); await p6.mouse.up();
+  await p6.waitForFunction(() => view && view.items.some(i => i.kind === "user"), null, { timeout: 20000 }).catch(() => {}); await sleep(800);
+  const sid6 = await p6.evaluate(() => view && view.sid);
+  const u6 = sid6 ? readFileSync(path.join(ASST, "sessions", sid6, "messages.jsonl"), "utf8").split("\n").filter(Boolean).map(l => JSON.parse(l)).find(m => m.role === "user") : null;
+  const ms = u6 && /假识别: 收到 (\d+) 毫秒音频$/.exec(u6.content);
+  ok(asrPosts.length === 1 && ms && +ms[1] >= 1500 && +ms[1] <= 2600, "按 2 s 松手: 上传一次 16 kHz 单声道 WAV, 识别结果直接作为消息发出: " + JSON.stringify(u6 && u6.content.split("\n").pop()));
+  ok(await p6.evaluate(() => inputEl.value) === "草稿别动", "语音发送不碰输入框里的草稿");
+  /* 假模型这一轮会走设备工具(读剪贴板), 本上下文没给剪贴板权限 ⇒ 停在"等设备", 最右是停止键。先停掉这轮, 再测键盘 */
+  const holdBusy = await p6.locator("#btn-hold").textContent();
+  ok(await right() === "stop|danger|true" && holdBusy === "助理正在干活, 点停止可打断", "助理在跑: 最右是停止, 长条写助理在干活(不是'手机忙'): " + await right() + " / " + holdBusy);
+  await p6.locator("#btn-send").click();
+  await p6.waitForFunction(() => !busy(), null, { timeout: 10000 }).catch(() => {});
+  await p6.locator("#btn-send").click(); await sleep(300);
+  ok((await right()).startsWith("send|primary|false") && await p6.locator("#input").isVisible(), "点键盘: 回到文字输入, 有草稿所以最右是发送: " + await right());
+  /* 重采样不许混叠(10-14 真机: "两分钟后"识别成"两分钟臭", 擦音能量在 8 kHz 以上): 48 kHz 下 1 kHz + 12 kHz 两个等幅纯音 → 页面的 micWav 降到 16 kHz,
+     12 kHz 没有低通会折叠成 4 kHz。量 4 kHz 残留相对 1 kHz 的 dB(Goertzel), 要压到 -40 dB 以下 */
+  const alias = await p6.evaluate(() => {
+    const fs = 48000, n = fs / 2, x = new Float32Array(n);
+    for (let i = 0; i < n; i++) x[i] = 0.4 * Math.sin(2 * Math.PI * 1000 * i / fs) + 0.4 * Math.sin(2 * Math.PI * 12000 * i / fs);
+    const pcm = new Int16Array(micWav([x], fs, 16000), 44), m = pcm.length;
+    const g = f => { let re = 0, im = 0; for (let i = 0; i < m; i++) { const a = 2 * Math.PI * f * i / 16000; re += pcm[i] * Math.cos(a); im -= pcm[i] * Math.sin(a); } return Math.hypot(re, im); };
+    return 20 * Math.log10(g(4000) / g(1000));
+  });
+  ok(alias < -40, "48→16 kHz 重采样: 12 kHz 折叠到 4 kHz 的残留 " + alias.toFixed(1) + " dB(相对 1 kHz, 要 < -40)");
+  await ctx6.close();
 }
 await browser.close();
 
