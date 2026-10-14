@@ -22,7 +22,7 @@ ds4-server → 一个 27M 参数的中文识别模型（moonshine-tiny-zh，纯 
 
 | 刀 | 状态 | 门 |
 |---|---|---|
-| ① 模型下载 + 权重/词表读取（`asr_model.c` `asr_tok.c`） | 待做 | 张量名/形状与 §2 表逐项对上；tokenizer 解码 10 个已知 id 得到预期字 |
+| ① 模型下载 + 权重/词表读取（`asr_model.c` `asr_tok.c`） | 模型已下载（10-14），license 待用户定；读取待做 | 张量名/形状与 §2 表逐项对上；tokenizer 解码 10 个已知 id 得到预期字 |
 | ② GPU 前向（`asr_graph.c` + 三个新核） | 待做 | `ds4_test --asr`：夹具 WAV 逐位 logits 对拍 HF 参考实现 + 文本相同 |
 | ③ 服务端接口（`asr_http.c`，ds4-server 新路由） | 待做 | curl 发夹具 WAV 回同一段文字；>30 s / 非 16 kHz / 非 PCM 各拒且说明 |
 | ④ 页面（`studio.html` 🎤） | 待做 | iPhone App / Mac Safari / 小米 Chrome 各念 10 句，**原始识别结果原样贴给用户**，手数 CER |
@@ -34,7 +34,7 @@ ds4-server → 一个 27M 参数的中文识别模型（moonshine-tiny-zh，纯 
 | 来源 | HF `moonshine-ai/moonshine-tiny-zh`（Moonshine AI，论文 arXiv 2509.02523 "Flavors of Moonshine"） |
 | 体积 | `model.safetensors` 108,389,160 B（f32）+ `tokenizer.json` 3,761,751 B + `config.json` 892 B |
 | 参数 | 27.1M；编码器/解码器各 6 层，d=288，8 头，FFN 1152，词表 32768 |
-| license | 官方文档写 MIT；仓里 `LICENSE.txt` 11,577 B 是 Apache-2.0 的长度——**下载后打开核，结果记 fable5** |
+| license | **不是 MIT**（官方文档写错了）：`LICENSE.txt` = Moonshine AI Community License（2025-06-15）。研究/非商用免费；商用也免费但要到 moonshine.ai/community-license 登记，且你和关联方年营收超过 100 万美元当天许可自动终止，得另谈；分发要带 Notice 文件 + 在界面/文档显眼处写 "Powered by Moonshine AI"；不许拿它的输出去训基础模型。10-14 已下载到 `gguf/asr/moonshine-tiny-zh/`，用不用由用户定 |
 | 中文 CER | 论文口径 Fleurs 29.4 / CommonVoice17 36.1（whisper-tiny 同口径 71.1 / 66.0；比它大 28 倍的 whisper-medium 36.1+7.6） |
 | 为什么不是别的 | whisper-tiny 中文错七成，废；SenseVoice-Small 中文好一个档次但 936 MB、另一套结构（SAN-M + CTC）、自定义 license；用户要最小 |
 | 同族升级 | `moonshine-base-zh`（58M，CER 25.8）结构相同，门没过**换文件零改码** |
@@ -54,20 +54,31 @@ ds4-server → 一个 27M 参数的中文识别模型（moonshine-tiny-zh，纯 
 | 段 | 算什么 | 用什么核 |
 |---|---|---|
 | 前端 | 16 kHz 波形 x[T] → conv1(1→288, k127, s64, 无偏置) → tanh → GroupNorm(1 组, 288 通道, eps 1e-5) → conv2(288→576, k7, s3) → gelu → conv3(576→288, k3, s2) → gelu。总步长 384 ⇒ 每秒 41.7 帧 | **新核三件**：`conv1d`、`groupnorm1`、`tanh`（Metal + CUDA 各一份；gelu 用 `ds4_gpu_v41_gelu_tensor`） |
-| 编码器 ×6 | LayerNorm(无偏置) → 自注意力(q/k/v 带偏置, o 无; RoPE theta 1e4, 转前 32 维/36; 头维补到 40 只是官方 SDPA 对齐, 我们按 36 算) → 残差 → LayerNorm → fc1(288→1152, 偏置) → gelu → fc2 → 残差；末尾 LayerNorm | `matmul_bf16_dev`（权重转 bf16 进设备张量）、`bias_add_dev`、`dense_attn`（现成双向）、**新核 `layernorm`**（现只有 RMSNorm，LayerNorm 要减均值）、RoPE 见 2.2 |
+| 编码器 ×6 | LayerNorm(无偏置) → 自注意力(q/k/v/o 全无偏置——盘上就没有 bias 张量; RoPE theta 1e4, 转前 32 维/36; 头维补到 40 只是官方 SDPA 对齐, 我们按 36 算) → 残差 → LayerNorm → fc1(288→1152, 偏置) → gelu → fc2(偏置) → 残差；末尾 LayerNorm | `matmul_bf16_dev`（权重转 bf16 进设备张量）、`bias_add_dev`、`dense_attn`（现成双向）、**新核 `layernorm`**（现只有 RMSNorm，LayerNorm 要减均值）、RoPE 见 2.2 |
 | 解码器 ×6 | 词嵌入(32768×288, 与输出头共享) → LayerNorm → 因果自注意力(RoPE) → LayerNorm → 交叉注意力(q 自解码器, k/v 自编码器输出) → LayerNorm → fc1(288→2304 一分为二 gate/up) → silu(gate)·up → fc2 | `dense_attn` 加一个 `causal` 开关；交叉注意力 = 同核但 q、kv 来源不同（签名拆成 q 与 kv 两个张量）；`swiglu_pair_tensor` 现成 |
 | 输出 | 末位 logits = h·Eᵀ（E = 词嵌入），贪心取 argmax；bos=1 起，eos=2 停，上限 = 音频秒数 × 6.5 + 8 个 token（官方 moonshine 的 heuristic） | `matmul_bf16_dev` |
 
 **解码不写 KV cache**：每步把整段前缀重算一遍取末位。10 s 音频约 65 个 token，65 步 × ≤65 token 的 d=288 小矩阵，
 GPU 上是启动开销级别；省掉一整套缓存张量与位置管理。先正确，门过了嫌慢再加。
 
-### 2.2 要先看一眼再定的两处（写码前核，不猜）
+### 2.2 看过代码后定下的几处（10-14 晚）
 
-- **RoPE 配对方式**：HF Moonshine 是 `rotate_half`（前 16 维配后 16 维），DeepSeek V4 的 `ds4_gpu_v41_rope_tensor` 若是相邻配对
-  （复数式）则不能直接用；视觉塔的 2D RoPE 是"半分式"，大概率抽它的 1D 版。写码前对 `metal/v41_*.metal` / `cuda_v41_*.inc.cu` 看一眼。
-- **跟生成抢 GPU**：ds4-server 是单 worker 排队（`enqueue(server*, job*)`），识别做成一种新 job 排进去，正在生成的长回答会让
-  它等。页面在助理忙时发送本来就灰（`busy()`），麦克风同样灰；要是实际用着嫌等，再开第二条线——那要先确认两个后端
-  并发提交命令安不安全，不在这一刀里猜。
+- **RoPE 零新核**：`kernel_v41_rope`（`metal/v41_layer.metal:275`，CUDA 同式）是相邻配对（x[2i], x[2i+1]）且只转每个头**末尾** n_rot 维；
+  HF Moonshine 是 `rotate_half`（第 i 维配第 i+16 维）且转**开头** 32 维。两者只差一个维度置换，而 q·k 点积对相同置换不变，
+  所以**加载时把 q_proj / k_proj 的输出行重排**成 [4 个不转的维 | 转的维按 (0,16),(1,17)… 交错]，然后直接调现有核
+  （head_dim 36, n_rot 32, theta 1e4, osl 0）。频率表 theta^(-2i/32) 两边一样。v_proj 不动（o_proj 的输入列也就不用动）。
+- **tokenizer 不是 GPT-2 字节级**：是 SentencePiece 风格 BPE + byte_fallback（`▁` 作词首空格，`<0x00>`…`<0xFF>` 256 个字节 token，
+  `<unk>`=0 `<s>`=1 `</s>`=2；32000 起是 `<<ST_n>>` 特殊符）。解码 = 拼片、`▁`→空格、`<0xNN>`→原字节、特殊 token 跳过、去首空格。
+- **GroupNorm(1 组)** 的均值/方差是整段 (288 通道 × T 帧) 一起算一个，再按通道仿射——不是按通道各算。
+- **Metal 侧视觉塔那一族全是桩**（`src/metal/metal_v41_vision.m` 的 `v41_vision_unimplemented`），CUDA 侧是真的（`cuda_v41_vision.inc.cu`）。
+  所以 Mac 上要补 `matmul_bf16_dev` / `bias_add_dev` / `dense_attn` / `gelu` / `swiglu_pair` 五件 + 新的 `layernorm` / `conv1d` / `groupnorm1` / `tanh`；
+  CUDA 只补后四件 + `dense_attn` 的 causal 开关与 q/kv 分离签名。
+- **跟生成抢 GPU**：ds4-server 单 worker 按序取 job（`server_batch.c:196`），`job` 结构已有"非请求任务"的先例（`sw` 切侧车，
+  `server_plugins_apply`）；识别照样子加一个 `asr` 指针，worker 看到就做、答完 `job_finish`。正在生成的长回答会让它等；
+  页面在助理忙时发送本来就灰（`busy()`），麦克风同样灰。嫌等再议第二条线，不在这一刀里猜两后端的并发安全。
+- **路由**：`server_httpd.c:280` 那串 `/v1/...` 分支旁加 `/v1/audio/transcriptions`；请求体上限 64 MB（`max_body`），30 s WAV 960 KB 远够。
+- **金标**：本机 `~/hfenv` 没有 torch，有 onnxruntime。参考实现用 HF 官方转换的 `onnx-community/moonshine-tiny-zh-ONNX`
+  跑一次（开发期下载件，不随产品走；要用户同意），输出逐步 logits 落 `tests/fixtures/asr/`。
 
 ### 2.3 权重怎么进 GPU
 
