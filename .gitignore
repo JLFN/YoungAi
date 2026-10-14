@@ -42,6 +42,17 @@ tools/tp_rtt_probe
 /ds4_asst_test
 /ds4_office_test
 /ds4_video_test
+/ds4_push_test
+# 云手机探针与 ashmem 树外模块的 kbuild 产物(要按宿主内核重编, 只在 spark 上有)
+/tests/phone/adbprobe
+/tests/phone/ashmemprobe
+/ds4-phone
+/src/phone/ashmem/*.ko
+/src/phone/ashmem/*.mod
+/src/phone/ashmem/*.mod.c
+/src/phone/ashmem/.*.cmd
+/src/phone/ashmem/modules.order
+/src/phone/ashmem/Module.symvers
 /tests/video/vidcheck
 
 # gguf-tools 顶层编译产物(Makefile 输出; 2026-08-27 git add -A 误提交过一次)
