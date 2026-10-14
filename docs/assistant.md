@@ -563,6 +563,11 @@ tests/asst/e2e_device.mjs     make asst-e2e: 系统 Chrome 仿真 iPhone 跑整�
 - **真模型（spark，待跑）**：手机 https 开页问"附近有什么好吃的" → 模型拿设备行里的位置搜 → 终稿前调 navigate/share；
   "把我剪贴板里的英文翻成中文" → read_clipboard；"整理成报告发给同事" → write_file + share(path)。原文进 fable5。
 
+## 14. 语音输入（10-14 方案稿 `docs/assistant_asr.md`）
+
+语音输入是输入法，不是工具：页面录 16 kHz PCM → ds4-server 里纯 C + GPU 自实现的 moonshine-tiny-zh（27M）识别 → 文字回填输入框，
+用户看过再发。不进 caps、不改提示词。模型来源 / 结构 / 代码落点（`src/model/asr/`）/ 门全在那份稿里。
+
 ## 来源
 
 - Meta 官方发布: https://about.fb.com/news/2026/09/introducing-muse-personal-ai-agent/
