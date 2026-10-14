@@ -16,6 +16,7 @@ tags:
 - apple-silicon
 - on-device
 - agent
+- personal-assistant
 - fine-tuning
 pipeline_tag: text-generation
 ---
@@ -27,48 +28,71 @@ pipeline_tag: text-generation
 <h1 align="center">YoungAi</h1>
 
 <p align="center">
-  <b>A frontier model, an agent that works for you, and training on your own data — on one machine.</b><br>
-  DeepSeek V4.1 Flash, 510 GB as released, runs on a single 128 GB DGX Spark. Nothing leaves the box.
+  <b>A personal AI assistant that lives on your own machine.</b><br>
+  It remembers what you tell it, browses the web, writes Word/PDF/PowerPoint/Excel files, makes videos, keeps
+  following up on a job, and hands the result to the next app on your phone. Model, memory and files all stay on the box.
 </p>
 
 <p align="center">
+  <a href="https://fodelf.github.io/YoungAi/"><b>Website · user guide</b></a> ·
   <b>English</b> · <a href="https://github.com/fodelf/YoungAi/blob/restructure/README.zh-CN.md">中文</a> ·
-  <a href="https://github.com/fodelf/YoungAi">GitHub</a> ·
   <a href="https://huggingface.co/wenzhouwu/YoungAi-DeepSeek-V4.1-Flash">Hugging Face</a> ·
   <a href="https://github.com/fodelf/YoungAi/blob/restructure/docs/TECHNICAL.md">Technical notes</a>
 </p>
 
-![YoungAi product and system architecture](docs/img/arch-en.png)
-
-Open source, MIT. Plain C99 + CUDA (Metal on Apple Silicon), one Makefile, no Python in the math.
-
-## Quality
-
-Scored against DeepSeek's own code running the original weights at full precision, on text that was never used
-for fitting.
-
-| Domain | Same top-1: base → with sidecar | Σmin: base → with sidecar |
-|---|---:|---:|
-| Finance | 71.7% → **74.6%** | 0.703 → **0.745** |
-| Code | 78.6% → **82.3%** | 0.754 → **0.803** |
-| Law | 72.9% → **76.4%** | 0.713 → **0.760** |
-| Medicine | 69.1% → **72.8%** | 0.683 → **0.739** |
-| Science | 71.7% → **74.9%** | 0.707 → **0.753** |
-| General English (WikiText-2), any one of the five | 78.5% → **80.7–82.8%** | 0.769 → **0.787–0.801** |
-
-*Same top-1* is how often our most likely next token is also the original's. *Σmin* is how much the two next-token
-distributions overlap; 1.0 means identical. How they are measured:
-[technical notes §5](https://github.com/fodelf/YoungAi/blob/restructure/docs/TECHNICAL.md#5-results).
-
-A real run: "find me the cheapest DGX Spark on the web" took 16 minutes, 12 rounds, 43 tool calls and 140k tokens of
-context, all on the machine itself.
-
 ![YoungAi Studio: the assistant hunting for the cheapest DGX Spark](docs/img/studio-agent-en.png)
+
+The model behind it is DeepSeek V4.1 Flash (510 GB as released), shrunk to 113.6 GB and running on a single 128 GB
+DGX Spark with a 1M-token context. Open source, MIT. Plain C99 + CUDA (Metal on Apple Silicon), one Makefile, no
+third-party libraries linked.
+
+## What it does
+
+**A request comes in, the assistant does the work in a sandbox, then hands the result on.** The screenshot above is a
+real run: "find me the cheapest DGX Spark on the web" took 16 minutes, 12 rounds and 43 tool calls, all on the machine itself.
+
+| You say | It does | You get |
+|---|---|---|
+| "Anything good to eat nearby?" (on a phone) | locate → nearby places → picks 3 with reasons | a *Navigate* button and an *Open in Meituan / Ele.me* button for each |
+| "Turn this Word file into a PDF" (attachment) | converts it inside the sandbox | a file card: download, or share to WeChat / DingTalk |
+| "Look into X and write it up for my colleague" | searches, reads the sources, writes a docx | the report plus the system share sheet |
+| "Sum this table by month" | reads the csv, writes an xlsx with formulas | an Excel file whose numbers show on a phone |
+| "Make a 30-second product video with narration" | writes an HTML animation, renders and encodes it frame by frame | a narrated mp4 any phone player can play |
+| "Watch this price and tell me when it drops below X" | creates a task and decides itself when to look again | a push notification on your phone |
+| "Remember I mostly live in Nanjing" | writes it to memory | trip plans start from Nanjing from then on |
+
+The assistant's tools (this table is what the model sees; there is no scenario-specific prompt):
+
+| Group | Tools | Notes |
+|---|---|---|
+| Memory | `remember` `forget` | only what you said yourself; plain text under `~/.ds4/assistant/memory/` you can edit |
+| Files | `read_file` `list_dir` `search_files` `write_file` `edit_file` | the workspace by default; a path outside it shows a card asking you first |
+| Programs | `run` | runs a command in the kernel sandbox: no network, writes only to the workspace; uses soffice / pandoc / python3 etc. if installed |
+| Web | `web_search` `visit_page` | headless Firefox: search and page text |
+| Office files | `write_document` `write_xlsx` | Markdown → docx / pdf / pptx; JSON → xlsx with formulas computed. All written in-house, no Office needed |
+| Video | `make_video` | the model writes an HTML animation; our own H.264/AAC encoder turns it into an mp4, optionally narrated |
+| Places | `locate` `nearby` | phone location + AMap nearby search (real places with an AMap key; a street-scoped web search without one) |
+| To your phone | `share` `copy_text` `navigate` `call` `open_url` `open_app` `read_clipboard` `pick_file` | run on the device you are using; opens Douyin / WeChat / DingTalk / Alipay / Meituan / Ele.me |
+| Follow-up | `task_check_in` `task_done` `notify` | a task picks its own next check; reminders and "done" notices go to your phone (Web Push) |
+| Skills | `use_skill` | a folder with a `SKILL.md` teaches it how to do a kind of job (Agent Skills format, no scripts allowed) |
+| Cloud phone | six `phone_*` tools | only in danger mode; see the disclaimer at the end |
+
+## Safety: the sandbox, not trust in the model
+
+- **Every tool call runs in a fresh child process that locks itself into a kernel sandbox first**: Landlock + seccomp on
+  Linux, Seatbelt on macOS. If the sandbox cannot be applied, the call is refused. Thirty-odd escape tests pass on both the
+  Mac and the Spark.
+- **The gatekeeper is one deterministic C function**, not a second model acting as judge. Writes and deletes outside the
+  workspace need your OK (this once / this session / always); arguments that look like passwords, card numbers or one-time
+  codes are refused outright; the assistant cannot touch its own config directory, so it cannot grant itself permissions.
+- **Web content is untrusted input**: after reading a page, standing approvals for outbound actions stop applying.
+- **Every action is one line in an audit log** (`audit.jsonl`), browsable on the *Activity* tab, where approvals can be revoked.
+- The honest limit: there is no VM. The assistant runs as your user; if the machine is compromised, so is the assistant.
 
 ## Get started
 
-You need a DGX Spark (Linux aarch64 with the CUDA 13 runtime, ~320 GB free SSD). The assistant's web tools need
-Firefox, which Ubuntu on the Spark ships.
+You need a DGX Spark (Linux aarch64 with the CUDA 13 runtime, ~320 GB free SSD). The web tools need Firefox, which
+Ubuntu on the Spark ships.
 
 ```sh
 git clone https://github.com/fodelf/YoungAi.git ~/ds4-main && cd ~/ds4-main
@@ -76,45 +100,58 @@ make cuda-spark
 ./ds4-train --host 0.0.0.0 --port 8000      # open http://<host>:8000/
 ```
 
-1. **Models**: press *Download*, then *Load*.
-2. **Assistant**: just ask. Commands run in a sandbox (no network, writes only inside the workspace); a path
-   outside the workspace shows a card asking you first. Conversations and memory are plain files under
-   `~/.ds4/assistant/` you can open and edit.
-3. **Train**: one JSON object per line, in either of Unsloth's two shapes; drop the file on *Data*, press *Start* on *Train*.
+1. **Models**: press *Download* (~317 GB, resumable), then *Load* (~2 minutes).
+2. **Assistant**: just talk. Conversations, memory and the workspace live in `~/.ds4/assistant/`.
+3. **Phone**: open the page and *Add to Home Screen* to get an app. Location, clipboard, sharing and push need https:
+   enter a cloud server in *Settings* and turn on the tunnel, or use Tailscale. Steps and troubleshooting:
+   [docs/pwa.md](docs/pwa.md) (Chinese).
+4. **Tasks**: type one sentence to hand a job over; turn on *Receive notifications on this device* to be pinged when it is done or due.
+5. **Skills**: create one, or import a folder with a `SKILL.md` (the repo ships one for slide decks: [`skills/pptx/`](skills/pptx/)).
 
-   ```json
-   {"messages":[{"role":"user","content":"What was the entry price?"},{"role":"assistant","content":"30.39"}],"context":"…the source document…"}
-   {"text":"Raw text, trained as-is (continued pretraining)."}
-   ```
+How every tab and every tool works, and what happens when something goes wrong: the
+**[user guide](https://fodelf.github.io/YoungAi/guide.html)**.
 
-   Nothing is mounted automatically: turn on the chat's *Post-train* switch to talk to the trained model. A full
-   walk-through: [technical notes §4.3](https://github.com/fodelf/YoungAi/blob/restructure/docs/TECHNICAL.md#43-the-post-training-file).
-4. **Phone / internet**: on a phone, *Add to Home Screen* makes it an app; for access from the internet, enter a cloud
-   server in *Settings* and turn on the tunnel. Steps and troubleshooting:
-   [docs/pwa.md](https://github.com/fodelf/YoungAi/blob/restructure/docs/pwa.md) (Chinese).
-5. **API**: `/v1/chat/completions`, `/v1/completions`, `/v1/responses`, `/v1/messages`. Create a key on the *API* tab
-   and send `Authorization: Bearer <key>` (also from localhost; without it you get 401). `"temperature": 0` gives
-   byte-identical output every run; add `"reasoning_effort": "high"` for thinking.
+## Two more things it does
 
-**API only, no Studio**, no build:
+**Train on your own data.** One JSON object per line, in either of Unsloth's two shapes; drop the file on *Data*, press
+*Start* on *Train*. Nothing is mounted automatically: turn on the *Post-train* switch next to the chat box to use it.
+Full walk-through: [technical notes §4.3](docs/TECHNICAL.md#43-the-post-training-file).
+
+```json
+{"messages":[{"role":"user","content":"What was the entry price?"},{"role":"assistant","content":"30.39"}],"context":"…the source document…"}
+{"text":"Raw text, trained as-is (continued pretraining)."}
+```
+
+**Use it as an API.** `/v1/chat/completions`, `/v1/completions`, `/v1/responses`, `/v1/messages` (OpenAI / Anthropic
+compatible). Create a key on the *API* tab and send `Authorization: Bearer <key>` (also from localhost; without it you get
+401). `"temperature": 0` gives byte-identical output every run. API only, no Studio, no build:
 
 ```sh
 curl -fsSLO https://huggingface.co/wenzhouwu/YoungAi-DeepSeek-V4.1-Flash/resolve/main/install.sh
 bash install.sh                      # --domain law for another domain (default: code); --endpoint https://hf-mirror.com for a mirror
 ```
 
-This also fetches the model's own vision tower (`DeepSeek-V4.1-Flash.vision.gguf`, 0.97 GB) and starts the server
-with it: send pictures as OpenAI `image_url` or Anthropic `image` blocks with `data:` URLs. The tower is read from
-disk only when an image arrives; text requests never touch it.
+## The model
 
-**On a Mac**, `make` builds the Metal version; 126 GPU kernel tests pass on a real Apple GPU. The full model has not
-run on a Mac yet (ours has 16 GB).
+| | |
+|---|---|
+| Size | 510 GB as released → 113.6 GB base (8 weights vector-quantized together, ~1.6 bit/weight, no training data used) |
+| Speed (DGX Spark) | reads 1,055 tokens/s (12.5k-token prompt); writes 45.5 tokens/s (a real 14k-token agent request, speculative decoding on) |
+| Context | 1M tokens; the full KV cache is 0.89 GB |
+| Domain sidecars | finance / code / law / medicine / science, ~40 MB each, switched from the chat box in under a second |
+
+With a sidecar, how often our next token matches the original full-precision model's goes up 2.9–3.7 points (code:
+78.6% → 82.3%). Method and full tables: [technical notes §5](docs/TECHNICAL.md#5-results).
+
+**On a Mac**, `make` builds the Metal version; 126 GPU kernel tests pass on a real Apple GPU. The full model has not run on a
+Mac yet (ours has 16 GB).
 
 ## Limits
 
 - Tested end to end only on the DGX Spark; every number here comes from it.
-- Sidecars are scored on held-out text, not on end-to-end tasks such as agentic coding or clinical questions.
+- One machine, one model: background tasks and your chat take turns rather than running in parallel.
 - Sites behind a login or a captcha stay closed to the assistant; it says what it could not open instead of guessing.
+- Sidecars are scored on held-out text, not on end-to-end tasks.
 
 ## Danger mode (experimental) — disclaimer
 
