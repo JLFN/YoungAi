@@ -77,7 +77,7 @@ int main(int argc, char **argv) {
     } else { asst_root[0] = 0; fprintf(stderr, "ds4-train: 助理不可用: %s(助理接口答 503, 训练/模型页不受影响)\n", aerr); }
     tr_auth_init(NULL, asst_token); tr_keys_init(NULL);   /* 助理口令兼作本机脚本的登录口令(助理没起来就是空串 = 只认网页登录) */
     tr_net_init(NULL, g_port);   /* 穿透开着就把 frpc 拉起来 */
-    asst_phone_init();           /* 危险模式开着就把云手机接上/拉起; 关着就把残留停掉(src/assistant/asst_phone.c) */
+    asst_phone_init();           /* 危险模式开着就把云手机接上/拉起; 关着就把残留停掉(src/assistant/sbx_phone.c) */
     fprintf(stderr, "ds4-train: 登录文件 %s(第一次打开页面会要求设置用户名密码; 忘了就删掉它重设)\n", tr_auth_file());
     signal(SIGTERM, on_term); signal(SIGINT, on_term);
     const int rc = tr_http_serve(host, g_port, handle, takeover);

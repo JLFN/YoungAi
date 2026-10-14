@@ -1,8 +1,8 @@
-/* adbprobe.c — 云手机门 0 的探针(10-13): 用 asst_adb.c 直连手机, 跑一条命令 / 截图计时 / 录屏读流计时。不是产品代码, 是尺。
+/* adbprobe.c — 云手机门 0 的探针(10-13): 用 sbx_adb.c 直连手机, 跑一条命令 / 截图计时 / 录屏读流计时。不是产品代码, 是尺。
  * 用法: tests/phone/adbprobe shell "<cmd>"                 文本结果到 stdout
  *       tests/phone/adbprobe screencap out.png [次数]        每张计时(ms)与字节数
  *       tests/phone/adbprobe record out.h264 <秒>            screenrecord 裸 H.264 读流, 报字节/秒与 NAL 数
- * 手机地址写死 172.31.250.2:5555(ds4-phone 的固定布局, 见 src/phone/phone_internal.h)。 */
+ * 手机地址写死 172.31.250.2:5555(ds4-phone 的固定布局, 见 src/sandbox/phone/phone_internal.h)。 */
 #include "../../src/assistant/asst_internal.h"
 #include <time.h>
 

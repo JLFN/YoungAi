@@ -1,10 +1,10 @@
-/* asst_phone_video.c — 云手机的视频流: 手机自带的 screenrecord 吐 H.264 Annex-B 裸流, 这里切 NAL、记住参数集与当前 GOP, 扇出给每个看客(方案稿 §3.1)。
+/* sbx_phone_video.c — 云手机的视频流: 手机自带的 screenrecord 吐 H.264 Annex-B 裸流, 这里切 NAL、记住参数集与当前 GOP, 扇出给每个看客(方案稿 §3.1)。
  * 为什么服务端不解码不封装: 浏览器自带 WebCodecs 能直接解 Annex-B 的 H.264; 我们只搬字节。
  * 一条录屏流, N 个看客: 第一个看客来时起读流线程(adb exec: screenrecord …), 最后一个走后 5 s 停; screenrecord 最多录 180 s, 到时限自动重开(两段之间丢的只是几帧)。
  * 新看客立刻有画面: 发 SPS + PPS + 从最近一个 IDR 起的全部 NAL(GOP 缓存, 关键帧间隔 10 s × 1.5 Mbps ≈ 2 MB 上限), 解码器一口气追平。
  * 慢看客不拖累别人: 每个 fd 非阻塞发, 发不动(EAGAIN)就当它断了。
  * 出错会怎样: 手机没 ready → 回 503 一行; screenrecord 起不来(Codec2 没开)→ 看客收到头后很快被关, 页面退回截图轮询。 */
-#include "asst_internal.h"
+#include "../assistant/asst_internal.h"
 #include <errno.h>
 #include <sys/socket.h>
 #include <time.h>

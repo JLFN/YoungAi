@@ -27,7 +27,7 @@ const char *ph_rc_text(void) {
     if (buf[0]) return buf;
     size_t L = 0;
 #define PUT(...) L += (size_t)snprintf(buf + L, sizeof buf - L, __VA_ARGS__)
-    PUT("# ds4-phone 叠加(src/phone/phone_rc.c 生成, 每次 start 重写; 改这里没用)\n");
+    PUT("# ds4-phone 叠加(src/sandbox/phone/phone_rc.c 生成, 每次 start 重写; 改这里没用)\n");
     PUT("on init\n    setprop debug.stagefright.ccodec 1\n\n");
     PUT("on property:sys.boot_completed=1\n");
     for (int i = 0; STOP[i]; i++) PUT("    stop %s\n", STOP[i]);

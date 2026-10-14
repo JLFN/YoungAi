@@ -1,4 +1,4 @@
-/* asst_sbx_linux.c — Linux 沙盒上锁: no_new_privs → Landlock → seccomp。总述见 asst_internal.h, 起收杀见 asst_sbx.c。
+/* sbx_linux.c — Linux 沙盒上锁: no_new_privs → Landlock → seccomp。总述见 asst_internal.h, 起收杀见 sbx_run.c。
  *
  * Landlock(5.13+, 非特权可用; spark 6.17 = ABI 7): 文件按"目录层级"白名单, 软链/.. 都按真实层级判, 白名单外 EACCES。
  *   ABI≥4 再管 TCP: 不加任何端口规则 = connect/bind 全拒; ABI≥6 再管"信号与抽象 unix socket 不许出域": 工具杀不了 ds4-server, 连不上 X11/dbus 的抽象口。
@@ -9,7 +9,7 @@
  * 为什么不用 bwrap/用户命名空间: spark 的 Ubuntu 24.04 开着 apparmor_restrict_unprivileged_userns=1, 非特权建不了命名空间; Landlock 不受它管。
  * 出错会怎样: 内核不带 Landlock(没编进或 lsm= 里没有)→ 上锁失败 → 工具拒绝执行, 审计记 "sandbox lock failed (landlock+seccomp): …"。 */
 #ifdef __linux__
-#include "asst_internal.h"
+#include "../assistant/asst_internal.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/audit.h>

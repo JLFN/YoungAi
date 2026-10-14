@@ -1,8 +1,8 @@
-/* ashmemprobe — 宿主上对 /dev/ashmem(src/phone/ashmem 树外模块)的用户态回归: 加载模块后先跑它, 全 OK 才让手机用。
+/* ashmemprobe — 宿主上对 /dev/ashmem(src/sandbox/phone/ashmem 树外模块)的用户态回归: 加载模块后先跑它, 全 OK 才让手机用。
  * 覆盖 UC 内核崩溃那条路(ASHMEM_GET_PROT_MASK / SET_PROT_MASK 与 mmap 权限匹配)和 ashmem 的全部 ioctl: 名字/大小/保护位/pin·unpin/purge。
  * 编: cc -O2 -o tests/phone/ashmemprobe tests/phone/ashmemprobe.c    跑: tests/phone/ashmemprobe   (退出码 0 = 全过; 每项一行 OK/FAIL)
  * 出错会怎样: /dev/ashmem 不在 → "open: No such file" (模块没载); 某项 FAIL → 模块移植有问题, 别给手机用。 */
-#include "../../src/phone/ashmem/ashmem_uapi.h"
+#include "../../src/sandbox/phone/ashmem/ashmem_uapi.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>

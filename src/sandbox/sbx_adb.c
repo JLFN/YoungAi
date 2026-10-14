@@ -1,4 +1,4 @@
-/* asst_adb.c — adb 线协议的 C 客户端: 直连手机里的 adbd(TCP), 不装 adb 命令(10-13, 方案稿 docs/assistant_phone.md §3)。
+/* sbx_adb.c — adb 线协议的 C 客户端: 直连手机里的 adbd(TCP), 不装 adb 命令(10-13, 方案稿 docs/assistant_phone.md §3)。
  * 协议(platform/packages/modules/adb/protocol.txt): 24 字节小端包头 {command, arg0, arg1, data_length, data_check, magic=~command} + 正文。
  *   CNXN 握手(我们报 version 0x01000001 ⇒ 对方不再校验 data_check, 填 0); 之后每个服务一条流:
  *   OPEN(local_id, 0, "服务名\0") → 对方 OKAY(remote_id, local_id) → 对方 WRTE 数据(每包我们回 OKAY) / 我们 WRTE 数据(每包等对方 OKAY) → 任一方 CLSE。
@@ -6,7 +6,7 @@
  * 用的服务名: "exec:<命令>" —— 不开伪终端、只回 stdout、不改 \n(screencap 的 PNG 字节原样到手); stdin 能写(装 apk 的字节走它)。
  * 一条连接一次只跑一条流(简单, 够用): 截图/命令各自 connect-exec-close; 视频流(screenrecord)自己占一条连接长期读。
  * 出错会怎样: 连不上 → "connect: …"(手机没起或 adbd 还没监听); 对方 CLSE 而没 OKAY → 服务名不认; 超时 → 关连接返回 false(调用方自己决定重试)。 */
-#include "asst_internal.h"
+#include "../assistant/asst_internal.h"
 #include <arpa/inet.h>
 #include <errno.h>
 #include <netinet/in.h>

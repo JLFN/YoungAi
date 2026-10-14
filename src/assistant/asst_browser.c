@@ -4,7 +4,7 @@
  * 隔离: 独立配置目录(不碰你自己的火狐), 无头, 关密码记忆/表单记忆/通知/摄像头, 下载落配置目录里。
  *   snap 版火狐只认 ~/snap/firefox/common 下的目录(家目录里的隐藏目录它打不开), 所以配置放那里。
  *   火狐不进我们的 Landlock 沙盒: snap 要靠 setuid 的 snap-confine 起, no_new_privs 下起不来; 它自带 snap 的 AppArmor 限制与火狐自己的内容进程沙盒。
- *   网页内容进模型前已被当作不可信(污点 taint_web, 见 asst_guard.c); 本机/内网地址在守门那里就拒了。
+ *   网页内容进模型前已被当作不可信(污点 taint_web, 见 sbx_guard.c); 本机/内网地址在守门那里就拒了。
  * 生命周期: 第一次用时起, 之后常驻(起一次 5~10 s); 连接坏了就杀掉, 下一次调用重起。主进程退出时整组杀。
  * 出错会怎样: 本机没火狐 → "no Firefox found"; 内存不够(MemAvailable < 3 GB)→ 不起(模型子进程占着 100+ GB, 浏览器不许把机器推过红线)。 */
 #include "asst_internal.h"

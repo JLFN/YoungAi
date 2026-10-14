@@ -34,4 +34,4 @@ gguf-tools/quantize/quantize_gpu.cu
 gguf-tools/amp/ds4quant_run_p7.inc.c
 
 # vendored (Linux 5.17 drivers/staging/android/ashmem.c, GPL-2.0; 只做 6.17 接口移植, 不改逻辑)
-src/phone/ashmem/ashmem.c
+src/sandbox/phone/ashmem/ashmem.c

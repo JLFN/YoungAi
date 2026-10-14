@@ -1,9 +1,9 @@
-/* asst_sbx.c — 沙盒子进程的起、收、杀(平台无关部分)。总述见 asst_internal.h。
+/* sbx_run.c — 沙盒子进程的起、收、杀(平台无关部分)。总述见 asst_internal.h。
  * 协议: 子进程往管道先写 1 个字节 —— 'O' = 已上锁, 后面跟结果文本; 'E' = 上锁失败, 后面跟原因。父进程没读到 'O' 就当没跑过。
  * 为什么每次调用都 fork 新进程而不是起一个常驻的沙盒工人: 规则是按这一次点名的路径定的(审批"仅这次"给的路径下一次就不能再碰),
  *   Landlock / Seatbelt 都只能收紧不能放宽, 常驻进程做不到一次一套规则。fork 一次 ~1 ms, 跟模型生成一个 token 比可以忽略。
  * 出错会怎样: 超时 → 整个进程组 SIGKILL, 结果是"timeout after N s"加已经读到的部分; 子进程被信号杀 → ASST_SBX_CRASHED。 */
-#include "asst_internal.h"
+#include "../assistant/asst_internal.h"
 #include <dirent.h>
 #include <errno.h>
 #include <execinfo.h>

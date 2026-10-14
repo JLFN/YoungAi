@@ -20,7 +20,7 @@ BIN="$ROOT/ds4-phone"
 [ -x "$BIN" ] || { echo "先 make ds4-phone($BIN 不在)"; exit 3; }
 
 # ① binder
-# 新内核(Ubuntu 6.17)的 binder_linux 带 binderfs, 加载后★不会★出现 /dev/binder —— 设备由 ds4-phone 在手机自己的命名空间里从 binderfs 造(src/phone/phone_mnt.c);
+# 新内核(Ubuntu 6.17)的 binder_linux 带 binderfs, 加载后★不会★出现 /dev/binder —— 设备由 ds4-phone 在手机自己的命名空间里从 binderfs 造(src/sandbox/phone/phone_mnt.c);
 # 这里只要模块在、/proc/filesystems 里有 binder 就算好。devices= 只对不带 binderfs 的老内核有意义, 带上无害。
 lsmod | grep -q '^binder_linux' || modprobe binder_linux devices="binder,hwbinder,vndbinder" || { echo "modprobe binder_linux 失败: 内核没这个模块(apt install linux-modules-extra-$(uname -r))"; exit 1; }
 echo 'binder_linux' > /etc/modules-load.d/ds4-phone.conf
@@ -55,9 +55,9 @@ visudo -cf /etc/sudoers.d/ds4-phone >/dev/null || { rm -f /etc/sudoers.d/ds4-pho
 sysctl -q -w net.ipv4.ip_forward=1
 echo 'net.ipv4.ip_forward=1' > /etc/sysctl.d/90-ds4-phone.conf
 
-# ⑤ ashmem(10-14): 淘宝闪购/饿了么这类带老 Chromium 内核的 app 只认 /dev/ashmem, 主线 5.18 删了它 ⇒ 装仓内移植的树外模块(src/phone/ashmem, 先 make 编出 .ko)。
+# ⑤ ashmem(10-14): 淘宝闪购/饿了么这类带老 Chromium 内核的 app 只认 /dev/ashmem, 主线 5.18 删了它 ⇒ 装仓内移植的树外模块(src/sandbox/phone/ashmem, 先 make 编出 .ko)。
 #    装进 /lib/modules/<ver>/extra + depmod, 和 binder 一起写进 modules-load.d 让重启后还在。没编 .ko 就跳过并提示(手机照常起, 只是那类 app 会崩)。
-KO="$ROOT/src/phone/ashmem/ashmem_linux.ko"
+KO="$ROOT/src/sandbox/phone/ashmem/ashmem_linux.ko"
 if [ -f "$KO" ]; then
     # Secure Boot 开着时内核只认签过名的模块(insmod 报 "Key was rejected by service", 10-14 spark 实撞)。签名用 Ubuntu DKMS 同一把 MOK
     # (/var/lib/shim-signed/mok/MOK.priv), 它必须已经在固件里注册(注册要重启一次并在开机蓝屏 MOK 管理器里确认, 只能在机器跟前做):
@@ -77,7 +77,7 @@ if [ -f "$KO" ]; then
     grep -q '^ashmem_linux$' /etc/modules-load.d/ds4-phone.conf || echo 'ashmem_linux' >> /etc/modules-load.d/ds4-phone.conf
     [ -c /dev/ashmem ] && echo "ashmem: 模块已载, /dev/ashmem 在" || { echo "模块载了但 /dev/ashmem 没出现"; exit 1; }
 else
-    echo "没有 $KO: 先 make -C src/phone/ashmem(要 linux-headers-$(uname -r)); 不装 ashmem 的话带老 WebView 内核的 app 会崩"
+    echo "没有 $KO: 先 make -C src/sandbox/phone/ashmem(要 linux-headers-$(uname -r)); 不装 ashmem 的话带老 WebView 内核的 app 会崩"
 fi
 
 echo "准备完成。试: sudo -n $BIN status"

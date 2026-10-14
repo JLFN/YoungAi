@@ -1,8 +1,8 @@
-/* asst_policy.c — 守门的数据面: 路径解析、policy.json(你给的目录与 run 开关)、approvals.jsonl(永久授权)、会话内授权、"像密文"的识别。
- * 决策序本身在 asst_guard.c。两张表都每次现读盘: 页面上一改立刻生效, 不存在"内存里还是旧规则"的窗口。
+/* sbx_policy.c — 守门的数据面: 路径解析、policy.json(你给的目录与 run 开关)、approvals.jsonl(永久授权)、会话内授权、"像密文"的识别。
+ * 决策序本身在 sbx_guard.c。两张表都每次现读盘: 页面上一改立刻生效, 不存在"内存里还是旧规则"的窗口。
  * policy.json 形如 {"run": true, "dirs": [{"path": "/home/x/Documents", "write": false}]}; 没有这个文件 = 只有工作区, run 开(沙盒里跑, 不审批)。
  * ★包含助理根目录(~/.ds4/assistant)的目录不许加★: 加了家目录, run 就能 cat 到口令、改 policy 给自己开权限(Landlock 只能白名单, 挖不掉子目录)。 */
-#include "asst_internal.h"
+#include "../assistant/asst_internal.h"
 #include <arpa/inet.h>
 #include <ctype.h>
 #include <errno.h>

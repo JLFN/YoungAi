@@ -80,7 +80,7 @@ void ph_child_boot(int log_fd, const char *dns) {
         snprintf(p, sizeof p, "%s/dma_heap/system", d); node(p, 0444, major(hs.st_rdev), minor(hs.st_rdev));
     } else dprintf(g_log, "[boot] 宿主没有 /dev/dma_heap/system: Codec2 起不来, 录屏流不可用\n");
     /* ashmem: 老 Chromium 分支的 WebView(淘宝闪购/饿了么的 UC 内核)只认 /dev/ashmem 的 ioctl, 没有就 CHECK 失败 SIGILL(10-14 实撞);
-     * 主线 5.18 删了它, 宿主要装仓内 src/phone/ashmem 的树外模块(phone_prepare_linux.sh ⑤), 这里照宿主的 rdev 镜像一份。没有就只记日志 */
+     * 主线 5.18 删了它, 宿主要装仓内 src/sandbox/phone/ashmem 的树外模块(phone_prepare_linux.sh ⑤), 这里照宿主的 rdev 镜像一份。没有就只记日志 */
     if (!stat("/dev/ashmem", &hs) && S_ISCHR(hs.st_mode)) { snprintf(p, sizeof p, "%s/ashmem", d); node(p, 0666, major(hs.st_rdev), minor(hs.st_rdev)); }
     else dprintf(g_log, "[boot] 宿主没有 /dev/ashmem: 带老 WebView 内核的 app 会崩(sudo scripts/phone_prepare_linux.sh 装 ashmem 模块)\n");
     /* 我们的 rc 叠加(phone_rc.c): 每次开机重写, 免得 rootfs 里留一份旧的 */

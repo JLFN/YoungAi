@@ -26,7 +26,7 @@ char *asst_bash_exec(void *ap) {
     snprintf(e_home, sizeof e_home, "HOME=%s", a->cwd);
     snprintf(e_tmp, sizeof e_tmp, "TMPDIR=%s", tmpdir);
 #ifdef __APPLE__
-    char *const envp[] = { "PATH=" ASST_SBX_PATH, e_home, e_tmp, "LANG=en_US.UTF-8", "TERM=dumb", NULL };   /* 与 asst_toolbox.c 探测用的同一条 PATH: 探到有的, 这里一定找得到 */
+    char *const envp[] = { "PATH=" ASST_SBX_PATH, e_home, e_tmp, "LANG=en_US.UTF-8", "TERM=dumb", NULL };   /* 与 sbx_toolbox.c 探测用的同一条 PATH: 探到有的, 这里一定找得到 */
 #else
     char *const envp[] = { "PATH=" ASST_SBX_PATH, e_home, e_tmp, "LANG=C.UTF-8", "TERM=dumb", NULL };
 #endif

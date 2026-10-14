@@ -1,10 +1,10 @@
-/* asst_phone.c — 危险模式开关 + 云手机的生命周期(10-13, 方案稿 docs/assistant_phone.md §3/§4)。
+/* sbx_phone.c — 危险模式开关 + 云手机的生命周期(10-13, 方案稿 docs/assistant_phone.md §3/§4)。
  * 开关: ~/.ds4/studio/danger(0600, "ds4-studio-danger 1" + 一行 "phone 0|1"); 文件不存在 = 关。和 cloud/auth 同目录同写法。
- * 手机本体由 root 的小二进制 <仓库根>/ds4-phone 管(src/phone/), 这里只会三句话: sudo -n ds4-phone start|stop|status。
+ * 手机本体由 root 的小二进制 <仓库根>/ds4-phone 管(src/sandbox/phone/), 这里只会三句话: sudo -n ds4-phone start|stop|status。
  *   主进程不提权; sudoers 里那一行只放行这个二进制(scripts/phone_prepare_linux.sh 装)。start 要等 adbd(最多 90 s), 放在线程里, 状态先报 starting。
  * 内存门(和火狐同一条尺): MemAvailable − 手机硬顶 ≥ 3 GB 才起, 不够就不起、把差多少写进 err —— 模型子进程占着 100+ GB, 手机不许把机器推过红线。
  * 出错会怎样: macOS → supported=false(内核没有 binder); sudoers 没装 → prepared=false, err 指向准备脚本; 手机起不来 → state=error + ds4-phone 的最后一行输出。 */
-#include "asst_internal.h"
+#include "../assistant/asst_internal.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <pwd.h>

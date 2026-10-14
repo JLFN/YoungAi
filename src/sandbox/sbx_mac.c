@@ -1,11 +1,11 @@
-/* asst_sbx_mac.c — macOS 沙盒上锁: Seatbelt(sandbox_init + 现拼的 SBPL 规则)。总述见 asst_internal.h, 起收杀见 asst_sbx.c。
+/* sbx_mac.c — macOS 沙盒上锁: Seatbelt(sandbox_init + 现拼的 SBPL 规则)。总述见 asst_internal.h, 起收杀见 sbx_run.c。
  * (deny default) 起步: 没点名的文件读写、网络、mach 服务、IPC 一律拒。只开:
  *   只读根 file-read*, 读写根 file-read* + file-write*; 每个根的祖先目录只给 file-read-metadata(stat 得到"这层目录存在", 读不到里面有什么) —— realpath/mkdir -p 要逐层 stat;
  *   exec 模式(bash)再开 fork/exec、同沙盒内信号、sysctl 只读、系统目录只读、/dev/null 读写。网络不开: bash 里 curl 直接失败。
  * 为什么用 sandbox_init 这个"已废弃"接口: 它是进程内对自己上锁的唯一公开入口(sandbox-exec 也是它的包装), macOS 26 实测仍生效; 苹果自己的命令行工具还在用。
  * 出错会怎样: 规则拼错 → sandbox_init 返回非 0 带 SBPL 报错原文 → 工具拒绝执行。 */
 #ifdef __APPLE__
-#include "asst_internal.h"
+#include "../assistant/asst_internal.h"
 #include <sandbox.h>
 
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
@@ -26,7 +26,7 @@ static void ancestors(ds4_buf *b, const char *path) {
 }
 
 /* bash 要读的系统目录(都已是 realpath 后的真名: /etc → /private/etc); 家目录、/tmp、/var/folders 一概不给 */
-static const char *const exec_ro[] = { "/usr", "/bin", "/sbin", "/System", "/Library/Apple", "/private/etc", "/opt/homebrew", "/Applications",   /* /Applications: LibreOffice 之类的工具箱程序(asst_toolbox.c) */
+static const char *const exec_ro[] = { "/usr", "/bin", "/sbin", "/System", "/Library/Apple", "/private/etc", "/opt/homebrew", "/Applications",   /* /Applications: LibreOffice 之类的工具箱程序(sbx_toolbox.c) */
                                        "/private/var/db/timezone", "/private/var/db/dyld", "/dev/urandom", "/dev/random", "/dev/zero", NULL };
 
 bool asst_sbx_lock(const asst_sbx_spec *sp, char *err, size_t errn) {

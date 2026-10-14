@@ -47,12 +47,12 @@ tools/tp_rtt_probe
 /tests/phone/adbprobe
 /tests/phone/ashmemprobe
 /ds4-phone
-/src/phone/ashmem/*.ko
-/src/phone/ashmem/*.mod
-/src/phone/ashmem/*.mod.c
-/src/phone/ashmem/.*.cmd
-/src/phone/ashmem/modules.order
-/src/phone/ashmem/Module.symvers
+/src/sandbox/phone/ashmem/*.ko
+/src/sandbox/phone/ashmem/*.mod
+/src/sandbox/phone/ashmem/*.mod.c
+/src/sandbox/phone/ashmem/.*.cmd
+/src/sandbox/phone/ashmem/modules.order
+/src/sandbox/phone/ashmem/Module.symvers
 /tests/video/vidcheck
 
 # gguf-tools 顶层编译产物(Makefile 输出; 2026-08-27 git add -A 误提交过一次)

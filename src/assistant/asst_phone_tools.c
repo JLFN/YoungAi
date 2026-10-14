@@ -1,7 +1,7 @@
 /* asst_phone_tools.c — 模型的六个 phone_* 工具(方案稿 §5): 看屏 / 点 / 滑 / 按键 / 打字 / 开 app。只在危险模式开着且手机 ready 时进工具表(asst_tools.c need_phone)。
  * 每个动作做完自动带回新一帧: 截图(落工作区 .phone/screen-N.png, 运行循环按 "screenshot: " 行接成 image_url 给模型看)+ 可点元素表(uiautomator 的控件树解析:
  * 序号·文字·类型·中心坐标·可点/可编辑)。视觉模型估坐标普遍偏, 表里的坐标准, 描述里写明优先用表里的。
- * 屏幕上的文字是不可信内容(网页/app 里的字可能是写给模型看的指令): 守门按上过网处理(taint_web), 见 asst_guard.c。
+ * 屏幕上的文字是不可信内容(网页/app 里的字可能是写给模型看的指令): 守门按上过网处理(taint_web), 见 sbx_guard.c。
  * 出错会怎样: 手机中途被关 → 守门拒; adb 连不上 → "error: …" 回给模型, 不假装成功。 */
 #include "asst_internal.h"
 #include <ctype.h>

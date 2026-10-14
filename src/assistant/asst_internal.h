@@ -1,12 +1,12 @@
 /* asst_internal.h — 工作台的个人助理(2026-10-11, 用户: "对标 muse, 把聊天页面变成个人 Agent 助理" → "安全沙盒第一")。方案稿 docs/assistant.md。
  *
  * 住在 ds4-train 主进程里(主进程永不退 ⇒ 关页继续跑、定时任务才成立); 模型子进程 ds4-server 只按 OpenAI 协议算 token。
- * ★每一次工具调用都在一个新 fork 的子进程里、先上内核沙盒再干活★(asst_sbx*.c):
+ * ★每一次工具调用都在一个新 fork 的子进程里、先上内核沙盒再干活★(src/sandbox/sbx_*.c):
  *   Linux = Landlock(文件按目录白名单, TCP 全禁, 不许给域外进程发信号/ptrace) + seccomp(socket/io_uring/ptrace/mount… 一律 EPERM) + rlimit;
  *   macOS = Seatbelt(deny default, 只开白名单目录)。
  *   为什么不靠路径检查: 路径检查是我写的 C, 有 bug 就漏(软链、..、竞态); 内核规则按真实文件层级判, 工具代码被骗了也出不去。
  *   上锁失败 = 这次工具调用拒绝执行, 从不退回"不上锁照跑"(安全第一, 也是禁兜底铁律)。
- * 守门(asst_guard.c)决定"要不要问你", 沙盒决定"最多能碰什么" —— 两层各管一件事, 守门放行的东西沙盒照样只给这一次点名的路径。 */
+ * 守门(sbx_guard.c)决定"要不要问你", 沙盒决定"最多能碰什么" —— 两层各管一件事, 守门放行的东西沙盒照样只给这一次点名的路径。 */
 #ifndef DS4_ASST_INTERNAL_H
 #define DS4_ASST_INTERNAL_H
 #include "../common/ds4_json.h"
@@ -20,7 +20,7 @@
 
 #define ASST_PATH 1024
 
-/* ---------------- 沙盒(asst_sbx.c 跑子进程, asst_sbx_linux.c / asst_sbx_mac.c 上锁) ---------------- */
+/* ---------------- 沙盒(sbx_run.c 跑子进程, sbx_linux.c / sbx_mac.c 上锁) ---------------- */
 #define ASST_SBX_MAX_ROOTS 32
 #define ASST_SBX_OUT_MAX (256u * 1024u)    /* 子进程交回的结果上限: 工具结果再大模型也看不完, 大文件走分页 */
 #define ASST_SBX_FSIZE_MAX (256ull << 20)  /* 子进程单个文件最多写 256 MiB(RLIMIT_FSIZE): 失控的 bash 写不满盘 */
@@ -33,7 +33,7 @@ typedef struct {
     bool exec;        /* 允许 exec(bash 才开): 开了会自动加系统只读根(/usr /bin /lib /etc …), 不加用户家目录 */
     int timeout_s;    /* 墙钟超时: 到点整个进程组 SIGKILL */
     int keep_fd;      /* > 2: 这个 fd 留给子进程(make_video 的编码器从它读帧); 0 = 没有。其余继承的 fd 照样全关 */
-    bool tts;         /* 要念旁白(make_video): macOS 再放行 say 用到的几个系统语音服务(asst_sbx_mac.c); Linux 用 exec 模式的系统只读根就够 */
+    bool tts;         /* 要念旁白(make_video): macOS 再放行 say 用到的几个系统语音服务(sbx_mac.c); Linux 用 exec 模式的系统只读根就够 */
 } asst_sbx_spec;
 
 /* 子进程里跑的函数: 已上锁, 返回 malloc 的结果文本(NULL = 空)。只许做工具自己的事, 不碰父进程的任何共享状态(那是 fork 出来的副本)。
@@ -46,7 +46,7 @@ typedef enum { ASST_SBX_OK = 0, ASST_SBX_LOCK_FAILED = -1, ASST_SBX_TIMEOUT = -2
 /* fork → setsid → 关掉继承的 fd → rlimit → 上锁 → fn → 结果经管道交回 → 进程组全杀。*out 给 malloc 的结果(失败时是一句原因) */
 asst_sbx_rc asst_sbx_run(const asst_sbx_spec *sp, asst_sbx_fn fn, void *ud, char **out);
 bool asst_sbx_add(asst_sbx_spec *sp, bool rw, const char *path);   /* realpath 后加根; 路径不存在返回 false(Landlock 只能给存在的东西立规则) */
-/* 平台上锁(只在子进程里调): 成功 true; 失败把原因写 err。实现见 asst_sbx_linux.c / asst_sbx_mac.c */
+/* 平台上锁(只在子进程里调): 成功 true; 失败把原因写 err。实现见 sbx_linux.c / sbx_mac.c */
 bool asst_sbx_lock(const asst_sbx_spec *sp, char *err, size_t errn);
 const char *asst_sbx_kind(void);   /* "landlock+seccomp" / "seatbelt": 写进审计与状态页 */
 
@@ -97,7 +97,7 @@ bool asst_write_file(const char *path, const char *data, size_t n, int mode);   
 extern pthread_mutex_t asst_mu;        /* 守着运行状态与审批表; 事件追加也在它下面广播 */
 extern pthread_cond_t asst_cv;
 
-/* ---------------- 守门(asst_guard.c): 一个确定性函数, 决策序固定 ---------------- */
+/* ---------------- 守门(sbx_guard.c): 一个确定性函数, 决策序固定 ---------------- */
 typedef enum { ASST_ALLOW, ASST_ASK, ASST_DENY } asst_gdec;
 typedef struct {
     asst_gdec dec;
@@ -186,7 +186,7 @@ char *asst_skill_put_file(const char *name, const char *rel, const char *data, s
 char *asst_tools_json(const asst_tctx *ctx);   /* OpenAI tools 数组(malloc): 注册表里 avail 为真的行 */
 char *asst_tool_exec(const char *session, const char *tool, const char *args, const asst_gres *g, int *ok);   /* 已过守门; 在沙盒里跑 */
 char *asst_tool_post(const char *session, const char *tool, const char *result);   /* 设备工具交回结果后的收尾(locate → 反查地址 + 记进会话); 返回新结果(malloc)或 NULL = 原样 */
-const char *asst_toolbox_desc(void);   /* asst_toolbox.c: run 工具的描述(启动探测本机装了哪些程序, 一次) */
+const char *asst_toolbox_desc(void);   /* sbx_toolbox.c: run 工具的描述(启动探测本机装了哪些程序, 一次) */
 void asst_toolbox_json(ds4_buf *b);    /* {"have":[…],"missing":[…]} 给状态接口 */
 #ifdef __APPLE__
 #define ASST_SBX_PATH "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Applications/LibreOffice.app/Contents/MacOS"
@@ -203,7 +203,7 @@ bool asst_ff_tab_open(int w, int h, const char *preload_fn, char *ctx, size_t ct
 char *asst_ff_call(const char *method, const char *params, char *err, size_t errn);   /* BiDi 命令 → result 原文(malloc); 失败 NULL, 读超时会杀掉火狐 */
 void asst_ff_tab_close(const char *ctx, const char *script);
 
-/* ---------------- 云手机(方案稿 docs/assistant_phone.md): asst_adb.c = adb 线协议客户端(直连手机里的 adbd, 不装 adb 命令) ---------------- */
+/* ---------------- 云手机(方案稿 docs/assistant_phone.md): sbx_adb.c = adb 线协议客户端(直连手机里的 adbd, 不装 adb 命令) ---------------- */
 #define ADB_OUT_MAX (64u << 20)   /* 一条 exec 的输出上限 64 MB: 截图 PNG ~1 MB, 这是防对端发疯 */
 typedef struct { int fd, timeout_ms; uint32_t next_id, maxdata; char banner[256]; } adb_conn;
 typedef bool (*adb_sink)(const void *data, size_t n, void *ud);   /* 返回 false = 不要了(流就此关掉) */
@@ -213,11 +213,11 @@ bool adb_stream(adb_conn *c, const char *service, const void *in, size_t inlen, 
 bool adb_exec(adb_conn *c, const char *cmd, const void *in, size_t inlen, ds4_buf *out, char *err, size_t errn);   /* "exec:<cmd>" 收满到 out */
 char *adb_shell(const char *ip, int port, const char *cmd, int timeout_ms, char *err, size_t errn);   /* 连-跑-关, 文本结果(malloc, 去尾换行); 失败 NULL */
 
-/* asst_phone.c: 危险模式开关(~/.ds4/studio/danger) + 手机生命周期(sudo -n <仓库根>/ds4-phone start|stop|status) + 内存门 */
-#define ASST_PHONE_IP "172.31.250.2"     /* ds4-phone 的固定布局(src/phone/phone_internal.h) */
+/* sbx_phone.c: 危险模式开关(~/.ds4/studio/danger) + 手机生命周期(sudo -n <仓库根>/ds4-phone start|stop|status) + 内存门 */
+#define ASST_PHONE_IP "172.31.250.2"     /* ds4-phone 的固定布局(src/sandbox/phone/phone_internal.h) */
 #define ASST_PHONE_PORT 5555
-#define ASST_PHONE_MIN_AVAIL_MB 3072     /* 起手机前: MemAvailable − 手机最小顶 ≥ 这个数(和火狐同一条尺; = src/phone PH_MEM_HEADROOM_MB) */
-#define ASST_PHONE_MIN_CAP_MB 2048       /* 手机的最小内存顶(= src/phone PH_MEM_MIN_MB); 真正的顶由 ds4-phone 起时按宿主可用内存定, 状态里 cap_mb 是它 */
+#define ASST_PHONE_MIN_AVAIL_MB 3072     /* 起手机前: MemAvailable − 手机最小顶 ≥ 这个数(和火狐同一条尺; = src/sandbox/phone PH_MEM_HEADROOM_MB) */
+#define ASST_PHONE_MIN_CAP_MB 2048       /* 手机的最小内存顶(= src/sandbox/phone PH_MEM_MIN_MB); 真正的顶由 ds4-phone 起时按宿主可用内存定, 状态里 cap_mb 是它 */
 typedef struct {
     bool supported, prepared, enabled, running, adb;
     char state[16];                      /* off | starting | ready | stopping | error */
@@ -235,7 +235,7 @@ bool asst_phone_screencap(ds4_buf *png, char *err, size_t errn);
 bool asst_phone_install(const void *apk, size_t n, char *pkg, size_t pn, char *err, size_t errn);
 const char *asst_phone_apps(void);       /* 逗号表: 已装第三方包 + 常用系统 app; 手机 ready / 装卸后刷新 */
 void asst_phone_apps_refresh(void);
-/* asst_phone_video.c: screenrecord 的 H.264 裸流 → 每个看客一条 HTTP 连接(接管 fd); 没人看 5 s 后停录 */
+/* sbx_phone_video.c: screenrecord 的 H.264 裸流 → 每个看客一条 HTTP 连接(接管 fd); 没人看 5 s 后停录 */
 void asst_phone_video_attach(int fd);
 int asst_phone_video_viewers(void);
 size_t asst_phone_nal_split(const unsigned char *p, size_t n, size_t *starts, size_t max);   /* 起始码位置表(最后一个可能不完整, 调用方自己留尾); 单测用 */
