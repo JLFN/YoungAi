@@ -10,7 +10,9 @@
 #                                    tts/zh-huayan.gguf and tts/en-lessac.gguf (63 MB each) are the workbench's narration
 #                                    voices for make_video (Chinese / English, Piper VITS converted to GGUF); the
 #                                    workbench loads one only while it speaks a line and frees it right after
-#   bash install.sh --domain law     the same, serving with the law sidecar instead of the coding one
+#                                    seg/mobile_sam.pt (41 MB, MobileSAM, Apache-2.0, from huggingface.co/dhkim2810/MobileSAM) is
+#                                    the workbench's point-prompt segmenter for edit_image; ds4-seg loads it per edit and exits
+#   bash install.sh --domain law    the same, serving with the law sidecar instead of the coding one
 #                                    (domains: finance, code, law, medicine, science)
 #   bash install.sh --no-start       everything except starting the server
 #   bash install.sh start | stop | status
@@ -18,6 +20,7 @@
 #                                    DwarfStar workbench's Models tab runs this into <repo>/gguf/hub
 #   bash install.sh probe            print download progress from disk, one item per line (no network):
 #                                    repo R · shards S47 S48 · gguf NAME TOTAL HAVE · engram TOTAL HAVE · sidecar DOMAIN DIR 0|1
+#                                    · seg NAME TOTAL HAVE
 #
 # Options:
 #   --domain NAME      which domain sidecar the server loads (docs/TECHNICAL.md §3): code (default), finance, law, medicine,
@@ -70,6 +73,11 @@ DOMAINS="finance | code | law | medicine | science | none"
 # ③ was solved on top of the finance sidecar (its base.fnv is that sidecar's fingerprint); the engine refuses any
 # other pairing, but only after a 2-minute load — so the script refuses first.
 POSTTRAIN="posttrain-experimental-20260924"; POSTTRAIN_DOMAIN="finance"
+# The image tool's segmenter is fetched from its authors' repository, not re-published in ours (it is their file under their
+# license). The workbench looks for <dir>/model/seg/mobile_sam.pt (src/assistant/tools/tool_image.c); without it edit_image still
+# works, but falls back to picking regions by colour, which bleeds into backgrounds of a similar shade.
+SEG_REPO="dhkim2810/MobileSAM"; SEG_FILE="mobile_sam.pt"; SEG_BYTES=40728226
+SEG_SHA256="6dbb90523a35330fedd7f1d3dfc66f995213d81b29a5ca8108dbcdd4e37d6c2f"
 SHARDS=(model-00047-of-00048.safetensors model-00048-of-00048.safetensors)
 SHARD_BYTES=(101535150936 101537926640)
 # The GGUF records these two shards by the absolute path they had on the machine that built it
@@ -113,6 +121,7 @@ SIDECAR=$(sidecar_of "$DOMAIN") || die "unknown --domain '$DOMAIN' (choose $DOMA
     || die "--posttrain was solved on the $POSTTRAIN_DOMAIN sidecar and cannot be stacked on --domain $DOMAIN"
 avail_mb() { awk '/MemAvailable/{print int($2/1024)}' /proc/meminfo; }
 fsize() { stat -L -c %s "$1" 2>/dev/null || stat -L -f %z "$1" 2>/dev/null || echo 0; }   # GNU stat, then BSD/macOS stat
+sha256() { if command -v sha256sum >/dev/null; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1; }   # macOS has no sha256sum
 part_name() { printf '%s.part%02d-of-%d' "$GGUF" "$1" "$NPART"; }
 parts_len() { local k="$1"; echo $(( k * PART_BASE + (k < PART_EXTRA ? k : PART_EXTRA) )); }   # bytes in parts 1..k
 alive() { [ -s "$PIDF" ] && kill -0 "$(cat "$PIDF")" 2>/dev/null; }
@@ -184,6 +193,7 @@ download() {
     local ep="${HF_ENDPOINT:-https://huggingface.co}"
     curl -sf -m 15 -o /dev/null "$ep/api/models/$REPO" \
         || die "cannot reach $ep within 15 s (proxy/firewall?); try --endpoint https://hf-mirror.com"
+    seg_weights
     say "① $REPO: everything except the base-model parts → $MODEL"
     "$HF" download "$REPO" --local-dir "$MODEL" --exclude "*.part*-of-*" || die "download of $REPO failed; run the same command again to resume"
     [ -s "$MODEL/SHA256SUMS" ] || die "SHA256SUMS missing from the download"
@@ -195,6 +205,14 @@ download() {
     for i in 0 1; do
         [ "$(fsize "$ENGRAM/${SHARDS[$i]}")" = "${SHARD_BYTES[$i]}" ] || die "${SHARDS[$i]} has the wrong size; run again to resume"
     done
+}
+
+# First of all, being 41 MB: the image tool can use it while the 300 GB behind it are still coming.
+seg_weights() {
+    local f="$MODEL/seg/$SEG_FILE"
+    say "segmenter for the image tool: $SEG_REPO/$SEG_FILE → $MODEL/seg (41 MB)"
+    "$HF" download "$SEG_REPO" "$SEG_FILE" --local-dir "$MODEL/seg" >/dev/null || die "download of $SEG_REPO/$SEG_FILE failed; run again to resume"
+    if [ "$(sha256 "$f")" != "$SEG_SHA256" ]; then rm -f "$f"; die "$SEG_FILE is corrupted or was changed upstream (sha256 mismatch) and was deleted; run again"; fi
 }
 
 # ② Download the 40 parts one at a time, check each against SHA256SUMS, append it, delete it. Peak extra disk = one part.
@@ -211,7 +229,7 @@ merge_parts() {
         say "② part $i/$NPART"
         "$HF" download "$REPO" "$p" --local-dir "$MODEL" >/dev/null || die "download of $p failed; run again to resume"
         want=$(awk -v f="$p" '$2 == f {print $1}' "$MODEL/SHA256SUMS")
-        got=$(sha256sum "$MODEL/$p" | cut -d' ' -f1)
+        got=$(sha256 "$MODEL/$p")
         if [ "$got" != "$want" ]; then rm -f "$MODEL/$p"; die "$p is corrupted (sha256 mismatch) and was deleted; run again to fetch it anew"; fi
         cat "$MODEL/$p" >>"$out" || die "cannot append $p (disk full?)"
         echo "$i" >"$prog"
@@ -331,6 +349,7 @@ probe() {
         i=0; [ -s "$MODEL/$(sidecar_of "$d")/manifest.txt" ] && i=1
         echo "sidecar $d $(sidecar_of "$d") $i"
     done
+    echo "seg $SEG_FILE $SEG_BYTES $(( $(fsize "$MODEL/seg/$SEG_FILE") + $(incomplete_bytes "$MODEL/seg") ))"
 }
 
 case "$CMD" in

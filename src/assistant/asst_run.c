@@ -182,6 +182,11 @@ static void run_one(const char *sid, const char *text, const char *device, const
             char picked[ASST_PATH] = ""; const char *sv = !strcmp(name, "pick_file") ? strstr(res, "saved: ") : NULL;
             if (sv) { const char *sp = strchr(sv + 7, ' '); if (sp && (size_t)(sp - sv - 7) < sizeof picked) snprintf(picked, sizeof picked, "%.*s", (int)(sp - sv - 7), sv + 7); }
             if (asst_phone_tool(name) && !strncmp(res, "screenshot: .phone/", 19)) { const char *nl = strchr(res, '\n'); if (nl && (size_t)(nl - res - 12) < sizeof picked) snprintf(picked, sizeof picked, "%.*s", (int)(nl - res - 12), res + 12); }
+            /* edit_image 等产图工具: 结果开头若干行 "image: 路径"(成品、叠红掩膜) 都带上, 换行分隔(asst_image_parts 按行收) */
+            if (!picked[0]) for (const char *ln = res; ln && !strncmp(ln, "image: ", 7); ln = strchr(ln, '\n') ? strchr(ln, '\n') + 1 : NULL) {
+                const char *nl = strchr(ln, '\n'); const size_t L = nl ? (size_t)(nl - ln - 7) : strlen(ln + 7);
+                if (strlen(picked) + L + 2 < sizeof picked) { if (picked[0]) strcat(picked, "\n"); strncat(picked, ln + 7, L); }
+            }
             ds4_buf_puts(&tm, ",\"content\":"); asst_content_with_images(&tm, res, picked); ds4_buf_putc(&tm, '}');
             asst_msg(sid, tm.ptr); ds4_buf_free(&tm);
             free(res);

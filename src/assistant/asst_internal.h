@@ -128,6 +128,8 @@ bool asst_secret_like(const char *s);  /* 卡号(15~19 位且过 Luhn)/ 私钥�
 /* ---------------- 官方产出工具(tool_office.c, 方案稿 docs/assistant_office.md): write_document / write_xlsx, 在沙盒子进程里跑 src/office 的写出器 ---------------- */
 bool asst_office_tool(const char *name);
 char *asst_office_exec(const char *tool, const char *args, const asst_gres *g, const char *trash, int *ok);   /* 已过守门(g->path = 产物绝对路径) */
+char *asst_image_exec(const char *args, const asst_gres *g, const char *trash, int *ok);
+char *asst_image_view(const char *args, const asst_gres *g, const char *trash, int *ok);   /* view_image(tool_image.c): 只读, 一块放大 + 网格落 .img/ */   /* edit_image(tool_image.c): 已过守门(g->path = 源图绝对路径); 成品 out 默认 <源>-edited.png */
 
 /* ---------------- 记忆(asst_memory.c) ---------------- */
 char *asst_system_prompt(const char *first_msg, int sys_flags);   /* 身份段(+手机段) + 规矩 + 关于用户 + 怎么做事 + (ENV 时)设备与账号 + 现在 + 语言句; 中/英按第一条消息选; 会话创建时拍快照 */

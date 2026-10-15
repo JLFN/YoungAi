@@ -5,7 +5,7 @@
  *   反修产物和 HF 发布包都是这个命名, 所以按前缀配对, 不需要任何清单。
  * n-gram 表: GGUF 上一级目录里有 deepseek-engram/(下载包的布局)就给起服加 --engram-dir;
  *   没有就用 GGUF 元数据里记的路径(本机自己量化的模型, 那条路径在本机是真的)。
- * 下载 = hf_install.sh download --dir gguf/hub; 进度 = hf_install.sh probe(只看盘不联网)。包里有什么、每件多大只写在那个脚本里,
+ * 下载 = hf_install.sh download --dir gguf/hub(含改图用的分割权重 seg/mobile_sam.pt, 不进发布包); 进度 = hf_install.sh probe(只看盘不联网)。包里有什么、每件多大只写在那个脚本里,
  *   这里一个数也不抄 —— 抄了迟早和发布包对不上。速度/剩余时间由页面拿两次读数的差自己算。
  * 加载 = 把选择写进 gguf/serve_pick.txt, 再让主进程停了模型子进程重起(serve_1m_spark.sh 不带参数时读它)。
  *   训练中点加载只写文件不打断训练: 训完 train_cycle.sh 装回来的就是新选的这套。 */
@@ -209,6 +209,7 @@ static void emit_hub(ds4_buf *b) {
         else if (sscanf(ln, "shards %255s", shard0) == 1) {}
         else if (sscanf(ln, "gguf %511s %lld %lld", a, &x, &y) == 3) { ds4_buf_puts(&tail, ",\"gguf\":{\"name\":"); ds4_json_escape(&tail, a); ds4_buf_printf(&tail, ",\"bytes\":%lld,\"have\":%lld}", x, y); }
         else if (sscanf(ln, "engram %lld %lld", &x, &y) == 2) ds4_buf_printf(&tail, ",\"engram\":{\"bytes\":%lld,\"have\":%lld}", x, y);
+        else if (sscanf(ln, "seg %511s %lld %lld", a, &x, &y) == 3) { ds4_buf_puts(&tail, ",\"seg\":{\"name\":"); ds4_json_escape(&tail, a); ds4_buf_printf(&tail, ",\"bytes\":%lld,\"have\":%lld}", x, y); }
         else if (sscanf(ln, "sidecar %511s %511s %lld", a, c, &x) == 3) {
             ds4_buf_puts(b, nsc++ ? ",{\"domain\":" : "{\"domain\":"); ds4_json_escape(b, a);
             ds4_buf_puts(b, ",\"dir\":"); ds4_json_escape(b, c); ds4_buf_printf(b, ",\"have\":%s}", x ? "true" : "false");

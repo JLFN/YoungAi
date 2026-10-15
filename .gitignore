@@ -119,3 +119,7 @@ ui_logs/
 .env
 .env.*
 tests/asst/fake/
+# 改图工具的分割程序与两个单测(10-15): 编译产物
+/ds4-seg
+/ds4_image_test
+/ds4_seg_test

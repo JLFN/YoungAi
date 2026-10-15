@@ -44,6 +44,7 @@ rsync -az --delete $DRYF \
     --exclude 'ds4_video_test' --exclude 'tests/video/vidcheck' \
     `# 推送密码学金标(10-14, src/push)与旁白单测同理` \
     --exclude 'ds4_push_test' --exclude 'ds4_tts_test' \
+    --exclude 'ds4-seg' --exclude 'ds4_seg_test' --exclude 'ds4_image_test' \
     `# ★云手机的 Linux 产物只在 spark 上有★(10-14 空跑查出): ds4-phone、adb/ashmem 探针、ashmem 内核模块(make -C 内核树编的 .ko 与 kbuild 中间文件,` \
     `# 签名要 MOK, 重编一次不便宜) —— Mac 没有 ⇒ --delete 一同步就删光; 探针反过来会被 Mac 的 Mach-O 盖掉` \
     --exclude 'ds4-phone' --exclude 'tests/phone/adbprobe' --exclude 'tests/phone/ashmemprobe' \

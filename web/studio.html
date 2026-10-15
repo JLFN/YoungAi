@@ -1060,6 +1060,7 @@ const I18N = {
     dl_done: "已下载", dl_prog: "{0} / {1} · {2}%", hub_none: "读不到下载清单(gguf-tools/scripts/hf_install.sh probe 没有输出)",
     hub_base: "基座模型", hub_base_sub: "{0} · 分 40 片下载, 逐片校验后拼成一个文件", hub_eg: "n-gram 表", hub_eg_sub: "官方 DeepSeek-V4.1-Flash 的第 47、48 片权重, 模型推理要查它",
     hub_eg_local: "用本机已有: {0}", hub_sc: "领域侧车", hub_sc_sub: "每个约 40 MB, 一起下",
+    hub_seg: "改图分割模型", hub_seg_sub: "{0} · MobileSAM(Apache-2.0), 改图时圈出衣服、人、物件用; 没有它改图退回按颜色选区",
     dl_ing_speed: "下载中 · {0} MB/s · 约剩 {1}", dl_ing: "下载中…", dl_dest: "(落盘 {0}/, 关掉页面也会继续)", dl_all: "下载齐了, 在上面\"本机模型\"里加载 {0}。",
     dl_note: "断点续传: 中途取消或断网, 再点一次从断点接着下; 每个分片都校验 sha256。", dl_lastfail: "上次没下完: {0}",
     dl_started: "开始下载(关掉页面也会继续)", dl_fail: "下载没起来: {0}", dl_cancel_confirm: "取消下载? 已下的部分留着, 下次点下载从断点接着下。", dl_cancelled: "已取消",
@@ -1226,6 +1227,7 @@ const I18N = {
     dl_done: "Downloaded", dl_prog: "{0} / {1} · {2}%", hub_none: "Can't read the download manifest (gguf-tools/scripts/hf_install.sh probe printed nothing)",
     hub_base: "Base model", hub_base_sub: "{0} · downloaded in 40 shards, each verified, then joined into one file", hub_eg: "n-gram table", hub_eg_sub: "Shards 47 and 48 of the official DeepSeek-V4.1-Flash weights; inference looks things up in it",
     hub_eg_local: "Using local: {0}", hub_sc: "Domain sidecars", hub_sc_sub: "about 40 MB each, downloaded together",
+    hub_seg: "Image segmenter", hub_seg_sub: "{0} · MobileSAM (Apache-2.0); picks out clothes, people and objects when editing images. Without it edits fall back to selecting by colour",
     dl_ing_speed: "Downloading · {0} MB/s · ~{1} left", dl_ing: "Downloading…", dl_dest: " (saving to {0}/, keeps going if you close the page)", dl_all: "All downloaded. Load {0} under \"Local models\" above.",
     dl_note: "Resumable: if you cancel or lose the connection, click again to continue where it stopped; every shard is checked with sha256.", dl_lastfail: "Last download didn't finish: {0}",
     dl_started: "Download started (keeps going if you close the page)", dl_fail: "Download didn't start: {0}", dl_cancel_confirm: "Cancel the download? What's already downloaded is kept; clicking Download again resumes from there.", dl_cancelled: "Cancelled",
@@ -3130,7 +3132,9 @@ function renderHub() {
   sc.appendChild(top); const chips = node("div", "chips"); chips.style.marginTop = "8px";
   h.sidecars.forEach(s => chips.appendChild(node("span", "badge " + (s.have ? "green" : ""), domLabel(s.domain) + (s.have ? " ✓" : ""))));
   sc.appendChild(chips); items.appendChild(sc);
-  const dl = mdata.downloading, allDone = gDone && (eDone || eg) && h.sidecars.every(s => s.have);
+  const sDone = !h.seg || h.seg.have >= h.seg.bytes;   /* 老脚本没有这一行就当不存在 */
+  if (h.seg) items.appendChild(dlItem(t("hub_seg"), t("hub_seg_sub", h.seg.name), h.seg.bytes, h.seg.have, sDone));
+  const dl = mdata.downloading, allDone = gDone && (eDone || eg) && sDone && h.sidecars.every(s => s.have);
   $("m-dl").style.display = dl ? "none" : ""; $("m-cancel").style.display = dl ? "" : "none";
   $("m-dl").textContent = t(allDone ? "m_dl_verify" : (h.gguf.have || h.engram.have) ? "m_dl_resume" : "m_dl");
   const tot = h.gguf.bytes + (eg ? 0 : h.engram.bytes), have = h.gguf.have + (eg ? 0 : h.engram.have);

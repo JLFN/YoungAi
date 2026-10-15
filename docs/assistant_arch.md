@@ -330,6 +330,10 @@ tests/asst/e2e_device.mjs      32 项(见 §10)
 src/office/                    官方产出工具的格式基元(10-13, 方案稿 docs/assistant_office.md): zip+deflate / Markdown 解析 / docx / xlsx(+公式求值) / pdf(TrueType 子集内嵌, 自己排版) / pptx; 零依赖, 产物可逐字节金标
 src/assistant/asst_office.c    write_document(.docx/.pdf/.pptx, also 多出一种) / write_xlsx 的执行点: 沙盒子进程里跑写出器; 注册表两行, 守门走 write 口径
 tests/office/t_office.c        ds4_office_test(进 make test)
+src/image/                     改图基元(10-15, 方案稿 docs/assistant_image.md): stb_image 唯一实现点 + PNG 编码 / PIL 双线性抗锯齿缩放 / 裁转翻调色模糊马赛克画框贴图 / 颜色掩膜流水线 / 导向滤波软 alpha + 换色 + 叠红
+src/seg/                       ds4-seg: 点提示分割(MobileSAM 纯 C, 直接读官方 .pt), 算子 Metal(seg_metal.m + metal/seg.metal)/CUDA(seg_cuda.cu) 两份; 改图工具主进程 spawn 它, 进程退出即释放权重与 GPU
+src/assistant/tools/tool_image.c  edit_image 的执行点: recolor 先 spawn ds4-seg 出掩膜(没有就颜色流水线), 像素工作在沙盒子进程; 结果头两行 image: 预览 → asst_run.c 接成 image_url
+tests/image/t_image.c tests/seg/t_seg*.c tests/asst/t_asst_image.c   ds4_image_test / ds4_seg_test(进 make test) / 助理改图套件
 ```
 
 没做的：`web/manifest.webmanifest` 文件型 share_target（要 service worker 接 POST，另起）；`soffice` 等真程序在沙盒里的首次验证（Mac 开发机没装）。

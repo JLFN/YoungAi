@@ -9,6 +9,7 @@
 #
 # 包里放两条流程要的东西, 不放模型(三百多 GB, 页面里下):
 #   跑模型: ds4-server + ds4-train(主进程: 页面、起服、训练编排全在它的 C 里) + web/ 页面 + hf_install.sh(模型页下载, hf CLI 的包装)
+#   改图: ds4-seg(分割程序, 几百 KB; 它读的 41 MB 权重不进包, 模型页下载时从作者的 HF 仓库取到 gguf/hub/model/seg/)
 #   跑训练: ds4(训练器与判决学生都是它) + anchor_metrics(wt2 门的五指标)
 #           + 保持料 hold.jsonl + 判决料 wt2.ids + 它的 FP 教师锚 teacher_g7_wt2_n512.bin(265 MB: 要 HF 出厂权重才能出, 拿包的人出不了)
 # 二进制是在本机编的, 只能发给同平台机器: spark 上打的(linux-aarch64, CUDA 架构 = GB10)给 DGX Spark 用; Mac 上打的(darwin-arm64, Metal)给
@@ -19,7 +20,7 @@ OUT="${1:-$ROOT/dist}"
 NAME="youngai-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m)-$(date +%Y%m%d)"
 # web/ 只收页面与图: spark 的工作树里 web/ 下还躺着老构建留下的 .o, 整目录拷会一起进包
 # PWA 四件(manifest / sw.js / 图标)缺了不只是装不成 App: 穿透的公网检测取的就是 /manifest.webmanifest, 拿不到 200 设置里永远显示断线
-FILES=(ds4-server ds4-train ds4 gguf-tools/bench/anchor_metrics web/*.html web/*.jpg web/*.png web/manifest.webmanifest web/sw.js LICENSE LICENSE-DeepSeek README.md README.zh-CN.md
+FILES=(ds4-server ds4-train ds4 ds4-seg gguf-tools/bench/anchor_metrics web/*.html web/*.jpg web/*.png web/manifest.webmanifest web/sw.js LICENSE LICENSE-DeepSeek README.md README.zh-CN.md
        gguf-tools/scripts/hf_install.sh
        gguf-tools/data/posttrain/hold.jsonl gguf/go-onebit/g7/wt2.ids gguf/v41judge/teacher_g7_wt2_n512.bin)
 # 只带一个脚本: 下载(hf CLI 的包装)。起服/训练/门/选轮全在 ds4-train 的 C 里(src/model/model_serve.c model_train_job.c model_train_pick.c), 10-10 起不再随包发脚本。
@@ -27,7 +28,7 @@ FILES=(ds4-server ds4-train ds4 gguf-tools/bench/anchor_metrics web/*.html web/*
 for f in "${FILES[@]}"; do [ -e "$f" ] || { echo "缺 $f(二进制要先编: make cuda-spark(Mac: make) 与 make -C gguf-tools anchor_metrics)"; exit 1; }; done
 # 动态库在本机都得找得到: 找不到的话别人一执行就是 "error while loading shared libraries", 还以为包坏了
 if command -v ldd >/dev/null; then
-    miss=$(ldd ds4-server ds4-train ds4 gguf-tools/bench/anchor_metrics | grep "not found" || true)
+    miss=$(ldd ds4-server ds4-train ds4 ds4-seg gguf-tools/bench/anchor_metrics | grep "not found" || true)
     [ -z "$miss" ] || { echo "缺动态库:"; echo "$miss"; exit 1; }
 fi
 STAGE="$OUT/$NAME"

@@ -5,6 +5,7 @@
  *      (和审批卡同一套骨架, 会话状态 waiting_device); 发那条消息的设备(client)自动执行并 POST /api/assistant/device 回结果; 页面关着就一直等, 打开再接上。
  * 一次只有一个待答设备请求(运行本来就一次一个); 答复的 id 对不上当前等的那条 → 拒(串话、重复提交都不会污染结果)。 */
 #include "asst_internal.h"
+#include "../office/ds4_office.h"
 #include <sys/stat.h>
 #include <time.h>
 
@@ -65,7 +66,9 @@ char *asst_attach_line(const char *files, bool zh) {
                 if (b.len) ds4_buf_putc(&b, '\n');
                 ds4_buf_puts(&b, zh ? "[附件: " : "[attachment: "); put_clean(&b, rel);
                 const long kb = (long)((st.st_size + 1023) / 1024);
-                ds4_buf_printf(&b, " (%ld KB)]", kb);
+                office_imginfo info; uint8_t head[262144]; FILE *f = fopen(abs, "rb"); size_t hn = f ? fread(head, 1, sizeof head, f) : 0; if (f) fclose(f);   /* 图片附上宽高: 模型要按像素坐标指点(edit_image), 不知道尺寸就得先去 identify */
+                if (hn && office_img_info(head, hn, &info)) ds4_buf_printf(&b, " (%ld KB, %dx%d)]", kb, info.w, info.h);
+                else ds4_buf_printf(&b, " (%ld KB)]", kb);
             }
         }
         p += n + (e ? 1 : 0);
