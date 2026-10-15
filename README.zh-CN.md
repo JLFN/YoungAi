@@ -97,7 +97,7 @@ make cuda-spark
 2. **助理**页：直接说话。对话、记忆、工作区都在 `~/.ds4/assistant/`。
 3. **手机**：打开页面"添加到主屏幕"就是 App。定位、剪贴板、分享、推送这些要 https——在"设置"里填一台云服务器开穿透，
    或者用 Tailscale；步骤和排错见 [docs/pwa.md](docs/pwa.md)。
-4. **任务**页：输入一句话交给助理持续跟；打开"在这台设备上接收通知"，做完或到点会推到手机。
+4. **任务**页：输入一句话交给助理持续跟。
 5. **技能**页：新建或导入一个带 `SKILL.md` 的文件夹（仓库自带一份做 PPT 的 [`skills/pptx/`](https://github.com/fodelf/YoungAi/tree/restructure/skills/pptx)）。
 
 工作台各页、每个工具怎么用、出错会怎样，见 **[使用指南](https://fodelf.github.io/YoungAi/guide.html)**。

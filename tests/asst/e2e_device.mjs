@@ -210,9 +210,9 @@ const tasksDir = path.join(ASST, "tasks");
   const p5 = await ctx5.newPage(); p5.on("pageerror", e => console.log("pageerror:", e.message));
   await p5.goto(`http://127.0.0.1:${PORT}/#tasks`); await login(p5); await sleep(300);
   ok(await p5.evaluate(() => curTab()) === "tasks" && await p5.locator("#tk-text").isVisible(), "任务页打开, 有一句话输入框");
-  /* 通知卡(10-14): 本机 http://127.0.0.1 是安全上下文, 开关可用但没订阅; 设备数 0 ⇒ 测试键灰; 提醒卡空 */
+  /* 通知卡 10-15 按用户令整张删了: 守住它别回来; 提醒卡空 */
   await sleep(600);
-  ok(await p5.locator("#nt-on").count() === 1 && !(await p5.locator("#nt-on").isDisabled()) && !(await p5.locator("#nt-on").isChecked()) && /0/.test(await p5.locator("#nt-devices").textContent()) && await p5.locator("#nt-test").isDisabled(), "通知卡: 开关在、未订阅、设备 0 台、测试键灰: " + await p5.locator("#nt-devices").textContent());
+  ok(await p5.locator("#nt-on, #nt-test, #nt-proxy").count() === 0, "任务页没有通知卡");
   ok(await p5.locator("#rm-list .muted").count() === 1, "定时提醒卡: 空");
   await p5.locator("#tk-text").fill("盯着 e2e 的价格, 降了通知我"); await p5.locator("#tk-text").press("Enter"); await sleep(500);
   const newTask = readdirSync(tasksDir).filter(f => !beforeTasks.has(f));
@@ -230,7 +230,7 @@ const tasksDir = path.join(ASST, "tasks");
   ok(msgs[0].role === "user" && /\[任务: 第 1 次跟进 · 创建于 /.test(msgs[0].content) && msgs[0].content.endsWith("盯着 e2e 的价格, 降了通知我"), "第一条 user 带任务事实行, 正文是原句");
   /* 通知(10-14 用户: "在 app 里什么都不弹, 离开后再推"): 这台浏览器没订阅 → notify 如实说没设备(不再假称"页面上显示了"), 页面里也不弹 */
   const ntf = msgs.find(m => m.role === "tool" && typeof m.content === "string" && m.content.includes("no device has notifications turned on"));
-  ok(!!ntf, "notify 工具结果: 没设备开通知 → 直说, 模型会让用户去任务页打开");
+  ok(!!ntf, "notify 工具结果: 没设备开通知 → 直说没送到");
   await sleep(1500);
   ok(!(await p5.locator("#toast").textContent()).includes("e2e 通知"), "页面里没弹这条通知");
   await p5.locator("#tk-list .row b", { hasText: "盯着 e2e 的价格" }).waitFor(); await sleep(2800);   /* 等一轮 poll 把 runs/next 刷进行里 */

@@ -132,7 +132,7 @@ make cuda-spark
 3. **Phone**: open the page and *Add to Home Screen* to get an app. Location, clipboard, sharing and push need https:
    enter a cloud server in *Settings* and turn on the tunnel, or use Tailscale. Steps and troubleshooting:
    [docs/pwa.md](docs/pwa.md) (Chinese).
-4. **Tasks**: type one sentence to hand a job over; turn on *Receive notifications on this device* to be pinged when it is done or due.
+4. **Tasks**: type one sentence to hand a job over.
 5. **Skills**: create one, or import a folder with a `SKILL.md` (the repo ships one for slide decks: [`skills/pptx/`](https://github.com/fodelf/YoungAi/tree/restructure/skills/pptx)).
 
 How every tab and every tool works, and what happens when something goes wrong: the

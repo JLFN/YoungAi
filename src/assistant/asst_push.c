@@ -78,7 +78,7 @@ int asst_push_devices(void) { sub_t rows[ASST_PUSH_SUBS]; pthread_mutex_lock(&pm
 static int deliver(const char *title, const char *body, const char *url, bool hold_watched, int *held);
 
 /* ---- 推送代理(10-15): 安卓 Chrome 的推送服务是谷歌 FCM, 国内直连超时(spark 实测 curl exit 28), 发送这头要走代理。
- * push/proxy 一行 URL, 任务页通知卡里填; 空 = 直连(苹果 web.push.apple.com 国内直连就通)。不读 http_proxy 这类环境变量: 全仓零 env 配置。 */
+ * push/proxy 一行 URL, POST /api/assistant/push {op:proxy} 写(页面上填它的通知卡 10-15 删了); 空 = 直连(苹果 web.push.apple.com 国内直连就通)。不读 http_proxy 这类环境变量: 全仓零 env 配置。 */
 static void proxy_path(char *out, size_t n) { snprintf(out, n, "%s/push/proxy", asst_root); }
 static void proxy_get(char *out, size_t n) {
     char p[ASST_PATH + 32]; proxy_path(p, sizeof p); char *m = asst_slurp(p, NULL);
@@ -225,7 +225,7 @@ static int deliver(const char *title, const char *body, const char *url, bool ho
     if (held) *held = 0;
     if (!g_ready) return 0;
     sub_t rows[ASST_PUSH_SUBS]; pthread_mutex_lock(&pmu); const int n = subs_list(rows, ASST_PUSH_SUBS); pthread_mutex_unlock(&pmu);
-    if (!n) audit_push(title, false, "not sent: no device has notifications turned on (Tasks page → notifications)");   /* 到点的提醒没处去, 至少留一笔, 不静默丢 */
+    if (!n) audit_push(title, false, "not sent: no device has notifications turned on");   /* 到点的提醒没处去, 至少留一笔, 不静默丢 */
     ds4_buf pl = {0}; payload(&pl, title, body, url);
     const long now = (long)time(NULL); int sent = 0;
     for (int i = 0; i < n; i++) {

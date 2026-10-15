@@ -2,8 +2,8 @@
  *   ① 模型的 notify 工具: 现在推一条, 或给一个时间到点再推(旅游计划里"出发前一小时提醒"这种) —— 定时的落 reminders/<id>.json, 通知线程(本文件末尾)到点就发;
  *   ② 一次运行结束时的机械规则(asst_run.c 收尾钩子): 任务这一轮把任务做完了(task_done) → 推"任务完成"; 任何运行跑了 ≥ ASST_NOTIFY_LONG_S 秒 → 推"回答好了"
  *      —— 等了两分钟以上的人多半已经离开页面, 这是框架能判断的事, 不用模型猜;
- *   ③ 页面的"发一条测试"(asst_push.c 的 test)。
- * 通知点开 = 进那个会话(url 带 ?session=, 页面认它)。设备一台都没开时 notify 工具的结果直说, 模型会告诉用户去任务页打开。 */
+ *   ③ 接口 POST /api/assistant/push {op:test}(asst_push.c; 页面上的测试按钮 10-15 随通知卡一起删了)。
+ * 通知点开 = 进那个会话(url 带 ?session=, 页面认它)。设备一台都没开时 notify 工具的结果直说没送到; 别让模型指路去任务页, 那里已经没有通知开关。 */
 #include "asst_internal.h"
 #include <dirent.h>
 #include <fcntl.h>
@@ -57,7 +57,7 @@ bool asst_notify_build(const asst_tctx *c, ds4_buf *b) {
     ds4_buf_puts(b, "{\"type\":\"function\",\"function\":{\"name\":\"notify\",\"description\":\"Send a notification to the user's devices (phone and computer, wherever they turned notifications on), now or at a given time. "
                     "Use it for something the user should notice without having the page open: a result they are waiting for, a reminder at a time (give `at`), a change you were asked to watch for. "
                     "A scheduled one is kept on this machine and sent at that time even if this conversation is over; the user sees and can delete it in the Tasks page. "
-                    "The result says how many devices got it; when none has notifications turned on it says so, then tell the user they can turn them on in the Tasks page. Text should be short: a notification shows one or two lines.\","
+                    "The result says how many devices got it; when none has notifications turned on it says so, then tell the user it reached nobody. Text should be short: a notification shows one or two lines.\","
                     "\"parameters\":{\"type\":\"object\",\"properties\":{\"text\":{\"type\":\"string\",\"description\":\"The notification text (one or two lines)\"},\"title\":{\"type\":\"string\",\"description\":\"Short title (default: this conversation's title)\"},"
                     "\"after\":{\"type\":\"integer\",\"description\":\"Send this many seconds from now (30 = in thirty seconds, 7200 = in two hours); use it for relative times instead of working out a clock time\"},"
                     "\"at\":{\"type\":\"string\",\"description\":\"When to send, local time, YYYY-MM-DD HH:MM or YYYY-MM-DD HH:MM:SS; omit both at and after to send now\"}},\"required\":[\"text\"]}}}");
@@ -106,10 +106,10 @@ char *asst_notify_tool_exec(const char *sid, const char *args, int *ok) {
         if (!w) { ds4_buf_puts(&r, "error: cannot save the reminder\n"); goto out; }
         asst_notify_wake();   /* 通知线程按最近一条的到点时刻睡, 新排的可能更早 */
         char ws[64], in[48]; strftime(ws, sizeof ws, "%Y-%m-%d %H:%M:%S", localtime(&when)); in_words(when - now, in, sizeof in);
-        ds4_buf_printf(&r, "scheduled: \"%s\" at %s (%s); %d device(s) have notifications on%s\n", title, ws, in, devices, devices ? "" : " — none yet, so it will reach nobody: tell the user to turn them on in the Tasks page before then");
+        ds4_buf_printf(&r, "scheduled: \"%s\" at %s (%s); %d device(s) have notifications on%s\n", title, ws, in, devices, devices ? "" : " — none yet, so it will reach nobody unless a device subscribes before then: tell the user");
         *ok = 1; goto out;
     }
-    if (!devices) { ds4_buf_puts(&r, "error: no device has notifications turned on; the user can turn them on in the Tasks page (notifications card), then call again\n"); goto out; }
+    if (!devices) { ds4_buf_puts(&r, "error: no device has notifications turned on, so nothing was sent; tell the user\n"); goto out; }
     int held = 0; const int n = asst_push_send_sync(title, text, url, &held);
     if (n) ds4_buf_printf(&r, "sent to %d device(s)", n);
     if (held) ds4_buf_printf(&r, "%sheld for %d device(s) whose page the user is looking at right now; it is pushed there as soon as they leave the page", n ? "; " : "", held);

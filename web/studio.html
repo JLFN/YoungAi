@@ -638,14 +638,6 @@
        一句话 = 一个任务(~/.ds4/assistant/tasks/<id>.json) + 一个专属对话; 助理到点往那个对话里发"继续这个任务", 什么时候再看由模型自己定(task_check_in), 做完了 task_done。
        列表 = GET /api/assistant/tasks; 操作 POST tasks {op}; "打开"就是进它的对话(助理页), 工具卡/审批卡全是现成的。 -->
   <section class="view" id="v-tasks">
-    <!-- 通知(10-14): 开关 = 这台设备订阅浏览器推送(VAPID 公钥从 GET /api/assistant/push 来, 订阅 POST 回去); 这台设备正开着页面时服务端先压着, 切走后补推, 页面里不弹 -->
-    <div class="card"><div class="card-title" data-i18n="nt_title">通知</div><div class="muted" data-i18n="nt_sub" style="margin-bottom:10px"></div>
-      <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
-        <label class="switch" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="nt-on"><span class="knob"></span><span data-i18n="nt_switch">在这台设备上接收通知</span></label>
-        <button id="nt-test" data-i18n="nt_test">发一条测试</button><span class="muted" id="nt-state"></span></div>
-      <div class="muted" id="nt-devices" style="margin-top:8px"></div>
-      <!-- 推送代理(10-15): 安卓 Chrome 的推送要经谷歌 FCM, 服务端国内直连不通; 填了发送走它, 空 = 直连(iPhone 的苹果推送直连就通) -->
-      <div style="display:flex;gap:10px;align-items:center;margin-top:10px"><input id="nt-proxy" data-i18n-ph="nt_proxy_ph" style="flex:1" spellcheck="false" autocapitalize="off"><button id="nt-proxy-save" data-i18n="nt_proxy_save">保存</button></div></div>
     <div class="card"><div class="card-title" data-i18n="tk_new">新任务</div><div class="muted" data-i18n="tk_new_sub" style="margin-bottom:10px"></div>
       <div style="display:flex;gap:10px;align-items:center"><input id="tk-text" data-i18n-ph="tk_ph" style="flex:1" autocapitalize="off"><button class="primary" id="tk-add" data-i18n="tk_add">创建</button></div></div>
     <div class="card"><div class="card-title" data-i18n="tk_list">任务</div><div class="muted" data-i18n="tk_list_sub" style="margin-bottom:10px"></div>
@@ -1062,8 +1054,6 @@ const I18N = {
     tk_list: "任务", tk_list_sub: "每个任务有自己的对话, 点\"打开\"能看它每一次做了什么。", tk_empty: "还没有任务。",
     tk_open: "打开", tk_pause: "暂停", tk_resume: "继续", tk_run: "现在跟进", tk_done: "完成", tk_del: "删除", tk_del_confirm: "删除这个任务和它的对话? (挪进 ~/.ds4/assistant/trash/, 盘上还能找回)",
     tk_runs: "跟进 {0} 次", tk_next: "下次 {0}", tk_running: "进行中", tk_queued: "排队中", tk_waiting: "等你批准", tk_paused: "已暂停", tk_done_s: "已完成", tk_err: "上次出错", tk_note: "助理的话: {0}", tk_created: "创建于 {0}",
-    nt_title: "通知", nt_sub: "任务做完、跑了很久的回答好了、助理安排的提醒到点, 推到开了通知的设备上(手机装成 App 也收得到)。正开着页面在看时不推, 直接在页面里弹。", nt_switch: "在这台设备上接收通知", nt_test: "发一条测试",
-    nt_devices: "已开通知的设备: {0} 台 {1}", nt_unsupported: "这个浏览器或打开方式不支持推送(要 https 或 localhost 打开)", nt_ios: "iPhone 上要先\"添加到主屏幕\", 从主屏幕打开才能开通知", nt_denied: "通知权限被拒绝了, 到浏览器设置里允许后再开", nt_on: "已打开", nt_sent: "测试通知已发, 看设备", nt_subfail: "开不了: {0}", nt_proxy_ph: "推送代理(安卓收不到时填, 如 http://127.0.0.1:7890; 留空 = 直连)", nt_proxy_save: "保存", nt_proxy_saved: "推送代理已保存",
     rm_title: "定时提醒", rm_sub: "助理用 notify 工具安排的: 到点推到设备(页面开着就在页面里弹)。不想要的删掉。", rm_empty: "没有待发的提醒", rm_del: "删除", rm_open: "打开", rm_at: "{0} · 来自对话",
     au_setup_t: "首次使用: 设置用户名和密码", au_setup_sub: "以后打开工作台都要用它登录。只以单向哈希存在运行工作台的那台机器上({0}); 忘了就删掉这个文件, 刷新页面重新设置。",
     au_login_t: "登录", au_login_sub: "登录后这个浏览器 30 天内免登, 常用会自动续期。", au_broken_t: "登录文件读不懂",
@@ -1226,8 +1216,6 @@ const I18N = {
     tk_list: "Tasks", tk_list_sub: "Every task has its own conversation; Open shows what it did each time.", tk_empty: "No tasks yet.",
     tk_open: "Open", tk_pause: "Pause", tk_resume: "Resume", tk_run: "Follow up now", tk_done: "Done", tk_del: "Delete", tk_del_confirm: "Delete this task and its conversation? (moved to ~/.ds4/assistant/trash/, still recoverable on disk)",
     tk_runs: "{0} follow-ups", tk_next: "next {0}", tk_running: "Running", tk_queued: "Queued", tk_waiting: "Waiting for you", tk_paused: "Paused", tk_done_s: "Done", tk_err: "Last run failed", tk_note: "Assistant's note: {0}", tk_created: "created {0}",
-    nt_title: "Notifications", nt_sub: "A finished task, a long answer that is ready, a reminder the assistant scheduled: pushed to the devices that turned notifications on (an installed phone app gets them too). While a page is open and visible nothing is pushed; it pops up in the page instead.", nt_switch: "Receive notifications on this device", nt_test: "Send a test",
-    nt_devices: "Devices with notifications on: {0} {1}", nt_unsupported: "This browser or way of opening does not support push (open over https or localhost)", nt_ios: "On iPhone, add to the home screen first and open from there to turn notifications on", nt_denied: "Notification permission was denied; allow it in the browser settings, then turn on", nt_on: "On", nt_sent: "Test sent, check the device", nt_subfail: "Could not turn on: {0}", nt_proxy_ph: "Push proxy (fill in if Android gets nothing, e.g. http://127.0.0.1:7890; empty = direct)", nt_proxy_save: "Save", nt_proxy_saved: "Push proxy saved",
     rm_title: "Scheduled reminders", rm_sub: "Scheduled by the assistant with the notify tool: pushed to your devices at the time (shown in the page if it is open). Delete the ones you do not want.", rm_empty: "No pending reminders", rm_del: "Delete", rm_open: "Open", rm_at: "{0} · from a conversation",
     au_setup_t: "First run: set a username and password", au_setup_sub: "You'll sign in with these every time. Only a one-way hash is stored, on the machine running the studio ({0}); if you forget, delete that file and reload to set them again.",
     au_login_t: "Sign in", au_login_sub: "This browser stays signed in for 30 days, renewed while you keep using it.", au_broken_t: "Login file unreadable",
@@ -2478,51 +2466,16 @@ const whenOf = ts => { const d = new Date(ts * 1000), n = new Date(); return d.t
 async function loadTasks() {
   const r = await aFetch("tasks"); if (r.error) { toast(t("fail", r.error), true); return; }
   tasks = r.tasks || []; renderTasks();
-  loadPush(); loadReminders();
+  loadReminders();
 }
 
 /* ---------------- 通知(10-14 用户: "使用 pwa 推送; 在当前页面肯定不通知") ----------------
-   开关 = 这台浏览器向推送服务订阅(pushManager.subscribe, 用服务端的 VAPID 公钥), 订阅交给 POST /api/assistant/push {op:subscribe}; 关 = 两边都退订。
-   密码学全在服务端 C 里(src/push), 浏览器只做它原生会做的事。
+   10-15 用户令: 任务页的通知卡(订阅开关/发测试/推送代理)整张删掉, 页面里不再能订阅; 已订阅的设备照常收, 服务端 /api/assistant/push 没动。
    在场心跳(10-14 用户: "在 app 里什么都不弹, 离开后再推"): 页面可见时每 20 s POST presence {visible:true, endpoint}, 切后台/关页立刻报 false(keepalive)。
    endpoint = 这台浏览器的推送订阅: 服务端只压这台设备的推送, 页面里不弹任何东西; 切走/锁屏后服务端把压着的补推过来。别的设备照常推。
    通知点开: service worker 把 url 递过来(message), 或新开窗口带 ?session=, 两条路都走 gotoNotice。 */
-let pushKey = "", pushSub = null, presenceT = 0;
+let pushSub = null, presenceT = 0;
 const pushSupported = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window && window.isSecureContext;
-const b64uToU8 = s => { const b = atob(s.replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from(b, c => c.charCodeAt(0)); };
-const deviceLabel = () => (isIOS() ? "iPhone" : /Android/i.test(navigator.userAgent) ? "Android" : /Mac/.test(navigator.platform) ? "Mac" : "PC") + (document.documentElement.dataset.standalone === "1" ? " App" : " " + (lang === "zh" ? "浏览器" : "browser"));
-async function loadPush() {
-  const r = await aFetch("push"); if (r.error) return;
-  pushKey = r.key; const devs = r.devices || [];
-  if (document.activeElement !== $("nt-proxy")) $("nt-proxy").value = r.proxy || "";   /* 2.5 s 一轮会重拉: 正在输入时别把字冲掉 */
-  $("nt-devices").textContent = t("nt_devices", devs.length, devs.length ? "(" + devs.map(d => d.label || d.id).join(", ") + ")" : "");
-  $("nt-test").disabled = !devs.length;
-  const sw = $("nt-on"), st = $("nt-state");
-  if (!pushSupported()) { sw.disabled = true; sw.checked = false; st.textContent = t(isIOS() && document.documentElement.dataset.standalone !== "1" ? "nt_ios" : "nt_unsupported"); return; }
-  const had = pushSub && pushSub.endpoint;
-  try { const reg = await navigator.serviceWorker.ready; pushSub = await reg.pushManager.getSubscription(); } catch (e) { pushSub = null; }
-  if ((pushSub && pushSub.endpoint) !== had && document.visibilityState === "visible") { presenceT = Date.now(); presence(true); }   /* 刚开/关了通知: 在场里的 endpoint 马上换, 不等下一拍心跳 */
-  sw.disabled = false; sw.checked = !!pushSub;
-  st.textContent = Notification.permission === "denied" ? t("nt_denied") : pushSub ? t("nt_on") : "";
-}
-$("nt-on").onchange = async () => {
-  const sw = $("nt-on"); sw.disabled = true;
-  try {
-    const reg = await navigator.serviceWorker.ready;
-    if (sw.checked) {
-      if ((await Notification.requestPermission()) !== "granted") throw new Error(t("nt_denied"));
-      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64uToU8(pushKey) });
-      const r = await aFetch("push", { op: "subscribe", sub: sub.toJSON(), label: deviceLabel(), origin: location.origin });
-      if (r.error) { await sub.unsubscribe().catch(() => {}); throw new Error(r.error); }
-    } else {
-      const sub = await reg.pushManager.getSubscription();
-      if (sub) { await aFetch("push", { op: "unsubscribe", endpoint: sub.endpoint }); await sub.unsubscribe().catch(() => {}); }
-    }
-  } catch (e) { toast(t("nt_subfail", e.message || String(e)), true); }
-  await loadPush();
-};
-$("nt-proxy-save").onclick = async () => { const r = await aFetch("push", { op: "proxy", url: $("nt-proxy").value.trim() }); if (r.error) { toast(t("fail", r.error), true); return; } toast(t("nt_proxy_saved")); };
-$("nt-test").onclick = async () => { const r = await aFetch("push", { op: "test", lang }); r.error ? toast(t("fail", r.error), true) : toast(t("nt_sent")); };
 let reminders = [];
 async function loadReminders() {
   const r = await aFetch("reminders"); if (r.error) return;

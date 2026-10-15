@@ -255,19 +255,6 @@ done</code></pre>
       <p lang="zh-CN">只有按时间触发，没有"文件变了就…"这种事件触发。删除的任务挪进回收站目录，不真删。</p>
       <p lang="en">Triggers are time-based only; there is no "when this file changes…". Deleted tasks move to a trash folder rather than being erased.</p>
 
-      <h3><span lang="zh-CN">把通知推到手机</span><span lang="en">Push notifications to your phone</span></h3>
-      <ol class="steps">
-        <li lang="zh-CN">用 https 打开工作台（iPhone 还要先"添加到主屏幕"、从主屏幕图标打开）。</li>
-        <li lang="en">Open the Studio over https (on iPhone, first Add to Home Screen and open it from the icon).</li>
-        <li lang="zh-CN">任务页顶上"通知"卡，打开"在这台设备上接收通知"，浏览器问一次权限。</li>
-        <li lang="en">In the "Notifications" card at the top of Tasks, turn on "Receive notifications on this device"; the browser asks for permission once.</li>
-        <li lang="zh-CN">点"发一条测试"，看手机有没有弹。</li>
-        <li lang="en">Press "Send a test" and check that it pops up.</li>
-      </ol>
-      <p lang="zh-CN">之后三种情况会推：它用 <code>notify</code> 主动提醒你（可以定时，<i>"明早 7 点半提醒我出发"</i>、<i>"30 秒后提醒我"</i>，准到秒）；任务做完；任何一次回答跑了超过 2 分钟。<b>你正开着页面在看的那台设备不推</b>，直接在页面里显示，切走后再补推。</p>
-      <p lang="en">After that, three things push: it reminds you via <code>notify</code> (schedulable to the second — <i>"remind me at 7:30 tomorrow"</i>, <i>"remind me in 30 seconds"</i>); a task finishes; any answer that took over 2 minutes. <b>A device whose page you are looking at gets no push</b>; it shows in the page and is pushed later if you switch away.</p>
-      <div class="note"><span lang="zh-CN"><b>安卓收不到：</b>安卓 Chrome 的推送整条经过谷歌 FCM，国内直连超时（活动页里是 <code>curl exit 28</code>）。在通知卡里填"推送代理"（如 <code>http://127.0.0.1:7890</code>）。iPhone 走苹果的服务器，一般直连就行。没有任何设备开通知时，它会直接告诉你去任务页打开。</span>
-        <span lang="en"><b>Android receives nothing:</b> Android Chrome push goes through Google FCM, which times out from mainland China (Activity shows <code>curl exit 28</code>). Fill in a "Push proxy" in the notification card (e.g. <code>http://127.0.0.1:7890</code>). iPhones use Apple's servers, usually reachable directly. If no device has notifications on, it tells you to turn them on in Tasks.</span></div>
     </section>
 
     <!-- ============ 技能 ============ -->
@@ -460,7 +447,6 @@ description: 写部门周报用这个：按部门汇总本周导出的表格，�
         <tr><td><span lang="zh-CN">搜索、做视频的工具不见了</span><span lang="en">Web and video tools are missing</span></td><td><span lang="zh-CN">本机没有火狐</span><span lang="en">no Firefox on the machine</span></td><td><span lang="zh-CN">装火狐</span><span lang="en">install Firefox</span></td></tr>
         <tr><td><span lang="zh-CN">"附近"只给了网页搜索结果</span><span lang="en">"Nearby" only gives web results</span></td><td><span lang="zh-CN">没填高德 Key，或 Key 失效、额度用完（它会照实说）</span><span lang="en">no AMap key, or it is invalid / out of quota (it says so)</span></td><td><span lang="zh-CN">设置 → 地图，填"Web 服务"类型的 Key</span><span lang="en">Settings → Maps, enter a "Web Service" key</span></td></tr>
         <tr><td><span lang="zh-CN">PDF 中文是方块</span><span lang="en">Chinese shows as boxes in a PDF</span></td><td><span lang="zh-CN">本机没有 TrueType 中文字体</span><span lang="en">no TrueType CJK font on the machine</span></td><td><span lang="zh-CN">装一个（如 <code>fonts-droid-fallback</code> 或文泉驿）</span><span lang="en">install one (e.g. <code>fonts-droid-fallback</code> or WenQuanYi)</span></td></tr>
-        <tr><td><span lang="zh-CN">安卓收不到通知</span><span lang="en">Android gets no notifications</span></td><td><span lang="zh-CN">连不上谷歌 FCM</span><span lang="en">Google FCM unreachable</span></td><td><span lang="zh-CN">任务页通知卡填"推送代理"</span><span lang="en">set a "Push proxy" in the Tasks notification card</span></td></tr>
         <tr><td><span lang="zh-CN">技能保存被拒，报 line N</span><span lang="en">Skill rejected with "line N"</span></td><td><span lang="zh-CN">那一行有代码块或命令</span><span lang="en">that line has a code block or command</span></td><td><span lang="zh-CN">改成用工具名描述步骤</span><span lang="en">describe the step with tool names instead</span></td></tr>
         <tr><td><span lang="zh-CN">外部程序调 /v1 得 401</span><span lang="en">Outside program gets 401 on /v1</span></td><td><span lang="zh-CN">没带密钥或密钥被删</span><span lang="en">no key, or the key was deleted</span></td><td><span lang="zh-CN">API 页建一把，带 <code>Authorization: Bearer</code></span><span lang="en">create one on API and send <code>Authorization: Bearer</code></span></td></tr>
         <tr><td><span lang="zh-CN">穿透显示连通，手机却打不开</span><span lang="en">Tunnel is up but the phone cannot connect</span></td><td><span lang="zh-CN">大陆服务器 + 域名没备案，80/443 被拦</span><span lang="en">mainland server with unregistered domain; 80/443 blocked</span></td><td><span lang="zh-CN">公网端口换 8443，或去备案</span><span lang="en">switch the public port to 8443, or register the domain</span></td></tr>
