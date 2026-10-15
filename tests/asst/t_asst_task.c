@@ -31,7 +31,7 @@ int asst_test_task(void) {
     CHECK(!strcmp(run_state(sid), "idle"), "stop clears the queue");
     /* 事实行 + 工具表 + 守门 */
     { char *l = asst_task_fact_line(tid, true); CHECK(l && strstr(l, "[任务: 第 1 次跟进 · 创建于 ") && !strstr(l, "上次"), "fact line, first time"); free(l); }
-    { const asst_tctx with = { "", "", tid }, without = { "", "", NULL };
+    { const asst_tctx with = { "", "", tid, false }, without = { "", "", NULL, false };
       char *a = asst_tools_json(&with), *b = asst_tools_json(&without);
       CHECK(strstr(a, "\"name\":\"task_check_in\"") && strstr(a, "\"name\":\"task_done\"") && strstr(a, "60 minutes"), "task session: task_* in the tool list, default interval stated");
       CHECK(!strstr(b, "task_check_in") && !strstr(b, "task_done"), "ordinary session: no task_*");

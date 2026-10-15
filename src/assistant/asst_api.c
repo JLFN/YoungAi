@@ -192,7 +192,11 @@ int asst_api(const asst_req *rq, ds4_buf *out, const char **ctype) {
         else if (client && strlen(client) > 32) code = jerr(out, 400, "client id too long");
         else {
             if (sid && sid[0]) snprintf(id, sizeof id, "%s", sid);
-            else { char t[64]; title_of(text, t, sizeof t); if (!asst_session_new(id, t, text, phone)) { free(text); free(sid); free(client); free(device); free(kind); return jerr(out, 500, "cannot create session"); } }
+            else {
+                const asst_tctx tc = { caps, apps, NULL, false };   /* 新会话的 system 按这条消息的工具表定: 能进用户别的 app 才带"设备与账号"记忆 */
+                const int fl = (phone ? ASST_SYS_PHONE : 0) | (asst_tools_reach(&tc) ? ASST_SYS_ENV : 0);
+                char t[64]; title_of(text, t, sizeof t); if (!asst_session_new(id, t, text, fl)) { free(text); free(sid); free(client); free(device); free(kind); return jerr(out, 500, "cannot create session"); }
+            }
             bool ahead = false;
             if (!asst_run_submit(id, text, device, client, caps, apps, files, &ahead, err, sizeof err)) code = jerr(out, 409, err);
             else ds4_buf_printf(out, "{\"session\":\"%s\",\"queued\":%s}", id, ahead ? "true" : "false");

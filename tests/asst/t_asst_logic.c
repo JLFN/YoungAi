@@ -147,11 +147,11 @@ static void test_auth(void) {
 
 static void test_store_memory(void) {
     char sid[ASST_ID_LEN + 1];
-    char *r = asst_remember("abcdef123456", "住在杭州\n周三晚上不排事");
+    char *r = asst_remember("abcdef123456", NULL, "住在杭州\n周三晚上不排事");
     CHECKL(strstr(r, "remembered") != NULL, "remember: %s", r); free(r);
-    r = asst_remember("abcdef123456", "卡号 4111111111111111"); CHECKL(!strncmp(r, "error", 5), "remember refuses card: %s", r); free(r);
-    r = asst_remember("999999123456", "住在杭州 周三晚上不排事"); CHECKL(!strncmp(r, "already", 7), "remember dedupes: %s", r); free(r);
-    r = asst_remember("999999123456", "住在杭州"); CHECKL(!strncmp(r, "remembered", 10), "a prefix of an existing line is a new fact: %s", r); free(r);
+    r = asst_remember("abcdef123456", "fact", "卡号 4111111111111111"); CHECKL(!strncmp(r, "error", 5), "remember refuses card: %s", r); free(r);
+    r = asst_remember("999999123456", "fact", "住在杭州 周三晚上不排事"); CHECKL(!strncmp(r, "already", 7), "remember dedupes: %s", r); free(r);
+    r = asst_remember("999999123456", "fact", "住在杭州"); CHECKL(!strncmp(r, "remembered", 10), "a prefix of an existing line is a new fact: %s", r); free(r);
     CHECKL(asst_session_new(sid, "记忆测试", "记住我住在哪", false), "session");
     asst_msg(sid, "{\"role\":\"user\",\"content\":\"hi\"}");
     char *m = asst_messages(sid);
@@ -176,16 +176,19 @@ static void test_lang(void) {
     /* 提示词只有做事方式(总纲 §1/§7): 没有场景词、没有 URL、没有"没有 X 就 Y"; 手机段只在手机会话 */
     CHECKL(z && strstr(z, "屏幕小") && strstr(z, "交出去") && !strstr(z, "http") && !strstr(z, "附近") && !strstr(z, "钉钉") && !strstr(z, "navigate") && !strstr(z, "share"), "zh phone prompt: working style only, no scenario words / tool mapping / links");
     CHECKL(e && strstr(e, "handing it over") && !strstr(e, "small screen") && !strstr(e, "nearby") && !strstr(e, "navigate") && !strstr(e, "http"), "en desktop prompt: no phone segment, no scenario words");
+    /* 10-15(会话 754b59df1696): 规矩不再"优先于一切", 记忆是背景不扩大任务; 表里没交付工具时回答就是交付 —— 中英两份都要有, 旧标题不能回来 */
+    CHECKL(z && strstr(z, "只管它说的那一类事") && strstr(z, "不为了用上它们扩大任务") && strstr(z, "回答本身就是交付") && !strstr(z, "优先于一切"), "zh prompt: rules scoped, memory is background, answer is the hand-over");
+    CHECKL(e && strstr(e, "only for the kind of thing they talk about") && strstr(e, "never widen the task") && strstr(e, "the answer itself is the hand-over") && !strstr(e, "override everything"), "en prompt: same three sentences");
     free(z); free(e);
     /* 工具表 = 注册表里 avail 为真的行: 没报能力 = 只有固定工具; 报了哪些就多哪些; 名字只认整词(share 不匹配 share_files); open_app 还要 apps 非空; run 永远在, 描述带工具箱 */
-    const asst_tctx c0 = { NULL, NULL, NULL }, c1 = { "clipboard_read,share_files,navigate,geolocation", NULL, NULL }, c2 = { "", "", NULL }, c3 = { "open_app", "douyin,wechat", NULL }, c4 = { "open_app", "", NULL };
+    const asst_tctx c0 = { NULL, NULL, NULL, false }, c1 = { "clipboard_read,share_files,navigate,geolocation", NULL, NULL, false }, c2 = { "", "", NULL, false }, c3 = { "open_app", "douyin,wechat", NULL, false }, c4 = { "open_app", "", NULL, false };
     char *t0 = asst_tools_json(&c0), *t1 = asst_tools_json(&c1), *t2 = asst_tools_json(&c2), *t3 = asst_tools_json(&c3), *t4 = asst_tools_json(&c4), *t5 = asst_tools_json(NULL);
     CHECKL(t0 && strstr(t0, "\"name\":\"run\"") && strstr(t0, "\"write_file\"") && !strstr(t0, "read_clipboard") && !strstr(t0, "\"locate\"") && !strstr(t0, "\"bash\"") && t0[strlen(t0) - 1] == ']', "no caps: base tools only, run instead of bash");
     CHECKL(t0 && strstr(t0, "Run a shell command inside the sandbox") && strstr(t0, asst_toolbox_desc()[0] ? "no network" : "x"), "run description comes from the toolbox probe");
     CHECKL(t1 && strstr(t1, "\"read_clipboard\"") && strstr(t1, "\"navigate\"") && strstr(t1, "\"locate\"") && !strstr(t1, "\"name\":\"share\"") && !strstr(t1, "pick_file") && !strstr(t1, "open_app"), "caps pick device tools, whole-word match");
     CHECKL(t2 && !strcmp(t2, t0) && t5 && !strcmp(t5, t0), "empty caps == no caps == NULL ctx");
     CHECKL(t3 && strstr(t3, "\"open_app\"") && strstr(t3, "\"enum\":[\"douyin\",\"wechat\"]"), "open_app lists the device's apps as enum: %.0s", t3);
-    const asst_tctx c6 = { "open_app", "douyin,wechat,dingtalk,alipay,meituan,eleme", NULL }; char *t6 = asst_tools_json(&c6);   /* 外卖两行: 枚举带上, 描述告诉模型 query 填店名 */
+    const asst_tctx c6 = { "open_app", "douyin,wechat,dingtalk,alipay,meituan,eleme", NULL, false }; char *t6 = asst_tools_json(&c6);   /* 外卖两行: 枚举带上, 描述告诉模型 query 填店名 */
     CHECKL(t6 && strstr(t6, "\"enum\":[\"douyin\",\"wechat\",\"dingtalk\",\"alipay\",\"meituan\",\"eleme\"]") && strstr(t6, "meituan and eleme (food delivery) open their search"), "open_app enum carries meituan/eleme, description says query = shop name");
     free(t6);    CHECKL(t4 && !strstr(t4, "open_app"), "open_app cap without apps → no tool");
     CHECKL(asst_device_tool("locate") == 1 && asst_device_tool("read_clipboard") == 1 && asst_device_tool("share") == 2 && asst_device_tool("open_app") == 2 && asst_device_tool("write_file") == 0 && asst_device_tool("run") == 0, "device tool kinds");

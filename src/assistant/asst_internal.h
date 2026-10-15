@@ -84,7 +84,11 @@ extern char asst_token[65];            /* 非本机访问口令(asst_root/token,
 bool asst_init(const char *root, char *err, size_t errn);   /* root = NULL → ~/.ds4/assistant; 建目录、口令 */
 bool asst_id_ok(const char *id);
 void asst_spath(const char *id, const char *file, char *out, size_t n);   /* sessions/<id>/<file> */
-bool asst_session_new(char id[ASST_ID_LEN + 1], const char *title, const char *first_msg, bool phone);   /* first_msg 定会话语言, phone 定身份段里的手机段(system 冻结) */
+/* system 快照的开关(会话创建时定, 随 system 冻结): PHONE = 用户在手机上(身份段多一句"屏幕小"); ENV = 工具表里有能进用户别的 app/账号的工具,
+ * "设备与账号"那段记忆才有意义(照 Cursor 的 Auto Attached: 规则跟着它管的东西走; docs/assistant.md §3.5)。老调用传 bool true = PHONE, 语义不变 */
+#define ASST_SYS_PHONE 1
+#define ASST_SYS_ENV 2
+bool asst_session_new(char id[ASST_ID_LEN + 1], const char *title, const char *first_msg, int sys_flags);   /* first_msg 定会话语言, sys_flags 见上 */
 long asst_ev(const char *id, const char *json);   /* 追加一行事件(页面的唯一真相), 返回行号; 广播 asst_cv */
 void asst_msg(const char *id, const char *json);  /* 追加一条 OpenAI message */
 char *asst_messages(const char *id);              /* "[system, …]": system 取会话创建时冻结的 system.txt */
@@ -125,15 +129,16 @@ bool asst_office_tool(const char *name);
 char *asst_office_exec(const char *tool, const char *args, const asst_gres *g, const char *trash, int *ok);   /* 已过守门(g->path = 产物绝对路径) */
 
 /* ---------------- 记忆(asst_memory.c) ---------------- */
-char *asst_system_prompt(const char *first_msg, bool phone);   /* 身份段(+手机段) + 规矩 + 关于你 + 现在 + 语言句; 中/英按第一条消息选; 会话创建时拍快照 */
+char *asst_system_prompt(const char *first_msg, int sys_flags);   /* 身份段(+手机段) + 规矩 + 关于用户 + 怎么做事 + (ENV 时)设备与账号 + 现在 + 语言句; 中/英按第一条消息选; 会话创建时拍快照 */
 bool asst_lang_is_zh(const char *text);
-char *asst_remember(const char *session, const char *text);
-char *asst_forget(const char *text);
-void asst_memory_json(ds4_buf *b);     /* {profile, rules} */
+/* 记忆三类(照 ChatGPT 的 Model Set Context / Response Preferences / 设备元数据分段, docs/assistant.md §3.5): kind = fact → profile.md, habit → habits.md, env → env.md */
+char *asst_remember(const char *session, const char *kind, const char *text);   /* kind 空 = fact; 不认识的 kind 回 error */
+char *asst_forget(const char *text);   /* 三个文件都删 */
+void asst_memory_json(ds4_buf *b);     /* {profile, habits, env, rules, workspace, root} */
 bool asst_memory_save(const char *body, char *err, size_t errn);
 
 /* ---------------- 工具(asst_tools.c): 一张注册表(总纲 docs/assistant_arch.md §2) + 浏览器(tool_browser.c) ---------------- */
-typedef struct { const char *caps, *apps, *task; } asst_tctx;   /* 这条消息的上下文: 页面报的设备能力(逗号表) + 能打开的 app(逗号表) + 任务 id(任务会话才有, 否则 NULL); 工具表按它筛 */
+typedef struct { const char *caps, *apps, *task; bool plan; } asst_tctx;   /* 这条消息的上下文: 页面报的设备能力(逗号表) + 能打开的 app(逗号表) + 任务 id(任务会话才有, 否则 NULL) + 这个任务带不带步骤(plan_step 才进表); 工具表按它筛 */
 
 /* ---------------- 任务(asst_task.c, 2026-10-14): 一句话 + 专属会话 + 下次跟进时间; 调度线程到点往会话里发"继续这个任务", 周期由模型用 task_check_in 定 ---------------- */
 void asst_task_start(void);                                   /* ds4-train 起时: 建 tasks/ 并开调度线程 */
@@ -186,6 +191,7 @@ bool asst_skill_op(const char *body, char *err, size_t errn);  /* 页面: {op: s
 bool asst_skill_check(const char *text, char *why, size_t n); /* ★技能不许带脚本★: 围栏代码块 / #! / <script> / 命令行 / 行内代码里的命令或脚本文件名 → false + 第几行什么 */
 char *asst_skill_put_file(const char *name, const char *rel, const char *data, size_t n);   /* 页面上传随附文件; NULL = 成功, 否则原因(malloc) */
 char *asst_tools_json(const asst_tctx *ctx);   /* OpenAI tools 数组(malloc): 注册表里 avail 为真的行 */
+bool asst_tools_reach(const asst_tctx *ctx);   /* 工具表里有没有能进用户别的 app/账号的工具(share / open_app / 云手机): 决定 system 带不带"设备与账号"记忆 */
 char *asst_tool_exec(const char *session, const char *tool, const char *args, const asst_gres *g, int *ok);   /* 已过守门; 在沙盒里跑 */
 char *asst_tool_post(const char *session, const char *tool, const char *result);   /* 设备工具交回结果后的收尾(locate → 反查地址 + 记进会话); 返回新结果(malloc)或 NULL = 原样 */
 const char *asst_toolbox_desc(void);   /* sbx_toolbox.c: run 工具的描述(启动探测本机装了哪些程序, 一次) */
@@ -310,6 +316,7 @@ char *asst_geo_locate_post(const char *sid, const char *raw);   /* locate 工具
 #define ASST_FILE_MAX (64u << 20)      /* 单个文件 64 MiB: 与工作台上传料上限同 */
 bool asst_qget(const char *query, const char *key, char *out, size_t n);   /* 查询串取一项(百分号解码) */
 int asst_file_get(const char *path, ds4_buf *out, const char **ctype);     /* 200 + 文件体; 工作区外 403; 没有 404 */
+char *asst_file_mentioned(const char *answer);   /* 终稿里写出的、工作区里真有的文件 → JSON 数组(工作区相对路径); 一个没有 → NULL。运行结束发 files 事件, 页面出交付卡 */
 char *asst_file_save(const char *name, const char *data, size_t n);        /* 存进 workspace/inbox/<净化过的名字>, 返回给模型看的一句话 */
 
 /* ---------------- 模型客户端(model_llm.c): 127.0.0.1:<模型端口> 的流式 chat/completions ---------------- */

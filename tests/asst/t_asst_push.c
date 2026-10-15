@@ -82,7 +82,7 @@ int asst_test_push(void) {
     char sid[ASST_ID_LEN + 1]; asst_session_new(sid, "旅游计划", "帮我规划杭州两日游", false);
     { asst_gres g; asst_guard(sid, "notify", "{\"text\":\"出发了\"}", &g); CHECK(g.dec == ASST_ALLOW && !strcmp(g.cls, "notify"), "guard allows notify");
       asst_guard(sid, "notify", "{\"text\":\"卡号 4111111111111111\"}", &g); CHECK(g.dec == ASST_DENY, "notify with a card number denied"); }
-    { const asst_tctx c = { "", "", NULL }; char *t = asst_tools_json(&c); CHECK(strstr(t, "\"name\":\"notify\"") && strstr(t, "YYYY-MM-DD HH:MM"), "notify in every tool list"); free(t); }
+    { const asst_tctx c = { "", "", NULL, false }; char *t = asst_tools_json(&c); CHECK(strstr(t, "\"name\":\"notify\"") && strstr(t, "YYYY-MM-DD HH:MM"), "notify in every tool list"); free(t); }
     { int ok = 0; const int c0 = count_now(); char *r = asst_notify_tool_exec(sid, "{\"text\":\"酒店订好了\"}", &ok);
       CHECK(ok && !strcmp(r, "sent to 1 device(s)\n") && wait_count(c0 + 1, 2000), "notify now → sent"); free(r);
       pthread_mutex_lock(&smu); const bool t = true; pthread_mutex_unlock(&smu); (void)t;

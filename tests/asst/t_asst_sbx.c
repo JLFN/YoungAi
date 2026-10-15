@@ -215,6 +215,7 @@ int main(int argc, char **argv) {
     printf("sandbox: %s\n", asst_sbx_kind());
     test_files(); test_net_signal(); test_bash(); test_fs_tools();
     g_fail += asst_test_logic(base);
+    { extern int asst_test_memory(void); g_fail += asst_test_memory(); }   /* 记忆三类 + 交付卡(10-15): 在 logic 之后, 助理根目录与工作区已建好 */
     { extern int asst_test_video(const char *base); g_fail += asst_test_video(base); }   /* 要火狐; 没有就 SKIP。在 logic 之后: 它建好了助理根目录 */
     { extern int studio_auth_test(const char *base); g_fail += studio_auth_test(base); }
     { extern int studio_net_test(const char *base); g_fail += studio_net_test(base); }

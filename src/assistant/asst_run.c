@@ -189,6 +189,9 @@ static void run_one(const char *sid, const char *text, const char *device, const
         if (stopped) { end = "stopped"; break; }
     }
     snprintf(upd, sizeof upd, "%ld", (long)time(NULL)); asst_meta_set(sid, "updated", upd);
+    /* 终稿里写出的工作区文件 → 交付卡(asst_file.c; 照 ChatGPT 代码解释器的"终稿里写路径就出下载链接"); 在 end 之前发, 页面收到 end 时卡已经在了 */
+    char *fl = asst_file_mentioned(last_text);
+    if (fl) { ds4_buf f = {0}; ds4_buf_printf(&f, "{\"ev\":\"files\",\"paths\":%s}", fl); asst_ev(sid, f.ptr); ds4_buf_free(&f); free(fl); }
     ev_str(sid, "end", "reason", end);
     if (task) asst_task_run_end(tid, end, last_text);
     asst_notify_run_end(sid, end, last_text, now_s() - t_run);   /* 任务做完 / 跑了很久 → 推一条到用户设备(asst_notify.c) */

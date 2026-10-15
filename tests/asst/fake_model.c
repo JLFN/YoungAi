@@ -1,7 +1,8 @@
 /* fake_model.c — 助理页面端到端门用的假模型(tests/asst/e2e_device.mjs 起它): 在 127.0.0.1:<port> 装成 ds4-server 答 /v1/models 与流式 /v1/chat/completions。
  * 编成的二进制叫 ds4-server(tests/asst/fake/ds4-server): 主进程 ds4-train 按进程名认领"已在跑的模型子进程"(model_proc.c prog_is), 页面才进 serving 态能发消息。
  * 不保存状态: 看请求体里有几条 role:"tool" 决定下一步 —— 0 → read_clipboard; 1 → write_file 一份报告(把剪贴板内容写进去); 2 → locate; 3 → run(沙盒里生成一个文件);
- * 4 → 一轮里调五个交出去的动作(navigate / call / copy_text / share(path) / open_app, 只在工具表里真有这些工具时); 之后 → 终稿。
+ * 4 → 一轮里调五个交出去的动作(navigate / call / copy_text / share(path) / open_app, 只在工具表里真有这些工具时); 之后 → 终稿
+ *     (终稿点名两个文件: share 过的 .md 与 run 生成的 .pdf —— 页面该只给 .pdf 补一张卡, 10-15 交付卡改按终稿路径出)。
  * 这样页面上的设备卡(等结果的 + 动作按钮的) / 文件卡 都在一次运行里出现。16 GB 的 Mac 跑不了真模型, 这是在本机把"进 → 干 → 出"整条链点通的唯一办法。 */
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -97,7 +98,7 @@ static void serve(int fd) {
                 "{\"index\":3,\"id\":\"call_share\",\"type\":\"function\",\"function\":{\"name\":\"share\",\"arguments\":\"{\\\"text\\\":\\\"附近美食: 龙井草堂\\\",\\\"path\\\":\\\"附近美食报告.md\\\"}\"}},"
                 "{\"index\":4,\"id\":\"call_app\",\"type\":\"function\",\"function\":{\"name\":\"open_app\",\"arguments\":\"{\\\"app\\\":\\\"douyin\\\",\\\"query\\\":\\\"龙井草堂\\\"}\"}}]}");
     } else {
-        sse(fd, "{\"content\":\"附近推荐 **龙井草堂**(杭派菜), 步行 8 分钟。报告已写进工作区, 导航、电话、分享都在上面的按钮里。\"}");
+        sse(fd, "{\"content\":\"附近推荐 **龙井草堂**(杭派菜), 步行 8 分钟。报告已写进工作区: 附近美食报告.md, PDF 版是`附近美食报告.pdf`。导航、电话、分享都在上面的按钮里。\"}");
     }
     const char *tail = "data: {\"id\":\"f\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: {\"id\":\"f\",\"choices\":[],\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":20}}\n\ndata: [DONE]\n\n";
     send(fd, tail, strlen(tail), 0);

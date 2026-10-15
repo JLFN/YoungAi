@@ -4,7 +4,7 @@
  *   1 事实行: messages.jsonl 第一条 user 以 "[设备: 手机 · … · 可用: 定位/…/打开app]" 开头, 没有位置(位置是 locate 工具); 第二条消息带 "上次定位: …" 与 "[附件: …]"
  *   2 剪贴板 / 定位: 设备卡自动做, tool 结果 = 预放进剪贴板的文字 / "lat,lng: 30.274100,120.155100 (±35 m)"; 报告里有剪贴板内容; meta.loc 落盘
  *   3 run: 沙盒里跑、不审批(decision=auto), 生成的文件在工作区
- *   4 文件卡只在 share(path) 时出: 下载得到的字节 == 盘上文件; 没有终稿卡; write_file 不出卡
+ *   4 文件卡: share(path) 一张 + 终稿里点名、没 share 过的文件各一张(files 事件, 10-15): 下载得到的字节 == 盘上文件; 没有终稿卡; write_file 本身不出卡
  *   5 动作按钮: navigate / call / open_app 是真链接(iPhone UA 由页面自己定成 maps:// / tel: / snssdk1128://; 安卓 UA 的导航是 intent:geo + 高德网页兜底); copy_text 点后剪贴板 == 文本; share 带 text + 文件
  *   6 工具表协商: 第一次请求的 tools 里有 locate/read_clipboard/share/navigate/open_app/run; 电脑外壳 + 不安全上下文那次没有 clipboard/share/geolocation
  *   7 http 提示: 用局域网 IP 打开(不安全上下文)输入框上方出提示
@@ -111,10 +111,13 @@ ok(existsSync(pdf) && readFileSync(pdf, "utf8") === "PDF-fake\n", "run 生成的
 const report = path.join(ASST, "workspace", "附近美食报告.md");
 ok(existsSync(report) && readFileSync(report, "utf8").includes("hello 剪贴板"), "报告写进工作区且含剪贴板内容");
 for (const n of ["navigate", "call", "copy_text", "share", "open_app"]) ok(items.some(i => i.kind === "tool" && i.name === n && i.done && i.ok), "动作工具 " + n + " 调了且立刻回");
-/* 文件卡: 只有 share(path) 那一张; write_file 不出卡; 没有终稿卡 */
+/* 文件卡: share(path) 一张(.md) + 终稿里点名、没 share 过的一张(.pdf, files 事件); .md 终稿里也点名了但不重复出; write_file 本身不出卡; 没有终稿卡 */
 await page.waitForSelector(".deliver", { timeout: 5000 }).catch(() => {});   /* 渲染有 90 ms 合并窗口, view 里有 end 时 DOM 可能还差一拍 */
-const cards = { deliver: await page.locator(".deliver").count(), final: await page.locator("#chat .final").count() };
-ok(cards.deliver === 1 && cards.final === 0, "文件卡只在 share(path) 出一张, 没有终稿卡: " + JSON.stringify(cards));
+await page.waitForFunction(() => document.querySelectorAll(".deliver").length >= 2, null, { timeout: 5000 }).catch(() => {});
+const cards = { deliver: await page.locator(".deliver").count(), final: await page.locator("#chat .final").count(), names: await page.locator(".deliver .fname").allTextContents() };
+ok(cards.deliver === 2 && cards.final === 0 && cards.names[0] === "附近美食报告.md" && cards.names[1] === "附近美食报告.pdf", "文件卡: share 的 .md + 终稿点名的 .pdf, 不重复: " + JSON.stringify(cards));
+const filesEv = readFileSync(path.join(ASST, "sessions", sid, "events.jsonl"), "utf8").split("\n").filter(Boolean).map(l => JSON.parse(l)).find(e => e.ev === "files");
+ok(filesEv && JSON.stringify(filesEv.paths) === JSON.stringify(["附近美食报告.md", "附近美食报告.pdf"]), "files 事件 = 终稿里点名的两个文件(页面再去掉 share 过的): " + JSON.stringify(filesEv));
 const dl = page.waitForEvent("download", { timeout: 8000 });
 await page.locator(".deliver button", { hasText: "下载" }).first().click();
 const d = await dl; const dlPath = await d.path();
@@ -200,6 +203,25 @@ const skDir = path.join(ASST, "skills", "e2e-weekly-report");
   ok(!existsSync(skDir) && readdirSync(path.join(ASST, "trash", "skills")).some(d => d.startsWith("e2e-weekly-report-")), "删除 → 文件夹挪进 trash/skills/");
   ok(await p4.locator("#sk-list .row b", { hasText: "e2e-weekly-report" }).count() === 0 && await p4.locator("#sk-edit").isHidden(), "删完列表里没了, 编辑卡收起");
   await ctx4.close();
+}
+
+/* ---- 记忆页(10-15 三类): 四个框按 data-mem 载入盘上四个文件; 改"怎么做事"点保存 → habits.md 变了, 别的文件不动; 测完原样写回(这是本机真的记忆目录) ---- */
+{
+  const memDir = path.join(ASST, "memory"), rd = f => existsSync(path.join(memDir, f)) ? readFileSync(path.join(memDir, f), "utf8") : null;
+  const orig = Object.fromEntries(["profile.md", "habits.md", "env.md", "rules.md"].map(f => [f, rd(f)]));
+  const ctxm = await browser.newContext({ locale: "zh-CN" });
+  const pm = await ctxm.newPage(); pm.on("pageerror", e => console.log("pageerror:", e.message));
+  await pm.goto(`http://127.0.0.1:${PORT}/#mem`); await login(pm); await sleep(300);
+  await pm.evaluate(() => loadMem(true)); await sleep(300);
+  const boxes = await pm.evaluate(() => [...document.querySelectorAll("#v-mem [data-mem]")].map(c => ({ key: c.dataset.mem, title: c.querySelector(".card-title").textContent, val: c.querySelector("textarea").value, path: c.querySelector("span.muted").textContent })));
+  ok(boxes.map(b => b.key).join(",") === "profile,habits,env,rules" && boxes.map(b => b.title).join(",") === "关于你,怎么做事,设备与账号,规矩", "记忆页四个框: " + boxes.map(b => b.title).join(","));
+  ok(boxes.every(b => b.val === (orig[b.path.split("/").pop()] || "") && b.path.endsWith("/memory/" + { profile: "profile.md", habits: "habits.md", env: "env.md", rules: "rules.md" }[b.key])), "每个框 = 盘上对应文件的原文");
+  const mark = "- [e2e] 以后回答先给结论\n";
+  await pm.locator('#v-mem [data-mem="habits"] textarea').fill((orig["habits.md"] || "") + mark);
+  await pm.locator('#v-mem [data-mem="habits"] button').click(); await sleep(400);
+  ok(rd("habits.md") === (orig["habits.md"] || "") + mark && rd("profile.md") === orig["profile.md"] && rd("env.md") === orig["env.md"] && rd("rules.md") === orig["rules.md"], "保存'怎么做事'只改 habits.md");
+  for (const [f, v] of Object.entries(orig)) { const p = path.join(memDir, f); if (v === null) rmSync(p, { force: true }); else writeFileSync(p, v); }
+  await ctxm.close();
 }
 
 /* ---- 任务页(10-14): 一句话创建 → 盘上 tasks/<id>.json + 专属会话(meta.task) → 假模型跑完第一遍 → 行里"跟进 1 次 · 下次 …" → 打开 = 进它的对话 → 删除进 trash ---- */

@@ -649,12 +649,19 @@
   <!-- ============ 记忆 ============ -->
   <section class="view" id="v-mem">
     <div class="mem-grid">
-      <div class="card"><div class="card-title" data-i18n="mem_profile">关于你</div><div class="muted" data-i18n="mem_profile_sub"></div>
-        <textarea class="memtxt" id="mem-profile" spellcheck="false"></textarea>
-        <div style="display:flex;gap:10px;align-items:center"><button class="primary" id="mem-save1" data-i18n="save">保存</button><span class="muted" id="mem-path1"></span></div></div>
-      <div class="card"><div class="card-title" data-i18n="mem_rules">规矩</div><div class="muted" data-i18n="mem_rules_sub"></div>
-        <textarea class="memtxt" id="mem-rules" spellcheck="false"></textarea>
-        <div style="display:flex;gap:10px;align-items:center"><button class="primary" id="mem-save2" data-i18n="save">保存</button><span class="muted" id="mem-path2"></span></div></div>
+      <!-- 一类一个框(10-15 照别家分段, docs/assistant.md §3.5): 键 = /api/assistant/memory 的 JSON 键, 文件 = memory/<文件> -->
+      <div class="card" data-mem="profile" data-file="profile.md"><div class="card-title" data-i18n="mem_profile">关于你</div><div class="muted" data-i18n="mem_profile_sub"></div>
+        <textarea class="memtxt" spellcheck="false"></textarea>
+        <div style="display:flex;gap:10px;align-items:center"><button class="primary" data-i18n="save">保存</button><span class="muted"></span></div></div>
+      <div class="card" data-mem="habits" data-file="habits.md"><div class="card-title" data-i18n="mem_habits">怎么做事</div><div class="muted" data-i18n="mem_habits_sub"></div>
+        <textarea class="memtxt" spellcheck="false"></textarea>
+        <div style="display:flex;gap:10px;align-items:center"><button class="primary" data-i18n="save">保存</button><span class="muted"></span></div></div>
+      <div class="card" data-mem="env" data-file="env.md"><div class="card-title" data-i18n="mem_env">设备与账号</div><div class="muted" data-i18n="mem_env_sub"></div>
+        <textarea class="memtxt" spellcheck="false"></textarea>
+        <div style="display:flex;gap:10px;align-items:center"><button class="primary" data-i18n="save">保存</button><span class="muted"></span></div></div>
+      <div class="card" data-mem="rules" data-file="rules.md"><div class="card-title" data-i18n="mem_rules">规矩</div><div class="muted" data-i18n="mem_rules_sub"></div>
+        <textarea class="memtxt" spellcheck="false"></textarea>
+        <div style="display:flex;gap:10px;align-items:center"><button class="primary" data-i18n="save">保存</button><span class="muted"></span></div></div>
     </div>
   </section>
 
@@ -1075,8 +1082,10 @@ const I18N = {
     ov_hint: "松开发送, 上滑取消", ov_cancel: "松开手指, 取消发送", ov_left: "还能说 {0} 秒", mic_short: "说话时间太短",
     mic_denied: "麦克风权限被拒了, 去浏览器设置里打开", mic_fail: "语音识别没成: {0}", mic_empty: "没听到话",
     act_copy_text: "复制", act_share: "分享", act_open_url: "打开", act_navigate: "导航", act_call: "拨打", act_open_app: "打开",
-    mem_profile: "关于你", mem_profile_sub: "助理用 remember 记下的事, 每行一条, 方括号里是记下的日期和会话号。删掉一行 = 让它忘掉; 改完点保存, 新开的对话生效。",
-    mem_rules: "规矩", mem_rules_sub: "你给助理定的规矩, 只有你能写, 优先于一切。例如: 回复用中文; 不要碰 ~/Documents/财务。新开的对话生效。", save: "保存", saved: "已保存", mem_path: "文件: {0}",
+    mem_profile: "关于你", mem_profile_sub: "助理记下的关于你本人的事(名字、家人、工作、住哪), 每行一条, 方括号里是记下的日期和会话号。删掉一行 = 让它忘掉; 改完点保存, 新开的对话生效。",
+    mem_habits: "怎么做事", mem_habits_sub: "你说过的\"以后…\"\"默认…\": 助理以后照这样做。每行一条, 删掉一行 = 让它忘掉。",
+    mem_env: "设备与账号", mem_env_sub: "设备上装了什么、登了什么账号、联系人怎么存。只在这次对话能操作你别的 app(分享、打开 app、云手机)时才给助理看。",
+    mem_rules: "规矩", mem_rules_sub: "你给助理定的规矩, 只有你能写, 压过它自己的默认做法, 只管规矩说的那类事。例如: 回复用中文; 不要碰 ~/Documents/财务。新开的对话生效。", save: "保存", saved: "已保存", mem_path: "文件: {0}",
     tab_skills: "技能", hint_skills: "教助理某类活怎么干: 一个文件夹一个技能, SKILL.md 写步骤, 旁边放脚本和资料; 任务对上了它自己会去读",
     sk_list: "已装技能", sk_list_sub: "助理只在工具表里看到每个技能的名字和一句描述, 任务对上了才读全文(省上下文)。Claude Code 等别处写好的技能文件夹原样导入就能用。",
     sk_new: "新建", sk_import: "导入文件夹", sk_name_ph: "技能名: 小写字母、数字、连字符, 如 weekly-report", sk_edit: "SKILL.md", sk_edit_sub: "开头 --- 之间的 description 是助理决定\"要不要用这个技能\"的唯一依据, 写清楚什么任务用它; 正文写步骤、用哪些工具、脚本怎么跑(路径相对技能文件夹)。",
@@ -1237,8 +1246,10 @@ const I18N = {
     ov_hint: "Release to send, slide up to cancel", ov_cancel: "Release to cancel", ov_left: "{0} s left", mic_short: "Too short",
     mic_denied: "Microphone access was denied; allow it in the browser settings", mic_fail: "Speech recognition failed: {0}", mic_empty: "Didn't hear anything",
     act_copy_text: "Copy", act_share: "Share", act_open_url: "Open", act_navigate: "Directions", act_call: "Call", act_open_app: "Open",
-    mem_profile: "About you", mem_profile_sub: "Things the assistant saved with remember, one per line; the brackets show the date and conversation. Delete a line to make it forget; save, and new conversations pick it up.",
-    mem_rules: "Rules", mem_rules_sub: "Rules you give the assistant; only you write them, and they override everything. E.g.: reply in English; never touch ~/Documents/finance. New conversations pick them up.", save: "Save", saved: "Saved", mem_path: "File: {0}",
+    mem_profile: "About you", mem_profile_sub: "What the assistant saved about you yourself (name, family, work, where you live), one per line; the brackets show the date and conversation. Delete a line to make it forget; save, and new conversations pick it up.",
+    mem_habits: "How to work", mem_habits_sub: "What you said with \"from now on…\" or \"by default…\": the assistant works that way later. One per line; delete a line to make it forget.",
+    mem_env: "Devices and accounts", mem_env_sub: "What is installed or signed in on your devices and how contacts are saved. Only shown to the assistant when the conversation can act in your other apps (share, open apps, the cloud phone).",
+    mem_rules: "Rules", mem_rules_sub: "Rules you give the assistant; only you write them. They override its own defaults, only for the kind of thing they talk about. E.g.: reply in English; never touch ~/Documents/finance. New conversations pick them up.", save: "Save", saved: "Saved", mem_path: "File: {0}",
     tab_skills: "Skills", hint_skills: "Teach the assistant how a kind of task is done: one folder per skill, steps in SKILL.md, scripts and references beside it; it reads the skill itself when a task matches",
     sk_list: "Installed skills", sk_list_sub: "The assistant only sees each skill's name and one-line description in its tool list and reads the full text when a task matches (saves context). Skill folders written elsewhere (Claude Code etc.) import as they are.",
     sk_new: "New", sk_import: "Import folder", sk_name_ph: "Skill name: lowercase letters, digits, hyphens, e.g. weekly-report", sk_edit: "SKILL.md", sk_edit_sub: "The description between the leading --- lines is the only thing the assistant uses to decide whether this skill applies, so say which tasks it is for; the body holds the steps, the tools to use and how to run the scripts (paths relative to the skill folder).",
@@ -1873,6 +1884,12 @@ function applyEv(v, e) {
   else if (e.ev === "device") { const tl = findTool(v, e.id); if (tl) { tl.device = e; tl.dirty = true; } if (e.wait) v.state = "waiting_device"; }
   else if (e.ev === "tool_progress") { const tl = findTool(v, e.id); if (tl && !tl.done) { tl.progress = e.text; tl.dirty = true; } }   /* 长工具(make_video 逐帧渲染)的进度: 卡上状态显示"rendered 120/900 frames" */
   else if (e.ev === "tool_end") { const tl = findTool(v, e.id); if (tl) Object.assign(tl, { done: true, ok: e.ok, decision: e.decision, ms: e.ms, result: e.result, bytes: e.bytes, approval: null, device: tl.device && !tl.device.wait ? tl.device : null, dirty: true }); if (v.state === "waiting_approval" || v.state === "waiting_device") v.state = "running"; }
+  else if (e.ev === "files") {   /* 终稿里写出的工作区文件(asst_file_mentioned, 10-15 照 ChatGPT 终稿写 sandbox 链接): 这一轮已经由 share 出过卡的不再出 */
+    let k = v.items.length; while (k > 0 && v.items[k - 1].kind !== "user") k--;
+    const shared = new Set(v.items.slice(k).filter(x => x.kind === "tool").map(deliverPath).filter(Boolean));
+    const paths = (e.paths || []).filter(p => !shared.has(p));
+    if (paths.length) v.items.push({ kind: "files", paths });
+  }
   else if (e.ev === "usage") v.usage = e;
   else if (e.ev === "error") v.items.push({ kind: "error", msg: e.msg });
   else if (e.ev === "end") { v.state = "idle"; v.items.push({ kind: "end", reason: e.reason, usage: v.usage }); }
@@ -1923,6 +1940,7 @@ function itemEl(it, i) {
   if (it.kind === "error") return node("div", "bad aerr", it.msg);
   const w = node("div", "item");
   if (it.kind === "tool") { w.appendChild(toolEl(it)); const d = deliverEl(it); if (d) w.appendChild(d); return w; }
+  if (it.kind === "files") { for (const p of it.paths) w.appendChild(fileCard(p)); return w; }
   const u = it.usage, s = [it.reason === "done" ? "" : t("a_end_" + it.reason), u ? t("a_usage", u.prompt, u.completion) : ""].filter(Boolean).join(" · "); if (s) w.appendChild(node("div", "stats aend", s));
   return w;
 }
@@ -2434,12 +2452,17 @@ async function fileBlob(path) {
   const ext = (path.split(".").pop() || "").toLowerCase(), name = path.split("/").pop();
   return new File([await r.blob()], name, { type: FILE_TYPES[ext] || "application/octet-stream" });
 }
-function deliverEl(it) {
-  const p = deliverPath(it); if (!p) return null;
+function deliverEl(it) { const p = deliverPath(it); return p ? fileCard(p) : null; }
+/* 一个工作区文件一张卡: 文件名 · 下载 · 预览(文本原样 / 图片缩略); share 调用和终稿里写出的路径(files 事件)共用 */
+function fileCard(p) {
   const w = node("div", "deliver"); w.appendChild(node("span", "fname", p));
   const btn = (label, fn) => { const b = node("button", "", label); b.onclick = () => fn().catch(e => toast(t("file_fail", e.message || e), true)); w.appendChild(b); };
   btn(t("dl_download"), async () => { const f = await fileBlob(p); const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 60000); });
   if (/\.(md|txt|csv|json|html)$/i.test(p)) btn(t("dl_preview"), async () => { let pre = w.querySelector("pre"); if (pre) { pre.remove(); return; } const f = await fileBlob(p); pre = node("pre", "box", await f.text()); w.appendChild(pre); });
+  if (/\.(png|jpe?g|gif|webp)$/i.test(p)) btn(t("dl_preview"), async () => {
+    let im = w.querySelector("img"); if (im) { URL.revokeObjectURL(im.src); im.remove(); return; }
+    im = document.createElement("img"); im.src = URL.createObjectURL(await fileBlob(p)); im.style.cssText = "width:100%;max-height:360px;object-fit:contain;border-radius:8px"; w.appendChild(im);
+  });
   return w;   /* 分享按钮不在这里: share 这个动作本身在上面的设备卡上(deviceBox), 点了开系统分享面板 */
 }
 function devNote() { const n = $("dev-note"); n.textContent = t("dev_http"); n.classList.toggle("on", isApp() && !secure); }
@@ -2560,17 +2583,21 @@ $("tk-add").onclick = async () => {
 $("tk-text").onkeydown = e => { if (e.key === "Enter" && !imeEnter(e)) { e.preventDefault(); $("tk-add").click(); } };
 
 /* ---------------- 记忆 ----------------
-   两个纯文本文件(~/.ds4/assistant/memory/profile.md / rules.md), 这里就是它们的编辑框; 改完对新开的对话生效(进行中的对话 system 已冻结, 为了 KV 前缀复用)。 */
+   四个纯文本文件(~/.ds4/assistant/memory/ 下 profile.md 关于你 / habits.md 怎么做事 / env.md 设备与账号 / rules.md 规矩), 这里就是它们的编辑框;
+   改完对新开的对话生效(进行中的对话 system 已冻结, 为了 KV 前缀复用)。框和文件的对应写在 HTML 的 data-mem / data-file 上, 这里只遍历。 */
 let memLoaded = false;
 async function loadMem(force) {
   if (memLoaded && !force) return;
   const r = await aFetch("memory"); if (r.error) { toast(t("fail", r.error), true); return; }
-  $("mem-profile").value = r.profile; $("mem-rules").value = r.rules;
-  $("mem-path1").textContent = t("mem_path", r.root + "/memory/profile.md"); $("mem-path2").textContent = t("mem_path", r.root + "/memory/rules.md");
+  for (const c of document.querySelectorAll("#v-mem [data-mem]")) {
+    c.querySelector("textarea").value = r[c.dataset.mem] || "";
+    c.querySelector("span.muted").textContent = t("mem_path", r.root + "/memory/" + c.dataset.file);
+  }
   memLoaded = true;
 }
-$("mem-save1").onclick = async () => { const r = await aFetch("memory", { profile: $("mem-profile").value }); r.error ? toast(t("fail", r.error), true) : toast(t("saved")); };
-$("mem-save2").onclick = async () => { const r = await aFetch("memory", { rules: $("mem-rules").value }); r.error ? toast(t("fail", r.error), true) : toast(t("saved")); };
+for (const c of document.querySelectorAll("#v-mem [data-mem]")) c.querySelector("button").onclick = async () => {
+  const r = await aFetch("memory", { [c.dataset.mem]: c.querySelector("textarea").value }); r.error ? toast(t("fail", r.error), true) : toast(t("saved"));
+};
 
 /* ---------------- 技能 ----------------
    GET /api/assistant/skills 一份(名字/描述/SKILL.md 原文/文件表); 保存与删除 POST skills {op}; 随附文件逐个 POST skill_file 原始体。

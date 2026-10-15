@@ -57,7 +57,7 @@ int asst_test_phone(void) {
     /* ④ 工具表跟着真实开关走: 这台机器上手机 ready 就有六个, 否则一个都没有(spark 上跑测试时手机可能正开着, 两个方向都得对) */
     const bool on = asst_phone_on();
     if (on) asst_phone_apps_refresh();   /* phone_open 的 schema 要 app 表, 测试进程里没人刷过 */
-    const asst_tctx c = { "", "", NULL }; char *tools = asst_tools_json(&c);
+    const asst_tctx c = { "", "", NULL, false }; char *tools = asst_tools_json(&c);
     int n = 0; for (const char *p = tools; (p = strstr(p, "\"name\":\"phone_")); p++) n++;
     CHECK(on ? n == 6 : n == 0, on ? "six phone tools when the phone is ready" : "no phone tools when danger mode is off");
     printf("  (phone %s on this machine)\n", on ? "ready" : "off");
