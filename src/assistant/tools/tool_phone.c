@@ -167,7 +167,7 @@ bool asst_phone_build_open(const asst_tctx *c, ds4_buf *b) {
     (void)c;
     const char *apps = asst_phone_apps(); if (!apps[0]) return false;
     /* 枚举只有包名: 桌面上的显示名读不到(应用信息页给的是 manifest 的 application label, 饿了么那里写的是 "rpsdk", 10-13 实撞), 所以描述里教模型按标签走抽屉 */
-    ds4_buf_puts(b, "{\"type\":\"function\",\"function\":{\"name\":\"phone_open\",\"description\":\"Open an app on the virtual phone by package name (the enum is exactly what is installed right now). The name shown on the phone's screen can differ from the package name (apps get renamed, e.g. a package named after an old brand). If the user asks for an app by its displayed name and no package obviously matches, do not conclude it is missing: press home, open the app drawer with phone_swipe from 360,1150 to 360,300, read the labels in the element list and phone_tap the icon. Returns the screen after it opened.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"package\":{\"type\":\"string\",\"enum\":[");
+    ds4_buf_puts(b, "{\"type\":\"function\",\"function\":{\"name\":\"phone_open\",\"description\":\"Open an app on the virtual phone by package name (the enum is exactly what is installed right now). The name shown on the phone's screen can differ from the package name (apps get renamed, e.g. a package named after an old brand). If the user asks for an app by its displayed name and no package obviously matches, do not conclude it is missing: press home, open the app drawer with phone_swipe from 360,1150 to 360,300, read the labels in the element list and phone_tap the icon. Only one app runs at a time on this phone: opening one closes every other app (their unsaved state is lost), so finish what you are doing in the current app first. Returns the screen after it opened.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"package\":{\"type\":\"string\",\"enum\":[");
     char tmp[4096]; snprintf(tmp, sizeof tmp, "%s", apps); int k = 0;
     for (char *p = strtok(tmp, ","); p; p = strtok(NULL, ",")) { if (k++) ds4_buf_putc(b, ','); ds4_json_escape(b, p); }
     ds4_buf_puts(b, "]}},\"required\":[\"package\"]}}}");
@@ -198,19 +198,28 @@ char *asst_phone_tool_exec(const char *sid, const char *tool, const char *args, 
     } else if (!strcmp(tool, "phone_open")) {
         char *p = NULL; asst_jstr(args, "package", &p);
         if (!p || !p[0] || strlen(p) > 120 || strspn(p, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._") != strlen(p)) { free(p); return strdup("error: phone_open needs a package name from the list\n"); }
-        snprintf(cmd, sizeof cmd, "a=$(cmd package resolve-activity --brief %s 2>/dev/null | tail -1); [ -n \"$a\" ] && am start -W -n \"$a\" >/dev/null 2>&1 || monkey -p %s -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1", p, p); free(p);
+        snprintf(cmd, sizeof cmd, "%s", p); free(p);
     } else return strdup("error: unknown phone tool\n");
+    /* 整条命令 = 动作 + "只留一个 app"(sbx_phone.c): 开 app 先清场再起; 其余动作做完把前台以外的第三方停掉, 同一条 shell 一个来回 */
+    ds4_buf full = {0};
+    if (!strcmp(tool, "phone_open")) asst_phone_open_cmd(&full, cmd);
+    else { ds4_buf_puts(&full, typed ? typed : cmd); ds4_buf_puts(&full, "; "); asst_phone_one_app_sh(&full, NULL); }
+    free(typed);
     const ime_st before = !strcmp(tool, "phone_tap") ? ime_state() : (ime_st){ false, 1280 };   /* 动作前的键盘状态: 点完键盘可能收起/弹出, 判"点在键盘上"要按动作前 */
-    char *r = asst_phone_shell(typed ? typed : cmd, 30000, err, sizeof err); free(typed);
+    char *r = asst_phone_shell(full.ptr, 30000, err, sizeof err); ds4_buf_free(&full);
     if (!r) { ds4_buf b = {0}; ds4_buf_printf(&b, "error: phone command failed: %s\n", err); return ds4_buf_take(&b); }
     if (strstr(r, "clipboard: ")) { ds4_buf b = {0}; ds4_buf_printf(&b, "error: could not put the text on the phone's clipboard: %s\n", r); free(r); return ds4_buf_take(&b); }
+    ds4_buf b = {0};
+    for (const char *s = r; (s = strstr(s, "stopped ")); ) {   /* 清场停掉的包: 告诉模型, 它别以为那个 app 还开着 */
+        const char *e = strchr(s, '\n'); const int L = e ? (int)(e - s) : (int)strlen(s);
+        ds4_buf_printf(&b, "note: %.*s (one app at a time: opening or using an app closes the others)\n", L, s);
+        s += L;
+    }
     free(r);
     usleep(SETTLE_MS * 1000);
     char *frame = look(ok);
-    if (before.shown && ty >= before.top) {   /* 10-14 实撞: 模型连点五次"发送"全落在键盘的回车键上 */
-        ds4_buf b = {0};
+    if (before.shown && ty >= before.top)   /* 10-14 实撞: 模型连点五次"发送"全落在键盘的回车键上 */
         ds4_buf_printf(&b, "note: that tap at %ld,%ld landed on the on-screen keyboard (it covered y %d..1280), not on the app. The app's buttons are above y %d.\n", tx, ty, before.top, before.top);
-        ds4_buf_puts(&b, frame); free(frame); return ds4_buf_take(&b);
-    }
-    return frame;
+    if (!b.len) { ds4_buf_free(&b); return frame; }
+    ds4_buf_puts(&b, frame); free(frame); return ds4_buf_take(&b);
 }

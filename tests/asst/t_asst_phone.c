@@ -42,6 +42,18 @@ int asst_test_phone(void) {
     CHECK(strstr(cmd, "input keyevent 279"), "then pastes"); free(cmd);
     cmd = asst_phone_type_cmd("你"); CHECK(strstr(cmd, " i32 3 i32 10534372 i32 -1 "), "4-byte tail as i32"); free(cmd);
     cmd = asst_phone_type_cmd("a\nb"); CHECK(strstr(cmd, "service call clipboard"), "newline goes through the clipboard too"); free(cmd);
+    /* ③.5 一次只开一个 app(10-15): 开 app 的命令先清场(force-stop 在 am start 之前), 留的是目标包; 动作后的清场按前台(mFocusedApp)留, 刚起的放过几秒 */
+    ds4_buf oc = {0}; asst_phone_open_cmd(&oc, "com.x.y");
+    CHECK(strstr(oc.ptr, "fg=com.x.y;") == oc.ptr, "open keeps the target package");
+    CHECK(strstr(oc.ptr, "am force-stop") && strstr(oc.ptr, "am start -W") && strstr(oc.ptr, "am force-stop") < strstr(oc.ptr, "am start -W"), "others are stopped before the new app starts");
+    CHECK(strstr(oc.ptr, "resolve-activity --brief com.x.y ") && strstr(oc.ptr, "monkey -p com.x.y "), "start by resolved activity, monkey as fallback");
+    CHECK(strstr(oc.ptr, "-lt 0 ] && continue"), "explicit open spares nothing, however young");
+    ds4_buf_free(&oc);
+    ds4_buf ac = {0}; asst_phone_one_app_sh(&ac, NULL);
+    CHECK(strstr(ac.ptr, "fg=$(dumpsys window") && strstr(ac.ptr, "mFocusedApp="), "after an action the foreground app is the one kept");
+    CHECK(strstr(ac.ptr, "pm list packages -3") && strstr(ac.ptr, "-lt 5 ] && continue"), "third-party only, young processes spared");
+    CHECK(strstr(ac.ptr, "echo \"stopped $p\"") && !strcmp(ac.ptr + ac.len - 6, "; true"), "reports what it stopped and never fails the action");
+    ds4_buf_free(&ac);
     /* ④ 工具表跟着真实开关走: 这台机器上手机 ready 就有六个, 否则一个都没有(spark 上跑测试时手机可能正开着, 两个方向都得对) */
     const bool on = asst_phone_on();
     if (on) asst_phone_apps_refresh();   /* phone_open 的 schema 要 app 表, 测试进程里没人刷过 */

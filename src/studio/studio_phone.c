@@ -24,6 +24,11 @@ static int shell_reply(ds4_buf *out, const char *cmd, int timeout_ms) {
     if (!r) return jerr(out, 502, err);
     ds4_buf_puts(out, "{\"out\":"); ds4_json_escape(out, r); ds4_buf_puts(out, "}"); free(r); return 200;
 }
+/* 页面的点/滑/按键/打字: 动作后接"只留前台一个 app"(sbx_phone.c), 一个来回; 页面点桌面图标开第二个 app 也归它管(刚起的放过几秒, 下一次动作再清) */
+static int act_reply(ds4_buf *out, const char *cmd, int timeout_ms) {
+    ds4_buf full = {0}; ds4_buf_puts(&full, cmd); ds4_buf_puts(&full, "; "); asst_phone_one_app_sh(&full, NULL);
+    const int rc = shell_reply(out, full.ptr, timeout_ms); ds4_buf_free(&full); return rc;
+}
 
 int tr_phone_api(const tr_req *rq, ds4_buf *out, const char **ctype) {
     const char *op = rq->path + 11;
@@ -55,30 +60,31 @@ int tr_phone_api(const tr_req *rq, ds4_buf *out, const char **ctype) {
     }
     if (!post) return jerr(out, 405, "POST");
     char cmd[1024];
-    if (!strcmp(op, "tap")) { long x, y; if (!num(rq, "x", &x) || !num(rq, "y", &y)) return jerr(out, 400, "x,y"); snprintf(cmd, sizeof cmd, "input tap %ld %ld", x, y); return shell_reply(out, cmd, 15000); }
+    if (!strcmp(op, "tap")) { long x, y; if (!num(rq, "x", &x) || !num(rq, "y", &y)) return jerr(out, 400, "x,y"); snprintf(cmd, sizeof cmd, "input tap %ld %ld", x, y); return act_reply(out, cmd, 15000); }
     if (!strcmp(op, "swipe")) {
         long x1, y1, x2, y2, ms = 300; if (!num(rq, "x1", &x1) || !num(rq, "y1", &y1) || !num(rq, "x2", &x2) || !num(rq, "y2", &y2)) return jerr(out, 400, "x1,y1,x2,y2");
         num(rq, "ms", &ms); if (ms < 50) ms = 50; if (ms > 5000) ms = 5000;
-        snprintf(cmd, sizeof cmd, "input swipe %ld %ld %ld %ld %ld", x1, y1, x2, y2, ms); return shell_reply(out, cmd, 15000);
+        snprintf(cmd, sizeof cmd, "input swipe %ld %ld %ld %ld %ld", x1, y1, x2, y2, ms); return act_reply(out, cmd, 15000);
     }
     if (!strcmp(op, "key")) {
         char k[32]; if (!tr_body_get(rq, "key", k, sizeof k)) return jerr(out, 400, "key");
         extern int asst_phone_keycode(const char *); const int code = asst_phone_keycode(k);
         if (code < 0) return jerr(out, 400, "key: back home recents enter delete power volume_up volume_down");
-        snprintf(cmd, sizeof cmd, "input keyevent %d", code); return shell_reply(out, cmd, 15000);
+        snprintf(cmd, sizeof cmd, "input keyevent %d", code); return act_reply(out, cmd, 15000);
     }
     if (!strcmp(op, "text")) {
         char *t = NULL; if (!asst_jstr(rq->body ? rq->body : "{}", "text", &t) || !t || !t[0]) { free(t); return jerr(out, 400, "text"); }
         extern char *asst_phone_type_cmd(const char *); char *typed = asst_phone_type_cmd(t); free(t);   /* ASCII 走 input text, 其余走剪贴板+粘贴(见 tool_phone.c) */
-        char err[256]; char *r = asst_phone_shell(typed, 15000, err, sizeof err); free(typed);
+        ds4_buf full = {0}; ds4_buf_puts(&full, typed); ds4_buf_puts(&full, "; "); asst_phone_one_app_sh(&full, NULL); free(typed);
+        char err[256]; char *r = asst_phone_shell(full.ptr, 15000, err, sizeof err); ds4_buf_free(&full);
         if (!r) return jerr(out, 502, err);
         if (strstr(r, "clipboard: ")) { const int rc = jerr(out, 502, r); free(r); return rc; }   /* service call 抛了异常(parcel 布局对不上这版 Android)*/
         free(r); ds4_buf_puts(out, "{\"out\":\"\"}"); return 200;
     }
     if (!strcmp(op, "open")) {
         char p[128]; if (!tr_body_get(rq, "package", p, sizeof p) || !tr_clean(p, "._")) return jerr(out, 400, "package");
-        snprintf(cmd, sizeof cmd, "a=$(cmd package resolve-activity --brief %s 2>/dev/null | tail -1); [ -n \"$a\" ] && am start -W -n \"$a\" 2>&1 | tail -2 || monkey -p %s -c android.intent.category.LAUNCHER 1 2>&1 | tail -1", p, p);
-        return shell_reply(out, cmd, 30000);
+        ds4_buf full = {0}; asst_phone_open_cmd(&full, p);   /* 与工具 phone_open 同一条命令: 先停别的第三方 app 再起这个 */
+        const int rc = shell_reply(out, full.ptr, 30000); ds4_buf_free(&full); return rc;
     }
     if (!strcmp(op, "uninstall")) {
         char p[128]; if (!tr_body_get(rq, "package", p, sizeof p) || !tr_clean(p, "._")) return jerr(out, 400, "package");

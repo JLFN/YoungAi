@@ -237,6 +237,8 @@ bool asst_phone_screencap(ds4_buf *png, char *err, size_t errn);
 bool asst_phone_install(const void *apk, size_t n, char *pkg, size_t pn, char *err, size_t errn);
 const char *asst_phone_apps(void);       /* 逗号表: 已装第三方包 + 常用系统 app; 手机 ready / 装卸后刷新 */
 void asst_phone_apps_refresh(void);
+void asst_phone_one_app_sh(ds4_buf *b, const char *keep);   /* 一次只开一个 app: 除 keep(NULL = 前台那个)外有进程的第三方包全 force-stop; 接在动作命令后面 */
+void asst_phone_open_cmd(ds4_buf *b, const char *pkg);      /* 开 app 的整条命令 = 清场 + am start(工具与 REST 共用这一份) */
 /* sbx_phone_video.c: screenrecord 的 H.264 裸流 → 每个看客一条 HTTP 连接(接管 fd); 没人看 5 s 后停录 */
 void asst_phone_video_attach(int fd);
 int asst_phone_video_viewers(void);

@@ -130,7 +130,7 @@ spark 现状（10-13）：MemAvailable 8.3 GB（模型子进程 + 火狐都在�
 | POST | `/api/phone/key` | `{key: back\|home\|recents\|enter\|delete\|power\|volume_up\|volume_down}` | 204 |
 | POST | `/api/phone/text` | `{text}` | 204；可见 ASCII 走 `input text`，其余（中文/emoji/换行）写进手机剪贴板再按 KEYCODE_PASTE（`service call clipboard 1` 手拼 Android 13 的 ClipData parcel，字节按 i64/i32 十进制搬，因为 `service` 没有 string8 写法；换 rootfs 版本要重对布局） |
 | GET | `/api/phone/apps` | — | `[{package, label}]`（第三方 + settings） |
-| POST | `/api/phone/open` | `{package}` | 204 |
+| POST | `/api/phone/open` | `{package}` | `{out}`；先 force-stop 别的第三方 app 再起（一次只开一个，§11 关 3）；tap/swipe/key/text 做完也只留前台那个 |
 | POST | `/api/phone/install` | 原始体 = apk | `{package}` |
 | POST | `/api/phone/uninstall` | `{package}` | 204 |
 | POST | `/api/phone/shell` | `{cmd, timeout_sec}` | `{out, code}`；只在手机里跑，和宿主沙盒无关 |
@@ -225,3 +225,58 @@ docs/assistant_phone.md 本稿; README.md / README.zh-CN.md 免责声明; fable5
 - 不做服务端转码/封装（MP4/WebRTC）：浏览器自己解 H.264，服务端只搬字节。
 - 不做 user namespace 假 root（两处研究题，见 §3）。
 - 不做自动登录账号。
+
+## 11. 在里面正常用抖音（方案稿，10-15，待批）
+
+结论：**不加新架构，抖音要"正常用"过四关，每关一个分钟级门；引擎侧只改两处通用机制（内存压力透传、CPU 配额按核数），零 app 名。**
+两件要你点头：① 下载抖音 apk（外部资源）；② 若抖音和淘宝的 UC 内核一样硬要 `/dev/ashmem`，唯一出路是 spark 接一次显示器 + 键盘在开机蓝屏按 Enroll MOK（§11.2）。
+
+### 11.1 现场（10-15 早，spark，只读）
+
+| 项 | 读数 | 对抖音意味着 |
+|---|---|---|
+| 手机 | 在跑 90,911 s，顶 5,407 MB，已用 3,241 MB（微信常驻），`memory.events max 0` | 抖音再来 1.5~2.5 GB 就贴顶，重演 10-14 微信式抖动 |
+| CPU | `cpu.max 400000 100000` = 4 核；宿主 20 核 | 抖音 = 自带软解 + ANGLE→SwiftShader Vulkan 软渲染，全吃 CPU |
+| 解码器 | `c2.android.{avc,hevc,vp9,av1}.decoder` 软解在 | 抖音自己的 ByteVC1 走 app 内软解，不依赖系统；两条路都有 |
+| 音频 | `vendor.audio-hal` 在跑，输出设备 `Speaker`（`audio.primary.default` = 空桶），`r_submix` 在 | 抖音放声不报错，但谁也听不见；录屏流本来就不含声 |
+| lmkd | 在跑，但手机里 `/proc/pressure/memory` 是宿主的（total 7,243,864 = 整机），`/proc/meminfo` 127 GB | **永远不杀后台**：贴 cgroup 顶时内核反复回收 ⇒ 10-14 的 ANR 真因在这 |
+| ashmem | `/dev/ashmem` 没有；Secure Boot enabled，MOK 未注册 | 微信 3 个 .so 引用 `/dev/ashmem` 但有 memfd 退路照跑；UC 内核 CHECK 失败自杀 |
+| apk | 官网直链 `https://lf-douyin-pc-web.douyinstatic.com/obj/douyin-pc-web/android-32.2.6/douyin.apk`，HEAD 270,981,537 B（271 MB），2025-01-20 | 包是旧版，开屏可能要求升级：在 app 内升级或换新直链，不绕 |
+
+### 11.2 四关与门
+
+**关 1 · 跑起来**（门：装完 `am start`，60 s 内 `logcat -b events` 的 `am_crash`/`am_anr` 为 0，截图有首页）
+- 装：页面"安装 APK"（上限 512 MB 够）。
+- 若 SIGILL 且 strace 到 `/dev/ashmem` ENOENT：走 ashmem 模块。软绕法全无：CUSE 不支持 mmap（ashmem 的核心就是 mmap）；lockdown 禁未签名模块；MokManager 必须现场按键。**要么接显示器按一次 Enroll MOK（模块 10-14 已编出、已入队），要么不弄。**
+- 若抖音自己判"设备异常/环境风险"：如实报，不改 `ro.*`（10-13 口径）。
+
+**关 2 · 看得顺**（门：`dumpsys gfxinfo` 掉帧比 + cgroup `cpu.stat` 的 `nr_throttled`，各看 60 s 刷视频）
+- CPU 配额从写死 4 核改成**宿主核数的一半**（`PH_CPU_FRACTION`，spark 20 核 → 10）：软解 + 软渲染 + 录屏软编三样一起跑，4 核会被 `cpu.max` 节流；只改 `phone_cg.c` 一行。
+- 页面观看走现成 15 fps H.264 流，不动；模型走截图，不动。
+
+**关 3 · 不被内存抖死 = 一次只开一个 app**（10-15 用户定："内存精细控制，一次只能打开一个 app"；已落地）
+- 规则：同一时刻只有一个第三方 app 活着。`sbx_phone.c` 一份 shell 片段（`asst_phone_one_app_sh`），工具与 REST 两边都接：
+  - **开 app**（`phone_open` / `POST /api/phone/open`，同一条命令 `asst_phone_open_cmd`）：先把别的第三方包全部 `am force-stop`，再 `am start -W`。不论年龄。
+  - **其余动作**（点/滑/按键/打字，两边都接在同一条 shell 后面，一个来回）：留前台那个（`dumpsys window` 的 `mFocusedApp`），别的第三方包凡有进程就停；**刚起不到 5 秒的放过**（页面点桌面图标开 app，`input tap` 12 ms 就回来，新 app 还没拿到焦点，不放过就把它当后台误杀；下一次动作再清）。
+  - 为什么 force-stop 不是 kill：置成 stopped 态，后台广播/推送拉不起它，只有再被打开才活。系统 app（设置/文件/图库）不算，内存都在第三方。回到桌面再动一下 = 第三方全停。
+- 停掉的包回给模型一行 `note: stopped <包> (one app at a time …)`，`phone_open` 描述写明"开一个会关掉别的，先把手头的事做完"。
+- lmkd 看不到 cgroup 压力的事因此不用修（一个 app 撑不到顶）；万一单个 app 自己贴顶，还是会抖，到时再做 `memory.pressure` 的 bind。
+- 门：`tests/phone/oneapp_probe.sh`（经真实 REST）四步：open A → open B 则 A 没了；直接 `am start A` 后立刻动作 A 不被误杀；6 s 后再动 B 被停；回桌面再动全停。10-15 连跑 5 遍全对、崩溃/ANR 0。
+
+**关 4 · 听得见**（第二期，待你定要不要）
+- 模型不需要声音；你在页面上看要。方案：自写一份 **不依赖 libc 的 `audio.primary` HAL**（AOSP 的 HAL 接口是纯 C 结构体，~250 行；spark 本机 gcc `-nostdlib`，不装 NDK），把 PCM 写进 `/data/local/tmp` 的 FIFO → 主进程经 adb shell 读 → 现成的 AAC-LC 编码器（视频工具 ③ 刀）→ 和 `/api/phone/video` 同一条 chunked 流并排一条 `/api/phone/audio` → 页面 WebCodecs `AudioDecoder`。
+- 代价：换 rootfs 版本要重对 HAL 结构体版本；多一条软编码线程（~0.2 核）。
+
+**落地状态（10-15 09:00，spark，原始读数）**：apk 落 `gguf/phone/apk/douyin_32.2.6_arm64.apk`（271 MB，包名 `com.ss.android.ugc.aweme.mobile`，apk 自带 204 个 arm64 库零个引用 `/dev/ashmem`）；流式装 15.7 s Success；
+`am start` 972 ms 到 MainActivity，60 s `am_crash`/`am_anr` 0，首页推荐流已加载；点"同意"后上滑刷 8 条视频：`gfxinfo` 615 帧 janky 0（UI 帧，不是解码帧）、
+cgroup 30 s 内 CPU 用量 +25.2 s（≈0.84 核）、`nr_throttled` +0、`memory.events max` 0；top 5 s：抖音 49.6%、surfaceflinger 47.2%、media.swcodec 13.6%（录屏编码）；
+cgroup 3.95 GB（微信 + 抖音同驻，顶 5.4 GB）。**关 1、关 2 现状下已过，CPU 配额没改；关 3 的 lmkd 透传还是没做（贴顶时仍会抖）；关 4 声音未做。**
+
+### 11.3 登录与操作（不加代码）
+- 短信验证码：你在云手机页签的输入框填（`/api/phone/text` 通中文/数字），模型等你。
+- 滑块：`phone_swipe` 按秒拖；拖不过就报，不加识别。
+- 登录/支付页 FLAG_SECURE 照旧黑屏，只给元素表。
+- 刷视频 = `phone_swipe` 上滑；搜索 = `phone_open` 后点搜索框打字。工具一个不加。
+
+### 11.4 顺手补的通用项（10-14 待批①）
+`phone_*` 每帧带"前台 app 最近 60 s 崩溃/ANR 次数"（读 `logcat -b events`），模型看到"刚崩 3 次"该停下报，不再 11 次重试。

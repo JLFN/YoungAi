@@ -225,3 +225,28 @@ void asst_phone_apps_refresh(void) {
 }
 
 const char *asst_phone_apps(void) { return g_apps; }
+
+/* 一次只开一个 app(10-15 用户定: "内存精细控制, 一次只能打开一个 app"): 第三方包里除了要留的那个, 凡有进程的一律 am force-stop。
+ * 为什么是 force-stop 不是 kill: force-stop 把包置成 stopped 态, 后台广播/推送拉不起它, 只有再被打开才活; kill 了它自己又回来。
+ * keep = 包名: 开 app 之前先清场(内存先腾出来再起新的); keep = NULL: 留前台那个(dumpsys window 的 mFocusedApp), 接在点/滑/按键/打字的同一条 shell 后面跑, 一个来回。
+ * 刚起的 app 放过 ASST_PHONE_APP_GRACE_S 秒(只在 keep = NULL 时): 页面点桌面图标 → input tap 12 ms 就回来, 新 app 还没拿到焦点, 不放过就把它当"后台"停掉(焦点还在桌面)。
+ *   显式 open 没有这条: 目标明确, 别的不论年龄一律停(10-15 探针实撞: 刚开 A 又 open B, A 因"年轻"没被停, 两个一起活着)。
+ *   年龄 = /proc/uptime − /proc/<主进程 pid>/stat 第 22 字段(启动时的 jiffies, 100 Hz); 主进程没了只剩 :子进程 = 残骸, 直接停。
+ * 系统 app(设置/文件/图库…)不算: pm list -3 只列第三方, 内存都在第三方。回到桌面再动一下 = 第三方全停, 这正是"桌面 = 全关"。
+ * 出错会怎样: dumpsys/pm 失败 → fg 为空或表为空 → 什么都不停, 不会误杀; 每条停掉的回一行 "stopped <包>", 调用方拿去告诉模型/页面。 */
+#define ASST_PHONE_APP_GRACE_S 5
+void asst_phone_one_app_sh(ds4_buf *b, const char *keep) {
+    ds4_buf_puts(b, "fg=");
+    if (keep) ds4_buf_puts(b, keep);
+    else ds4_buf_puts(b, "$(dumpsys window 2>/dev/null | sed -nE 's/.*mFocusedApp=.* u0 ([A-Za-z0-9._]+)\\/.*/\\1/p' | head -1)");
+    ds4_buf_printf(b, "; up=$(cut -d. -f1 /proc/uptime); for p in $(pm list packages -3 2>/dev/null | sed s/package://); do [ \"$p\" = \"$fg\" ] && continue; "
+                      "m=$(pidof \"$p\" 2>/dev/null | cut -d' ' -f1); if [ -n \"$m\" ]; then st=$(cut -d' ' -f22 /proc/$m/stat 2>/dev/null); [ -n \"$st\" ] && [ $((up - st/100)) -lt %d ] && continue; "
+                      "elif ! ps -A -o NAME 2>/dev/null | grep -q \"^$p:\"; then continue; fi; am force-stop \"$p\" >/dev/null 2>&1 && echo \"stopped $p\"; done; true", keep ? 0 : ASST_PHONE_APP_GRACE_S);
+}
+
+/* 开 app 的那条命令(工具 phone_open 与 REST /api/phone/open 同一份): 先清场, 再按 LAUNCHER 的 Activity 起(resolve 不到就 monkey)。
+ * 为什么 am start -W: 等到窗口出来再回, 接着截图看到的就是它; 10-15 实撞: monkey -p 对抖音拉不起(焦点仍在桌面), resolve + am start 972 ms 到主界面。 */
+void asst_phone_open_cmd(ds4_buf *b, const char *pkg) {
+    asst_phone_one_app_sh(b, pkg);
+    ds4_buf_printf(b, "; a=$(cmd package resolve-activity --brief %s 2>/dev/null | tail -1); [ -n \"$a\" ] && am start -W -n \"$a\" >/dev/null 2>&1 || monkey -p %s -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1", pkg, pkg);
+}
