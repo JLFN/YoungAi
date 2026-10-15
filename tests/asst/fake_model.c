@@ -73,7 +73,20 @@ static void serve(int fd) {
     const int tools = count(body, "\"role\":\"tool\"");
     const bool has = strstr(body, "\"name\":\"locate\"") != NULL;   /* 工具表里有设备工具(页面报了能力)才走设备那几步 */
     sse(fd, "{\"reasoning_content\":\"假模型在想。\"}");
-    if (tools == 0 && strstr(body, "通知我")) {   /* 任务页 e2e: 那句话里有"通知我" → 先调 notify(e2e 浏览器没订阅 → 工具答没设备), 下一轮直接终稿 */
+    const bool plan = strstr(body, "e2e 计划") != NULL, started = strstr(body, "开始按计划做。") != NULL;
+    if (plan && tools == 0) {   /* 计划段(10-15): 一句话里有"e2e 计划" → plan_propose(3 步 1 问) → 停下等开始 */
+        sse(fd, "{\"content\":\"先列个计划。\"}");
+        call1(fd, "call_plan", "plan_propose", "{\\\"title\\\":\\\"e2e 计划: 周末苏州\\\",\\\"summary\\\":\\\"两天一夜, 预算两千\\\",\\\"steps\\\":[{\\\"text\\\":\\\"定出发时间\\\"},{\\\"text\\\":\\\"订酒店\\\",\\\"when\\\":\\\"2099-01-01 09:00\\\"},{\\\"text\\\":\\\"列行程\\\"}],\\\"questions\\\":[\\\"周六几点出发?\\\"]}");
+    } else if (plan && !started && tools == 1) {
+        sse(fd, "{\"content\":\"计划在上面, 你按开始我就动手。\"}");
+    } else if (plan && started && tools == 1) {   /* 按了开始: 做第 1 步 → 打勾 → 定下次 → 终稿 */
+        sse(fd, "{\"content\":\"第 1 步做完了。\"}");
+        call1(fd, "call_step", "plan_step", "{\\\"index\\\":1,\\\"state\\\":\\\"done\\\",\\\"note\\\":\\\"周六 8 点高铁\\\"}");
+    } else if (plan && started && tools == 2) {
+        call1(fd, "call_ci", "task_check_in", "{\\\"minutes\\\":30,\\\"note\\\":\\\"下次订酒店\\\"}");
+    } else if (plan && started) {
+        sse(fd, "{\"content\":\"出发时间定了: 周六 8 点高铁。下一步订酒店。\"}");
+    } else if (tools == 0 && strstr(body, "通知我")) {   /* 任务页 e2e: 那句话里有"通知我" → 先调 notify(e2e 浏览器没订阅 → 工具答没设备), 下一轮直接终稿 */
         sse(fd, "{\"content\":\"先通知你一声。\"}");
         call1(fd, "call_ntf", "notify", "{\\\"text\\\":\\\"e2e 通知: 价格降了\\\"}");
     } else if (tools == 0 && strstr(body, "\"name\":\"read_clipboard\"")) {

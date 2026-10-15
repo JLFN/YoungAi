@@ -267,6 +267,49 @@ const tasksDir = path.join(ASST, "tasks");
   await ctx5.close();
 }
 
+/* ---- 计划(10-15, docs/assistant_plan.md): 一句话 → 假模型调 plan_propose → 计划卡(3 步 1 问, 开始/放弃) → 盘上 proposed 任务 → 开始 → 用户气泡"开始按计划做。" →
+   第 1 步 ☑ 带备注 → 任务页 1/3; 另提一个点放弃 → 卡上"已放弃"、盘上 end=abandoned。进不进计划是模型(这里是假模型)调不调工具, 页面不猜 ---- */
+{
+  const beforeTasks = new Set(existsSync(tasksDir) ? readdirSync(tasksDir) : []);
+  const ctx7 = await browser.newContext({ locale: "zh-CN" });
+  const p7 = await ctx7.newPage(); p7.on("pageerror", e => console.log("pageerror:", e.message));
+  await p7.goto(`http://127.0.0.1:${PORT}/#chat`); await login(p7); await sleep(300);
+  const planTask = () => { for (const f of readdirSync(tasksDir)) if (!beforeTasks.has(f)) return { f, x: JSON.parse(readFileSync(path.join(tasksDir, f), "utf8")) }; return null; };
+  const waitFor = async (fn, n = 60) => { for (let i = 0; i < n; i++) { try { const v = await fn(); if (v) return v; } catch (_) {} await sleep(250); } return null; };
+  await p7.evaluate(() => { selectSession(null); inputEl.value = "e2e 计划: 周末去苏州玩"; inputEl.disabled = false; return send(); });
+  const card = p7.locator(".plan", { hasText: "e2e 计划: 周末苏州" });
+  await waitFor(async () => await card.count() === 1 && /你按开始我就动手/.test(await p7.locator("#chat").textContent()));
+  const pshot = async n => { if (SHOTS) { mkdirSync(SHOTS, { recursive: true }); await sleep(300); await p7.screenshot({ path: path.join(SHOTS, n + ".png") }); } };
+  ok(await card.count() === 1 && await card.locator(".ps").count() === 3 && await card.locator(".pq li").count() === 1, "计划卡: 3 步 1 问"); await pshot("plan-1-proposed");
+  ok(await card.locator("button", { hasText: "开始" }).count() === 1 && await card.locator("button", { hasText: "放弃" }).count() === 1 && /等你确认/.test(await card.locator(".pst").textContent()), "待确认: 开始 / 放弃 两个按钮, 状态'等你确认'");
+  const pt = planTask();
+  ok(pt && pt.x.state === "proposed" && pt.x.steps.length === 3 && pt.x.steps[1].when === "2099-01-01 09:00", "盘上: proposed 任务, 步骤原文");
+  const psid = pt ? pt.x.session : "";
+  ok(psid && JSON.parse(readFileSync(path.join(ASST, "sessions", psid, "meta.json"), "utf8")).task === pt.f.replace(".json", ""), "这段对话 meta.task 指回计划");
+  await card.locator("button", { hasText: "开始" }).click();
+  const stepped = await waitFor(() => { const x = JSON.parse(readFileSync(path.join(tasksDir, pt.f), "utf8")); return x.steps[0].state === "done" && x.runs >= 2 && x; });
+  ok(stepped && stepped.state === "active" && stepped.steps[0].note === "周六 8 点高铁" && stepped.next > Date.now() / 1000 + 1700 && stepped.next < Date.now() / 1000 + 1900, "开始后: active, 第 1 步 done 带备注, 下次 = check_in 的 30 分钟");
+  await sleep(600);
+  ok(await p7.locator(".msg.user", { hasText: "开始按计划做。" }).count() === 1, "对话里多一条用户气泡'开始按计划做。'");
+  ok(await card.locator(".ps.done", { hasText: "定出发时间" }).count() === 1 && /进行中 1\/3/.test(await card.locator(".pst").textContent()) && await card.locator("button", { hasText: "开始" }).count() === 0, "卡上: 第 1 步 ☑, 进行中 1/3, 按钮收起"); await pshot("plan-2-started");
+  await p7.goto(`http://127.0.0.1:${PORT}/#tasks`); await sleep(800);
+  const row = p7.locator("#tk-list .row", { hasText: "e2e 计划: 周末苏州" });
+  ok(await row.count() === 1 && /☑☐☐ 1\/3 · 下一步: 订酒店/.test(await row.textContent()), "任务页这行: ☑☐☐ 1/3 · 下一步: 订酒店");
+  /* 放弃 */
+  for (const f of readdirSync(tasksDir)) beforeTasks.add(f);
+  await p7.goto(`http://127.0.0.1:${PORT}/#chat`); await sleep(300);
+  await p7.evaluate(() => { selectSession(null); inputEl.value = "e2e 计划: 再来一个"; inputEl.disabled = false; return send(); });
+  const card2 = p7.locator(".plan.ask", { hasText: "e2e 计划: 周末苏州" });
+  await waitFor(async () => await card2.count() === 1 && /你按开始我就动手/.test(await p7.locator("#chat").textContent()));
+  await card2.locator("button", { hasText: "放弃" }).click(); await p7.locator("#ask-yes").click();
+  const pt2 = await waitFor(() => { const p = planTask(); return p && p.x.state === "done" && p; });
+  ok(pt2 && pt2.x.end === "abandoned" && !pt2.x.done_at, "放弃 → 盘上 done + end=abandoned, 没有 done_at(不推'任务完成')");
+  await waitFor(async () => /已放弃/.test(await p7.locator(".plan.closed").last().textContent()));
+  ok(/已放弃/.test(await p7.locator(".plan.closed").last().textContent()) && await p7.locator(".plan.closed button").count() === 0, "卡上: 已放弃, 按钮收起");
+  for (const f of readdirSync(tasksDir)) { try { if (JSON.parse(readFileSync(path.join(tasksDir, f), "utf8")).text.startsWith("e2e 计划")) rmSync(path.join(tasksDir, f), { force: true }); } catch (_) {} }   /* 测试建的计划任务文件; 会话由收尾挪进 trash */
+  await ctx7.close();
+}
+
 /* ---- 语音输入(10-14, 用户: 照微信): 最右圆钮 麦克风 ⇄ 键盘 / 有字变发送; 按住说话 → 上滑取消 / 太短丢 / 松手识别完直接发 ----
    macOS 上主进程认不出假模型(tr_model_live 假): 页面不进 serving、/v1/ 也不转发。这里两处拦截, 页面代码不碰:
    /api/train/status 的 mode 改成 serving; /v1/audio/transcriptions 直接打到假模型端口(主进程转发这一段 10-14 在 spark 生产上实测过: 经 8000 转发 47 ms 同文本) */

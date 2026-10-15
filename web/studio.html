@@ -194,6 +194,18 @@
   .tool .tbody { padding: 0 12px 10px; display: flex; flex-direction: column; gap: 6px; } .tool .tbody pre.box { max-height: 260px; }
   .appr { padding: 4px 12px 12px; display: flex; flex-direction: column; gap: 8px; } .appr .why { font-weight: 600; } .appr pre.box { max-height: 220px; }
   .abtns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .plan { margin-left: 42px; border: 1px solid var(--accent-line); border-radius: 10px; background: var(--panel); font-size: 13.5px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+  .plan.ask { border-color: rgba(245,158,11,.6); } .plan.closed { opacity: .7; }
+  .plan .phead { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; } .plan .ptitle { flex: 1; min-width: 0; font-size: 14px; }
+  .plan .ptag { flex: none; font-size: 11.5px; font-weight: 600; color: var(--accent-2); border: 1px solid var(--accent-line); border-radius: 6px; padding: 0 6px; }
+  .plan .pst { flex: none; font-size: 12px; color: var(--faint); } .plan.ask .pst { color: var(--amber); font-weight: 600; }
+  .plan .psum { color: var(--dim); }
+  .plan .psteps { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+  .plan .ps { display: flex; gap: 8px; align-items: flex-start; } .plan .pmark { flex: none; width: 1.2em; text-align: center; }
+  .plan .ps.done .ptx > span, .plan .ps.skipped .ptx > span { color: var(--faint); text-decoration: line-through; } .plan .ps.doing .pmark { color: var(--accent-2); }
+  .plan .ptx { display: flex; flex-direction: column; min-width: 0; } .plan .ptx small { color: var(--faint); font-size: 12px; }
+  .plan .pq ul { margin: 4px 0 0; padding-left: 20px; } .plan .phint { font-size: 12px; }
+  @media (max-width: 760px) { .plan { margin-left: 0; } }
   .aend { margin-left: 42px; } .aerr { margin-left: 42px; font-size: 13px; }
   /* 进/出(方案稿 §13): 设备卡 = 等这台设备做事(剪贴板/选文件); 交付卡 = 模型写进工作区的文件; 终稿卡 = 复制/分享 + 正文里抽出的链接·电话·导航 */
   .tool.dev { border-color: var(--accent-line); }
@@ -1060,6 +1072,8 @@ const I18N = {
     tk_new: "新任务", tk_new_sub: "一句话说清要持续跟的事(盯一个价格、追一件事的进展、每天整理一份东西…)。助理马上做第一遍, 之后什么时候再看由它自己定, 做完了会收口。", tk_ph: "例如: 盯着 DGX Spark 的价格, 降到 3 万以下告诉我", tk_add: "创建",
     tk_list: "任务", tk_list_sub: "每个任务有自己的对话, 点\"打开\"能看它每一次做了什么。", tk_empty: "还没有任务。",
     tk_open: "打开", tk_pause: "暂停", tk_resume: "继续", tk_run: "现在跟进", tk_done: "完成", tk_del: "删除", tk_del_confirm: "删除这个任务和它的对话? (挪进 ~/.ds4/assistant/trash/, 盘上还能找回)",
+    pl_tag: "计划", pl_wait: "等你确认", pl_active: "进行中 {0}/{1}", pl_paused: "已暂停 {0}/{1}", pl_done: "已完成 {0}/{1}", pl_abandoned: "已放弃", pl_q: "要你拿主意:", pl_start: "开始", pl_discard: "放弃",
+    pl_hint: "按开始之前助理只查不动: 不写文件、不跑程序、不发通知。有要改的直接在下面回它。", pl_discard_confirm: "放弃这个计划? 对话还在, 计划不会再跟进。", pl_next: "下一步: {0}", tk_proposed: "等你确认计划",
     tk_runs: "跟进 {0} 次", tk_next: "下次 {0}", tk_running: "进行中", tk_queued: "排队中", tk_waiting: "等你批准", tk_paused: "已暂停", tk_done_s: "已完成", tk_err: "上次出错", tk_note: "助理的话: {0}", tk_created: "创建于 {0}",
     rm_title: "定时提醒", rm_sub: "助理用 notify 工具安排的: 到点推到设备(页面开着就在页面里弹)。不想要的删掉。", rm_empty: "没有待发的提醒", rm_del: "删除", rm_open: "打开", rm_at: "{0} · 来自对话",
     au_setup_t: "首次使用: 设置用户名和密码", au_setup_sub: "以后打开工作台都要用它登录。只以单向哈希存在运行工作台的那台机器上({0}); 忘了就删掉这个文件, 刷新页面重新设置。",
@@ -1224,6 +1238,8 @@ const I18N = {
     tk_new: "New task", tk_new_sub: "One sentence for something to keep following (watch a price, track how something is going, tidy something up every day…). The assistant does a first pass right away, decides itself when to look again, and closes the task when it is done.", tk_ph: "e.g. Watch the DGX Spark price and tell me when it drops below $3,000", tk_add: "Create",
     tk_list: "Tasks", tk_list_sub: "Every task has its own conversation; Open shows what it did each time.", tk_empty: "No tasks yet.",
     tk_open: "Open", tk_pause: "Pause", tk_resume: "Resume", tk_run: "Follow up now", tk_done: "Done", tk_del: "Delete", tk_del_confirm: "Delete this task and its conversation? (moved to ~/.ds4/assistant/trash/, still recoverable on disk)",
+    pl_tag: "Plan", pl_wait: "Waiting for you", pl_active: "In progress {0}/{1}", pl_paused: "Paused {0}/{1}", pl_done: "Done {0}/{1}", pl_abandoned: "Discarded", pl_q: "Decisions for you:", pl_start: "Start", pl_discard: "Discard",
+    pl_hint: "Until you press Start the assistant only looks things up: no files written, no programs run, no notifications. Reply below to change anything.", pl_discard_confirm: "Discard this plan? The conversation stays; the plan is no longer followed.", pl_next: "next: {0}", tk_proposed: "Plan waiting for you",
     tk_runs: "{0} follow-ups", tk_next: "next {0}", tk_running: "Running", tk_queued: "Queued", tk_waiting: "Waiting for you", tk_paused: "Paused", tk_done_s: "Done", tk_err: "Last run failed", tk_note: "Assistant's note: {0}", tk_created: "created {0}",
     rm_title: "Scheduled reminders", rm_sub: "Scheduled by the assistant with the notify tool: pushed to your devices at the time (shown in the page if it is open). Delete the ones you do not want.", rm_empty: "No pending reminders", rm_del: "Delete", rm_open: "Open", rm_at: "{0} · from a conversation",
     au_setup_t: "First run: set a username and password", au_setup_sub: "You'll sign in with these every time. Only a one-way hash is stored, on the machine running the studio ({0}); if you forget, delete that file and reload to set them again.",
@@ -1884,6 +1900,10 @@ function applyEv(v, e) {
   else if (e.ev === "device") { const tl = findTool(v, e.id); if (tl) { tl.device = e; tl.dirty = true; } if (e.wait) v.state = "waiting_device"; }
   else if (e.ev === "tool_progress") { const tl = findTool(v, e.id); if (tl && !tl.done) { tl.progress = e.text; tl.dirty = true; } }   /* 长工具(make_video 逐帧渲染)的进度: 卡上状态显示"rendered 120/900 frames" */
   else if (e.ev === "tool_end") { const tl = findTool(v, e.id); if (tl) Object.assign(tl, { done: true, ok: e.ok, decision: e.decision, ms: e.ms, result: e.result, bytes: e.bytes, approval: null, device: tl.device && !tl.device.wait ? tl.device : null, dirty: true }); if (v.state === "waiting_approval" || v.state === "waiting_device") v.state = "running"; }
+  else if (e.ev === "plan") {   /* 计划卡(asst_plan.c): 一个计划一张卡, 每次变化挪到最新位置 —— 步骤打勾发生在对话后段, 卡留在开头就看不见了 */
+    const i = v.items.findIndex(x => x.kind === "plan" && x.plan.task === e.task), it = i >= 0 ? v.items.splice(i, 1)[0] : { kind: "plan" };
+    it.plan = e; it.dirty = true; v.items.push(it);
+  }
   else if (e.ev === "files") {   /* 终稿里写出的工作区文件(asst_file_mentioned, 10-15 照 ChatGPT 终稿写 sandbox 链接): 这一轮已经由 share 出过卡的不再出 */
     let k = v.items.length; while (k > 0 && v.items[k - 1].kind !== "user") k--;
     const shared = new Set(v.items.slice(k).filter(x => x.kind === "tool").map(deliverPath).filter(Boolean));
@@ -1927,6 +1947,48 @@ function toolEl(it) {
   w.appendChild(body);
   return w;
 }
+const PLAN_MARK = { todo: "☐", doing: "◐", done: "☑", skipped: "⊘" };
+function planProgress(p) { const s = p.steps || []; return [s.filter(x => x.state === "done" || x.state === "skipped").length, s.length]; }
+function planStateText(p) {
+  const [f, n] = planProgress(p);
+  return p.state === "proposed" ? t("pl_wait") : p.state === "active" ? t("pl_active", f, n) : p.state === "paused" ? t("pl_paused", f, n) : p.end === "abandoned" ? t("pl_abandoned") : t("pl_done", f, n);
+}
+/* 计划卡: 开始/放弃只在 proposed 态出现; 按下去走任务接口(start / done), 之后的变化由事件流里新的 plan 事件刷新这张卡 */
+function planEl(it) {
+  const p = it.plan, w = node("div", "plan" + (p.state === "done" ? " closed" : "") + (p.state === "proposed" ? " ask" : ""));
+  const head = node("div", "phead");
+  head.appendChild(node("span", "ptag", t("pl_tag"))); head.appendChild(node("b", "ptitle", p.title)); head.appendChild(node("span", "pst", planStateText(p)));
+  w.appendChild(head);
+  if (p.summary) w.appendChild(node("div", "psum", p.summary));
+  const ol = node("ol", "psteps");
+  (p.steps || []).forEach(s => {
+    const li = node("li", "ps " + s.state); li.appendChild(node("span", "pmark", PLAN_MARK[s.state] || "☐"));
+    const tx = node("div", "ptx"); tx.appendChild(node("span", null, s.text));
+    if (s.when) tx.appendChild(node("small", null, s.when)); if (s.note) tx.appendChild(node("small", null, s.note));
+    li.appendChild(tx); ol.appendChild(li);
+  });
+  w.appendChild(ol);
+  if (p.state === "proposed" && (p.questions || []).length) {
+    const q = node("div", "pq"); q.appendChild(node("div", "muted", t("pl_q")));
+    const ul = node("ul"); p.questions.forEach(x => ul.appendChild(node("li", null, x))); q.appendChild(ul); w.appendChild(q);
+  }
+  if (p.state === "proposed") {
+    w.appendChild(node("div", "muted phint", t("pl_hint")));
+    const btns = node("div", "abtns");
+    const add = (op, cls, key) => { const b = node("button", cls, t(key)); b.disabled = !!it.busy; b.onclick = () => planOp(it, op); btns.appendChild(b); };
+    add("start", "primary", "pl_start"); add("done", "ghost", "pl_discard");
+    w.appendChild(btns);
+  }
+  return w;
+}
+async function planOp(it, op) {
+  if (op === "done" && !(await ask(t("pl_discard_confirm"), true, t("pl_discard")))) return;
+  it.busy = true; it.dirty = true; renderChat();
+  const r = await aFetch("tasks", { op, id: it.plan.task });
+  it.busy = false; it.dirty = true; renderChat();
+  if (r.error) { toast(t("fail", r.error), true); return; }
+  tasks = r.tasks || tasks;
+}
 async function answer(it, dec) {
   it.approval.answered = dec; it.dirty = true; renderChat();
   const r = await aFetch("approve", { session: view.sid, id: it.id, decision: dec });
@@ -1939,6 +2001,7 @@ function itemEl(it, i) {
   if (it.kind === "user") return msgEl({ role: "user", content: it.text }, false);
   if (it.kind === "error") return node("div", "bad aerr", it.msg);
   const w = node("div", "item");
+  if (it.kind === "plan") { w.appendChild(planEl(it)); return w; }
   if (it.kind === "tool") { w.appendChild(toolEl(it)); const d = deliverEl(it); if (d) w.appendChild(d); return w; }
   if (it.kind === "files") { for (const p of it.paths) w.appendChild(fileCard(p)); return w; }
   const u = it.usage, s = [it.reason === "done" ? "" : t("a_end_" + it.reason), u ? t("a_usage", u.prompt, u.completion) : ""].filter(Boolean).join(" · "); if (s) w.appendChild(node("div", "stats aend", s));
@@ -2543,7 +2606,8 @@ function taskStatus(x) {   /* 一句状态: 会话在跑 > 任务态 > 下次时
   if (x.run_state === "running" || x.run_state === "waiting_device") return ["running", t("tk_running")];
   if (x.run_state === "waiting_approval") return ["waiting_approval", t("tk_waiting")];
   if (x.run_state === "queued") return ["queued", t("tk_queued")];
-  if (x.state === "done") return ["", t("tk_done_s")];
+  if (x.state === "proposed") return ["waiting_approval", t("tk_proposed")];
+  if (x.state === "done") return ["", x.end === "abandoned" ? t("pl_abandoned") : t("tk_done_s")];
   if (x.state === "paused") return ["", t("tk_paused")];
   return ["", x.next ? t("tk_next", whenOf(x.next)) : t("tk_queued")];
 }
@@ -2556,11 +2620,15 @@ function renderTasks() {
     const tx = node("div", "tx"); tx.appendChild(node("b", null, x.text));
     const meta = [st, t("tk_runs", x.runs)]; if (x.end === "error" && x.run_state === "idle") meta.push(t("tk_err")); meta.push(t("tk_created", whenOf(x.created)));
     tx.appendChild(node("small", null, meta.join(" · ")));
+    if (x.steps && x.steps.length) {   /* 计划: ☑☑☐☐ 2/4 · 下一步: … */
+      const [f, n] = planProgress(x), nx = x.steps.find(s => s.state === "todo" || s.state === "doing");
+      tx.appendChild(node("small", "psmall", x.steps.map(s => PLAN_MARK[s.state] || "☐").join("") + ` ${f}/${n}` + (nx ? " · " + t("pl_next", nx.text) : "")));
+    }
     if (x.note) tx.appendChild(node("small", null, t("tk_note", x.note)));
     if (x.last) tx.appendChild(node("small", "last", x.last));
     row.appendChild(tx);
-    const ops = node("div", "ops"), op = async (o, confirm) => {
-      if (confirm && !(await ask(t("tk_del_confirm"), true, t("tk_del")))) return;
+    const ops = node("div", "ops"), op = async (o, confirmKey, yesKey) => {
+      if (confirmKey && !(await ask(t(confirmKey), true, t(yesKey)))) return;
       const r = await aFetch("tasks", { op: o, id: x.id }); if (r.error) { toast(t("fail", r.error), true); return; }
       tasks = r.tasks || []; renderTasks();
     };
@@ -2568,7 +2636,8 @@ function renderTasks() {
     btn("tk_open", () => selectSession(x.session));
     if (x.state === "active") { if (x.run_state === "idle") btn("tk_run", () => op("run")); btn("tk_pause", () => op("pause")); btn("tk_done", () => op("done")); }
     if (x.state === "paused") btn("tk_resume", () => op("resume"));
-    btn("tk_del", () => op("delete", true));
+    if (x.state === "proposed") { btn("pl_start", () => op("start")); btn("pl_discard", () => op("done", "pl_discard_confirm", "pl_discard")); }
+    btn("tk_del", () => op("delete", "tk_del_confirm", "tk_del"));
     row.appendChild(ops); box.appendChild(row);
   });
   const open = tasks.filter(x => x.state !== "done").length; text("nav-tasks", open ? String(open) : ""); $("tab-tasks").textContent = open ? String(open) : "";   /* 不走 text(): 它把空写成"–", 角标的 :empty 就藏不掉了 */

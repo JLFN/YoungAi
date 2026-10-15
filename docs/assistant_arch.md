@@ -76,6 +76,7 @@
 | `read_clipboard` `pick_file` | DEV, wait | dev | caps | 不变 |
 | `copy_text` `share` `open_url` `navigate` `call` | DEV | dev | caps | 不变 |
 | `open_app` | DEV | dev | caps 有 `open_app` + 设备报的 app 列表非空 | **新**：打开抖音/微信/钉钉/支付宝……（§5.2） |
+| `plan_propose` `plan_step` | 主进程 | task | `plan_propose` 永远；`plan_step` 只在带步骤的任务对话 | 10-15 计划模式：进不进计划全看模型调不调，提示词零改动（`docs/assistant_plan.md`） |
 
 ### 2.2 工具描述怎么写（这是场景知识唯一进模型的门）
 

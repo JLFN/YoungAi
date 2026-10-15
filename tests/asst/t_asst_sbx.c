@@ -223,6 +223,7 @@ int main(int argc, char **argv) {
     { extern int asst_test_phone(void); g_fail += asst_test_phone(); }   /* 云手机离线: NAL 切分 / 控件树解析 / 开关关着无 phone_* */
     { extern int asst_test_task(void); g_fail += asst_test_task(); }     /* 任务: 建/工具/收尾/到期/页面操作(在 logic 之后: 助理根目录已建好) */
     { extern int asst_test_push(void); g_fail += asst_test_push(); }     /* 推送: 假推送服务收 POST 当浏览器解开; notify 工具; 定时提醒; 收尾规则 */
+    { extern int asst_test_plan(void); g_fail += asst_test_plan(); }     /* 计划: 提计划/只许看/开始/步骤/下次时间/放弃(放最后: 它会暂停前面留下的到期任务) */
     asst_browser_shutdown();   /* 网页 / 视频测试起的无头火狐: 不关就成孤儿一直占着几百 MB(10-13 Mac 上攒了 10 个) */
     char rm[4400]; snprintf(rm, sizeof rm, "rm -rf '%s'", base); if (system(rm)) {}
     printf("asst: %d passed, %d failed\n", g_pass, g_fail);

@@ -107,7 +107,7 @@ static void audit_call(const char *sid, const char *tool, const char *args, cons
 static void run_one(const char *sid, const char *text, const char *device, const char *files) {
     ds4_buf b = {0}, full = {0};
     const bool zh = asst_lang_is_zh(text);
-    char tid[ASST_ID_LEN + 1]; const bool task = asst_task_of(sid, tid);   /* 任务会话(asst_task.c): 多一行任务事实、工具表多 task_*、收尾记进展 */
+    char tid[ASST_ID_LEN + 1]; bool task = asst_task_of(sid, tid);   /* 任务会话(asst_task.c): 多一行任务事实、工具表多 task_*、收尾记进展; 普通对话里模型调了 plan_propose 也会变成任务(下面每轮重看) */
     char *ctx = asst_device_line(device, cur_caps, zh, sid), *att = asst_attach_line(files, zh);
     ds4_buf_puts(&full, ctx); ds4_buf_putc(&full, '\n'); free(ctx);   /* 事实行在用户文本前面: 模型看到, 页面不显示(事件里只有 text) */
     if (task) { char *tl = asst_task_fact_line(tid, zh); if (tl) { ds4_buf_puts(&full, tl); ds4_buf_putc(&full, '\n'); free(tl); } }
@@ -125,7 +125,8 @@ static void run_one(const char *sid, const char *text, const char *device, const
         char *msgs = asst_messages(sid);
         asst_llm_cb cb = { on_text, on_think, want_stop, (void *)sid };
         asst_llm_out o;
-        const asst_tctx tc = { cur_caps, cur_apps, task ? tid : NULL };
+        if (!task) task = asst_task_of(sid, tid);   /* 上一轮刚调了 plan_propose: 这一轮起工具表就带 task_* 与 plan_step */
+        const asst_tctx tc = { cur_caps, cur_apps, task ? tid : NULL, task && asst_plan_has(tid) };
         char *tools = asst_tools_json(&tc);
         const bool good = asst_llm_chat(g_port, msgs, tools, &cb, &o);
         free(msgs); free(tools);

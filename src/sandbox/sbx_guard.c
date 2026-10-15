@@ -8,7 +8,9 @@
  *   ⑤ 你在 policy 里给的目录 → 放行(写要该目录 write=true);
  *   ⑥ 永久授权 / 本会话授权 → 放行; 都没有 → 问你。
  *   run: 沙盒里跑, 不审批(10-12 用户定; 安全靠沙盒: 没网络、只能写工作区); 命令里像密文的直接拒。网页: 本机/内网地址与非 http(s) 直接拒。
- * 守门只决定"问不问"; 真正能碰什么由 asst_guard_spec 给出的沙盒规则决定, 两层互不信任。 */
+ * 守门只决定"问不问"; 真正能碰什么由 asst_guard_spec 给出的沙盒规则决定, 两层互不信任。
+ * 最后一道(10-15, 计划模式 docs/assistant_plan.md §3.3): 这段对话是等用户按"开始"的计划时, 会动东西的(写/run/通知/手机/交出去的设备动作)一律拒、不弹卡 ——
+ *   "开始"这个决定在计划卡上做一次, 不该散到每张审批卡上; 也不放 run: 它在沙盒里但会改工作区, "按开始之前什么都没动"一条都不例外用户才敢放着不管。 */
 #include "../assistant/asst_internal.h"
 #include <strings.h>
 
@@ -87,12 +89,21 @@ static bool url_host(const char *url, char *host, size_t n) {
     return k > 0;
 }
 
+static void guard_decide(const char *sid, const char *tool, const char *args, asst_gres *r);
+
 void asst_guard(const char *sid, const char *tool, const char *args, asst_gres *r) {
+    guard_decide(sid, tool, args, r);
+    if (r->dec == ASST_DENY) return;
+    const bool acts = !strcmp(r->cls, "write") || !strcmp(r->cls, "exec") || !strcmp(r->cls, "notify") || !strcmp(r->cls, "phone") || asst_device_tool(tool) == 2;
+    if (acts && asst_plan_waiting(sid)) { r->once_only = false; set(r, ASST_DENY, "the plan is waiting for the user's decision; until they press Start on the plan card only looking things up is allowed"); }
+}
+
+static void guard_decide(const char *sid, const char *tool, const char *args, asst_gres *r) {
     memset(r, 0, sizeof *r);
     if (!strcmp(tool, "remember") || !strcmp(tool, "forget")) { snprintf(r->cls, sizeof r->cls, "mem"); set(r, ASST_ALLOW, "memory"); return; }
     if (!strcmp(tool, "use_skill")) { snprintf(r->cls, sizeof r->cls, "skill"); set(r, ASST_ALLOW, "installed skill"); return; }   /* 主进程读 skills/<名>/SKILL.md, 不进沙盒; 用户自己装的, 不置污点 */
     if (!strcmp(tool, "nearby")) { snprintf(r->cls, sizeof r->cls, "geo"); set(r, ASST_ALLOW, "places near the user"); return; }   /* 出门的只有查询词与坐标, key 由 C 填; 不置污点 */
-    if (asst_task_tool(tool)) { snprintf(r->cls, sizeof r->cls, "task"); set(r, ASST_ALLOW, "task schedule"); return; }   /* 只改自己这个任务的下次时间/状态, 不碰文件系统; 不进沙盒 */
+    if (asst_task_tool(tool) || asst_plan_tool(tool)) { snprintf(r->cls, sizeof r->cls, "task"); set(r, ASST_ALLOW, "task schedule"); return; }   /* 只改自己这个任务的下次时间/状态, 不碰文件系统; 不进沙盒 */
     if (asst_notify_tool(tool)) {   /* 推到用户自己的设备: 出门的只有标题与正文(加密后经推送服务), 像密文的不推 */
         snprintf(r->cls, sizeof r->cls, "notify"); snprintf(r->target, sizeof r->target, "notify");
         char *tx = NULL; asst_jstr(args, "text", &tx);

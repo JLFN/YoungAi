@@ -17,6 +17,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #define ASST_PATH 1024
 
@@ -153,7 +154,29 @@ bool asst_task_add(const char *text, char tid[ASST_ID_LEN + 1], char *err, size_
 bool asst_task_op(const char *body, char *err, size_t errn);  /* 页面: {op: add|pause|resume|done|run|delete, id, text} */
 void asst_tasks_json(ds4_buf *b);                             /* {follow_s, tasks:[{id, session, state, end, created, updated, next, runs, text, last, note, run_state}]} 没完的在前 */
 bool asst_task_due(long now, char tid[ASST_ID_LEN + 1], char sid[ASST_ID_LEN + 1], char *text, size_t tn);   /* 调度用: 一个到期且会话空闲的任务 */
-bool asst_task_info(const char *tid, char *state, size_t sn, char *text, size_t tn);   /* 状态 + 那句话(截到 tn) */
+bool asst_task_info(const char *tid, char *state, size_t sn, char *text, size_t tn, long *done_at);   /* 状态 + 那句话(截到 tn) + 模型调 task_done 的时刻(没调过 = 0; 可 NULL) */
+/* 任务文件的一条记录。计划(asst_plan.c)就是带 steps 的任务, 和一句话任务同一个文件、同一张列表、同一条调度线程。
+ * state: proposed(计划等用户按"开始": 调度不叫, 守门只许看) | active | paused | done。summary/steps/questions 是 JSON 原文(steps/questions 为数组, 没有 = NULL)。
+ * 读-改-写必须拿着 asst_task_lock(工人线程的工具/收尾、调度线程、接口线程三方都来); 拿着它不许调 asst_run_*(那边拿 asst_mu)。 */
+typedef struct { char id[ASST_ID_LEN + 1], session[ASST_ID_LEN + 1], state[12], end[12]; char *text, *last, *note, *summary, *steps, *questions; long created, updated, next, runs, done_at; } asst_task_rec;
+void asst_task_lock(void);
+void asst_task_unlock(void);
+bool asst_task_read(const char *tid, asst_task_rec *t);       /* 拿着锁 */
+bool asst_task_write(asst_task_rec *t);                       /* 拿着锁; 顺手改 updated */
+void asst_task_free(asst_task_rec *t);
+bool asst_task_create(const char *sid, const char *text, const char *state, char tid[ASST_ID_LEN + 1], char *err, size_t errn);   /* 给已有会话建任务文件 + meta.task, 不提交运行 */
+
+/* ---------------- 计划(asst_plan.c, 2026-10-15, 方案稿 docs/assistant_plan.md): 进不进计划由模型调不调 plan_propose 决定, 提示词零改动 ---------------- */
+bool asst_plan_tool(const char *name);                        /* plan_propose / plan_step */
+bool asst_plan_build_propose(const asst_tctx *c, ds4_buf *b); /* 所有对话都有 */
+bool asst_plan_build_step(const asst_tctx *c, ds4_buf *b);    /* 只在带步骤的任务会话里有 */
+char *asst_plan_tool_exec(const char *sid, const char *tool, const char *args, int *ok);
+bool asst_plan_has(const char *tid);                          /* 这个任务带步骤 */
+bool asst_plan_waiting(const char *sid);                      /* 这段对话是个等用户按"开始"的计划(守门据此只许看) */
+void asst_plan_event(const char *tid);                        /* 往它的会话写一条 plan 事件(页面计划卡的唯一来源) */
+void asst_plan_fact(const asst_task_rec *t, bool zh, ds4_buf *b);   /* "[计划: … · 步骤 2/6 完成 · 下一步: … · 到点: … · 未答: …]"; 没步骤什么也不写 */
+long asst_plan_next_at(const char *steps, long now);          /* 最早一个没做完、带时间、还在未来的步骤的时刻; 没有 = 0 */
+const char *asst_plan_start_text(const char *title);          /* 按"开始"后发进对话的那句(语言跟标题) */
 
 /* ---------------- 推送(asst_push.c, Web Push; 密码学在 src/push) + 通知规则(asst_notify.c), 2026-10-14 ---------------- */
 void asst_push_init(void);                     /* push/vapid.json 没有就生成; ds4-train 起时调 */
@@ -174,6 +197,7 @@ int asst_notify_tick(long now, long *next);    /* 到点的提醒发出去; 返�
 void asst_notify_start(void);                  /* ds4-train 起时: 开通知线程(到点提醒 + 补推压着的) */
 void asst_notify_wake(void);                   /* 叫醒通知线程: 新排了提醒 / 页面报走了 */
 void asst_notify_run_end(const char *sid, const char *end, const char *last_text, double secs);   /* 运行收尾: 任务做完 / 跑了很久 → 推一条 */
+bool asst_time_parse(const char *s, time_t *out);   /* 本机时区 "2026-10-20 07:30[:15]"(空格或 T); 解析不了 false */
 void asst_presence_set(const char *client, bool visible, const char *endpoint);   /* 页面报"我在看/我走了"; endpoint = 它所在浏览器的推送订阅(没订阅给 NULL/"") */
 bool asst_presence_watching(const char *sub, long now);    /* 这台设备(订阅 id)有页面正开着在看(ASST_PRESENCE_S 内报过 visible) */
 

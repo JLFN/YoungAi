@@ -64,7 +64,7 @@ bool asst_notify_build(const asst_tctx *c, ds4_buf *b) {
     return true;
 }
 
-static bool parse_at(const char *s, time_t *out) {   /* 先试带秒的: 不带秒的格式会把 "22:26:30" 的前半截吃下来, 秒被丢掉 */
+bool asst_time_parse(const char *s, time_t *out) {   /* notify 的 at 与计划步骤的 when 共用。先试带秒的: 不带秒的格式会把 "22:26:30" 的前半截吃下来, 秒被丢掉 */
     static const char *const fmts[] = { "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M" };
     for (size_t i = 0; i < sizeof fmts / sizeof fmts[0]; i++) {
         struct tm tm; memset(&tm, 0, sizeof tm);
@@ -91,7 +91,7 @@ char *asst_notify_tool_exec(const char *sid, const char *args, int *ok) {
     const int devices = asst_push_devices();
     time_t when = 0; const long now = (long)time(NULL); long after = 0;
     if (asst_jint(args, "after", &after) && after > 0) when = (time_t)(now + after);
-    else if (at && at[0] && !parse_at(at, &when)) { ds4_buf_printf(&r, "error: at must look like 2026-10-20 07:30 (local time), got \"%s\"\n", at); goto out; }
+    else if (at && at[0] && !asst_time_parse(at, &when)) { ds4_buf_printf(&r, "error: at must look like 2026-10-20 07:30 (local time), got \"%s\"\n", at); goto out; }
     if (when && when - now > ASST_REMIND_MAX_S) { ds4_buf_puts(&r, "error: at is more than a year away\n"); goto out; }
     if (when > now) {   /* 哪怕只差几秒也排上: "三十秒后提醒我"当场就发, 人还在页面上, 等于没提醒(10-14 实撞) */
         char d[ASST_PATH + 32]; rdir(d, sizeof d); mkdir(d, 0700);
@@ -206,8 +206,9 @@ void asst_notify_run_end(const char *sid, const char *end, const char *last_text
     char body[ASST_NOTIFY_HEAD + 1]; head_of(last_text, body, sizeof body);
     const bool zh = asst_lang_is_zh(last_text ? last_text : "");
     if (asst_task_of(sid, tid)) {
-        char state[12], text[256];
-        if (asst_task_info(tid, state, sizeof state, text, sizeof text) && !strcmp(state, "done")) {   /* 这一轮把任务做完了 */
+        char state[12], text[256]; long done_at = 0;
+        /* 这一轮模型自己调了 task_done 才推。只看 state=done 不够: 任务做完(或计划被放弃)后用户在那段对话里接着聊, 以前每聊一句都推一条"任务完成" */
+        if (asst_task_info(tid, state, sizeof state, text, sizeof text, &done_at) && !strcmp(state, "done") && done_at && done_at + 1 >= (long)time(NULL) - (long)secs) {
             char title[300]; snprintf(title, sizeof title, zh ? "任务完成: %s" : "Task done: %s", text);
             asst_push_send(title, body[0] ? body : (zh ? "已完成" : "done"), url); return;
         }

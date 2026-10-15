@@ -121,8 +121,11 @@ static const asst_tool TOOLS[] = {
     { "phone_type", TOOL("phone_type", "Type text into the focused field on the phone (tap the field first). Any text works, including Chinese and emoji: ASCII is typed key by key, everything else is pasted from the clipboard. Returns the screen after typing.", S("text", "Text to type"), "\"text\""), PHONE, 0, NULL, false, NULL, true },
     { "phone_open", NULL, PHONE, 0, NULL, false, asst_phone_build_open, true },
     /* 任务(asst_task.c): 这条会话是"一句话任务"的专属会话时才有; 什么时候再跟进由模型定, 做完了收口 */
-    { "task_check_in", NULL, TASK, 0, NULL, false, asst_task_build_checkin },
-    { "task_done", NULL, TASK, 0, NULL, false, asst_task_build_done },
+    { "task_check_in", NULL, TASK, 0, NULL, false, asst_task_build_checkin, false },
+    { "task_done", NULL, TASK, 0, NULL, false, asst_task_build_done, false },
+    /* 计划(asst_plan.c, 方案稿 docs/assistant_plan.md): 进不进计划由模型判, 依据只有 plan_propose 的描述; plan_step 只在带步骤的任务会话里有 */
+    { "plan_propose", NULL, TASK, 0, NULL, false, asst_plan_build_propose, false },
+    { "plan_step", NULL, TASK, 0, NULL, false, asst_plan_build_step, false },
     /* 通知(asst_notify.c): 推到用户开了通知的设备, 现在或到点; 设备一台没开时结果里直说 */
     { "notify", NULL, PUSH, 0, NULL, false, asst_notify_build, false },
 };
@@ -208,6 +211,7 @@ char *asst_tool_exec(const char *sid, const char *tool, const char *args, const 
     if (!strcmp(tool, "use_skill")) { char *s = arg(args, "name"); char *r = asst_skill_load(s ? s : ""); free(s); *ok = strncmp(r, "error", 5) != 0; return r; }
     if (!strcmp(tool, "nearby")) return exec_nearby(sid, args, ok);
     if (t->site == PHONE) return asst_phone_tool_exec(sid, tool, args, ok);   /* 守门已经核过开关 */
+    if (asst_plan_tool(tool)) return asst_plan_tool_exec(sid, tool, args, ok);
     if (t->site == TASK) return asst_task_tool_exec(sid, tool, args, ok);
     if (t->site == PUSH) return asst_notify_tool_exec(sid, args, ok);
     if (t->site == NET) {
