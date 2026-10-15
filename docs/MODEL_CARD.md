@@ -221,11 +221,17 @@ For local deployment, it recommends:
 - `top_p = 0.95 or 1.0` (all official evaluations use 0.95)
 - At least 384K context for Think Max
 
-DS4 defaults to `temperature=1.0`, `top_p=0.95`, no `min_p` (`DS4_DEFAULT_*` in
-`ds4.h`). `top_p=1.0` samples the whole 129k vocabulary; on the 2-bit quant that
-drops one token outside the top-32 every ~160 tokens (`#fant`, `排队` inside SVG
-hex colours), verified as faithful sampling of the model's own tail rather than
-an engine fault. 0.95 cuts that tail while changing ~2.4% of sampled positions.
+DS4 defaults to `temperature=1.0`, `top_p=1.0`, `min_p=0.02` (`DS4_DEFAULT_*` in
+`ds4.h`). Plain `top_p=1.0` samples the whole 129k vocabulary; on the 2-bit quant
+that drops one token outside the top-32 every ~160 tokens (`#fant`, `排队` inside
+SVG hex colours), verified as faithful sampling of the model's own tail rather
+than an engine fault. `top_p=0.95` cuts that tail, but inside a thinking loop
+(top-1 at 0.99) it also truncates the candidate set to the top-1 alone, so the
+quant-suppressed `</think>` token (2–6% at the decision point) can never be drawn
+and the loop becomes absorbing. `min_p=0.02` is relative to the top-1 probability
+(threshold 0.0198 at 0.99): it still removes the garbage tail (p < 9e-4) while
+leaving `</think>` drawable. Do not use `min_p=0.05`: it strips every alternative
+in repetitive regions and degenerates into greedy.
 
 ## Licensing
 
