@@ -11,7 +11,7 @@
      语言: 中文 / English, 写法同 monitor.html(静态文字标 data-i18n, 动态文字走 t(key)); 跟浏览器语言, 右上角可切, URL ?lang=en|zh 可强制。
      选择记在 localStorage 的 ds4.lang, 与监控页共用: 在一页切了, 开另一页也是同一种。后端返回的报错/日志/探针原文照原样显示, 不翻。
      两套外壳(10-12 用户: "变成 pwa … 不要简单改动 pc 端的布局, 重新以 app 的方式设计, 根据浏览器打开的环境使用不同的布局"):
-     <html data-shell="desk|app">, 判定规则在 <head> 的 shellPick。desk = 上面说的左右布局, 原样不动; app = 顶栏 + 底部四格(助理/模型/训练/更多)
+     <html data-shell="desk|app">, 判定规则在 <head> 的 shellPick。desk = 上面说的左右布局, 原样不动; app = 顶栏 + 底部四格(助理/任务/云手机/更多; 模型与训练在"更多"里)
      + 左侧栏变抽屉(对话列表) + 表格变卡片 + 训练页分"进度/设置"两段。两套共用同一份 DOM 和数据代码, 只有 CSS 与几个 app 专属元素不同。
      PWA: manifest.webmanifest + sw.js + icon-*.png(都在 web/, 路由见 src/model/model_api.c 的 STATIC_FILES); 安装条件与 https 的事见 docs/pwa.md。 -->
 <html lang="zh-CN">
@@ -494,6 +494,7 @@
   .tabbar .tdot { position: absolute; top: 6px; left: calc(50% + 9px); width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 2px var(--side); animation: pulse 1.6s infinite; }
   .tabbar .tpct { position: absolute; top: 3px; left: calc(50% + 8px); font-size: 9.5px; padding: 0 4px; border-radius: 6px; background: var(--accent); color: #fff; }
   .tabbar .tpct:empty { display: none; }
+  .tabbar .tpct:not(:empty) ~ .tdot { display: none; }   /* "更多"格上下载百分比和训练点同一个角: 都有时只留百分比, 训练中写在"更多"页训练那一行 */
   /* 抽屉: 原来的左侧栏整体滑出, 里面只留品牌、对话列表、引擎卡片(导航由底栏接管) */
   [data-shell=app] aside { position: fixed; z-index: 60; top: 0; bottom: 0; left: 0; width: min(84vw, 320px); transform: translateX(-102%); transition: transform .22s ease;
     padding: calc(14px + env(safe-area-inset-top)) 12px calc(12px + env(safe-area-inset-bottom)); box-shadow: 0 0 40px rgba(0,0,0,.55); }
@@ -832,7 +833,7 @@
     </div>
   </section>
 
-  <!-- ============ 更多(app 外壳底栏第四格: 记忆/活动/语料/记录/API/监控 + 语言/安装/退出; 列表由 renderMore 按 MORE 生成) ============ -->
+  <!-- ============ 更多(app 外壳底栏第四格: 记忆/技能/活动/模型/训练/语料/记录/API/监控 + 语言/安装/退出; 列表由 renderMore 按 MORE 生成) ============ -->
   <!-- ============ 云手机(危险模式开着且手机 ready 才显示; 视频流 WebCodecs 解, 不支持就退回每秒一张截图; 脚本见 "云手机" 段) ============ -->
   <section class="view" id="v-phone">
     <div class="empty" id="ph-empty"><h2 data-i18n="ph_off_t">云手机没开</h2><div data-i18n="ph_off"></div></div>
@@ -856,10 +857,9 @@
 <!-- app 外壳的底栏(desk 外壳隐藏): 不用 <nav>, 免得被侧栏导航的选择器(nav a[data-tab])一并点亮/绑定 -->
 <div class="tabbar">
   <a data-tab="chat"><svg class="i" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg><span data-i18n="tab_chat">助理</span></a>
+  <a data-tab="tasks"><svg class="i" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/></svg><span data-i18n="tab_tasks">任务</span><span class="tpct" id="tab-tasks"></span></a>
   <a data-tab="phone" id="tab-phone" hidden><svg class="i" viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M11 18h2"/></svg><span data-i18n="tab_phone">云手机</span></a>
-  <a data-tab="models"><svg class="i" viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg><span data-i18n="tab_models">模型</span><span class="tpct" id="tab-dl"></span></a>
-  <a data-tab="train"><svg class="i" viewBox="0 0 24 24"><path d="M3 17l5-5 4 4 8-9"/><path d="M14 7h6v6"/></svg><span data-i18n="tab_train">训练</span><span class="tdot" id="tab-train-dot" hidden></span></a>
-  <a data-tab="more"><svg class="i" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg><span data-i18n="tab_more">更多</span></a>
+  <a data-tab="more"><svg class="i" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg><span data-i18n="tab_more">更多</span><span class="tpct" id="tab-dl"></span><span class="tdot" id="tab-train-dot" hidden></span></a>
 </div>
 <div id="scrim"></div>
 <div id="pick"><div class="pbox" role="listbox"></div></div>
@@ -1317,7 +1317,7 @@ async function getJSON(url, opt) { const r = await fetch(url, Object.assign({ ca
 /* ---------------- 状态 ---------------- */
 let status = null, runs = [], detail = null, selected = null, userPicked = false, switching = 0, failCount = 0;
 const TABS = ["chat", "tasks", "mem", "skills", "act", "models", "train", "data", "runs", "api", "monitor", "phone", "more"];   /* 标题 = t("tab_<名>"), 副标题 = t("hint_<名>")(没有就空) */
-const SUB = ["tasks", "mem", "skills", "act", "data", "runs", "api", "monitor"];   /* app 外壳里这几页从"更多"进: 底栏点亮"更多", 顶栏左键是返回 */
+const SUB = ["mem", "skills", "act", "models", "train", "data", "runs", "api", "monitor"];   /* app 外壳里这几页从"更多"进: 底栏点亮"更多", 顶栏左键是返回 */
 const isApp = () => document.documentElement.dataset.shell === "app";
 /* 没有 #hash(直接开 http://host:8000/)时答"正显示的那页"(showTab 记下的): 曾经答 null, 页面明明在聊天页,
    poll 却以为不在、不再拉 /api/models/list, 后训练开关一切换就永远卡在"切换中…"且按钮灰掉(10-11 实撞)。
@@ -1398,7 +1398,7 @@ function labelRows(tb) {
   document.querySelectorAll("table.cards tbody").forEach(tb => { mo.observe(tb, { childList: true }); labelRows(tb); }); }
 
 /* ---------------- 更多(app 外壳的第四格) ---------------- */
-const MORE = [["more_g_asst", ["tasks", "mem", "skills", "act"]], ["more_g_train", ["data", "runs"]], ["more_g_dev", ["api", "monitor"]]];   /* 云手机不在这: 它是底栏第二格(手机 ready 才显示) */
+const MORE = [["more_g_asst", ["mem", "skills", "act"]], ["more_g_train", ["models", "train", "data", "runs"]], ["more_g_dev", ["api", "monitor"]]];   /* 助理/任务/云手机是底栏前三格(云手机等手机 ready 才显示), 不在这里重复 */
 let installEvt = null;   /* 安卓 Chrome 判定能装时发 beforeinstallprompt: 留着, 用户在"更多"里点安装时再弹系统框 */
 window.addEventListener("beforeinstallprompt", e => { installEvt = e; if (curTab() === "more") renderMore(); });
 window.addEventListener("appinstalled", () => { installEvt = null; if (curTab() === "more") renderMore(); });
@@ -1411,12 +1411,17 @@ function moreRow(icon, label, sub, val, onclick, cls) {
   if (onclick) { r.appendChild(node("span", "chev", "›")); r.onclick = onclick; }
   return r;
 }
+let moreKey = "";   /* 上次画"更多"时的角标状态; renderEngine 每次轮询都跑, 只有变了才重画, 不然手指按下到松开之间行被换掉, 这一下点击就丢了 */
+const moreState = () => $("tab-dl").textContent + "|" + !!training();
 function renderMore() {
+  moreKey = moreState();
   const box = $("more-list"); box.replaceChildren();
   const navIcon = k => document.querySelector(`nav a[data-tab="${k}"] svg`);   /* 图标跟侧栏导航同一份 */
   MORE.forEach(([gt, keys]) => {
     box.appendChild(node("div", "mgt", t(gt))); const g = node("div", "mgroup");
-    keys.forEach(k => g.appendChild(moreRow(navIcon(k), t("tab_" + k), I18N.zh["hint_" + k] ? t("hint_" + k) : I18N.zh["mh_" + k] ? t("mh_" + k) : "", "", () => { location.hash = k; })));
+    /* 模型/训练收进来以后底栏只剩"更多"格上的角标, 行尾把是哪一项在忙写出来(下载百分比 / 训练中) */
+    const val = k => k === "models" ? $("tab-dl").textContent : k === "train" && training() ? t("eng_training") : "";
+    keys.forEach(k => g.appendChild(moreRow(navIcon(k), t("tab_" + k), I18N.zh["hint_" + k] ? t("hint_" + k) : I18N.zh["mh_" + k] ? t("mh_" + k) : "", val(k), () => { location.hash = k; })));
     box.appendChild(g);
   });
   box.appendChild(node("div", "mgt", t("more_g_app"))); const g = node("div", "mgroup");
@@ -1448,6 +1453,7 @@ function renderEngine() {
   dot.className = "dot " + cls; text("eng-title", title); text("eng-sub", sub + (status && status.mem_avail_mb >= 0 ? t("eng_avail", (status.mem_avail_mb / 1024).toFixed(1)) : ""));
   $("tb-dot").className = $("more-dot").className = "dot " + cls; text("tb-eng", title); text("more-eng", title);   /* app 外壳: 顶栏标题下、"更多"页头 */
   $("tab-train-dot").hidden = !training();
+  if (curTab() === "more" && moreKey !== moreState()) renderMore();
   syncMonitor();   /* 模型起停跟着换: 监控页的读数 ↔ "没在服务" */
   $("btn-load").style.display = load && !switching ? "" : "none";
   $("btn-train").style.display = training() ? "none" : ""; $("btn-stop").style.display = training() ? "" : "none";
@@ -2471,7 +2477,7 @@ function renderTasks() {
     btn("tk_del", () => op("delete", true));
     row.appendChild(ops); box.appendChild(row);
   });
-  const open = tasks.filter(x => x.state !== "done").length; text("nav-tasks", open ? String(open) : "");
+  const open = tasks.filter(x => x.state !== "done").length; text("nav-tasks", open ? String(open) : ""); $("tab-tasks").textContent = open ? String(open) : "";   /* 不走 text(): 它把空写成"–", 角标的 :empty 就藏不掉了 */
 }
 $("tk-add").onclick = async () => {
   const txt = $("tk-text").value.trim(); if (!txt) { $("tk-text").focus(); return; }
