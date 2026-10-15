@@ -11,7 +11,7 @@
      语言: 中文 / English, 写法同 monitor.html(静态文字标 data-i18n, 动态文字走 t(key)); 跟浏览器语言, 右上角可切, URL ?lang=en|zh 可强制。
      选择记在 localStorage 的 ds4.lang, 与监控页共用: 在一页切了, 开另一页也是同一种。后端返回的报错/日志/探针原文照原样显示, 不翻。
      两套外壳(10-12 用户: "变成 pwa … 不要简单改动 pc 端的布局, 重新以 app 的方式设计, 根据浏览器打开的环境使用不同的布局"):
-     <html data-shell="desk|app">, 判定规则在 <head> 的 shellPick。desk = 上面说的左右布局, 原样不动; app = 顶栏 + 底部四格(助理/任务/云手机/更多; 模型与训练在"更多"里)
+     <html data-shell="desk|app">, 判定规则在 <head> 的 shellPick。desk = 上面说的左右布局, 原样不动; app = 顶栏 + 底部五格(助理/任务/搜索/云手机/更多; 云手机没起来时四格; 模型与训练在"更多"里)
      + 左侧栏变抽屉(对话列表) + 表格变卡片 + 训练页分"进度/设置"两段。两套共用同一份 DOM 和数据代码, 只有 CSS 与几个 app 专属元素不同。
      PWA: manifest.webmanifest + sw.js + icon-*.png(都在 web/, 路由见 src/model/model_api.c 的 STATIC_FILES); 安装条件与 https 的事见 docs/pwa.md。 -->
 <html lang="zh-CN">
@@ -424,7 +424,7 @@
   /* 电脑浏览器窗口拉窄: 侧栏收成图标条(只在 desk 外壳; app 外壳另有一套, 见下) */
   @media (max-width: 760px) { [data-shell=desk] aside { width: 64px; padding: 12px 8px; } [data-shell=desk] .brand span, [data-shell=desk] nav a span, [data-shell=desk] .engine, [data-shell=desk] nav a .ext, [data-shell=desk] .sess, [data-shell=desk] .setbtn span { display: none; } [data-shell=desk] nav a, [data-shell=desk] .setbtn { justify-content: center; } }
 
-  /* ---------- 更多(app 外壳底栏第四格; 电脑上也能用 #more 打开, 居中一列) ---------- */
+  /* ---------- 更多(app 外壳底栏最后一格; 电脑上也能用 #more 打开, 居中一列) ---------- */
   #v-more .wrap { max-width: 640px; margin: 0 auto; }
   .mhead { display: flex; align-items: center; gap: 14px; padding: 4px 4px 18px; }
   .mhead img { width: 54px; height: 54px; border-radius: 50%; box-shadow: 0 6px 22px rgba(59,124,246,.4); }
@@ -441,6 +441,20 @@
   .mrow .mv { color: var(--dim); font-size: 13px; flex: none; }
   .mrow .chev { color: var(--faint); font-size: 20px; line-height: 1; flex: none; }
   .mrow.red { color: #fca5a5; } .mrow.red .mi { background: rgba(239,68,68,.12); color: #fca5a5; }
+
+  /* ---------- 搜索(app 外壳底栏第三格; 卡片沿用"更多"的 .mgroup/.mrow, 两页长得一样) ---------- */
+  #v-search .wrap { max-width: 640px; margin: 0 auto; }
+  /* 搜索框滚动时钉在顶上: .view 有 20px 上内边距, top 写 -20px 才贴到顶栏下沿, 写 0 会在上面留一条缝让列表从缝里透出来 */
+  .sbox { position: sticky; top: -20px; z-index: 2; margin: -20px -4px 14px; padding: 20px 4px 10px; background: var(--bg); }
+  .sbox svg.i { position: absolute; left: 17px; top: 50%; margin-top: 5px; transform: translateY(-50%); width: 18px; height: 18px; color: var(--faint); pointer-events: none; }
+  /* 字号不能低于 16px: iOS Safari 聚焦小于 16px 的输入框会把整页放大, 收键盘也不缩回去 */
+  .sbox input { width: 100%; font-size: 16px; padding: 10px 12px 10px 38px; border-radius: 12px; background: var(--panel); }
+  .srh { display: flex; align-items: baseline; }
+  .srh a { margin-left: auto; color: var(--accent-2); font-size: 12px; cursor: pointer; }
+  .srchips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 18px; }
+  .srchips button { border-radius: 16px; padding: 5px 12px; font-size: 13px; background: var(--panel); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mrow .ml .tt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mrow mark { background: transparent; color: var(--accent-2); font-weight: 600; }
 
   /* ---------- app 外壳(手机 / 触屏窄屏 / 装成 PWA): 顶栏 + 底部 tab + 抽屉, 表格变卡片。电脑布局不受影响 ---------- */
   .app-only, .tabbar, #scrim, td.res { display: none; }
@@ -484,7 +498,7 @@
   [data-shell=app] .tb-title h1 { font-size: 16.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   [data-shell=app] .tb-sub { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--dim); cursor: pointer; max-width: 100%; }
   [data-shell=app] .tb-sub .dot { width: 7px; height: 7px; }
-  /* 底栏: 四格, 让出 Home 条; 键盘弹起(有输入框聚焦)时收起, 把高度让给输入 */
+  /* 底栏: 五格(云手机没起来时四格), 让出 Home 条; 键盘弹起(有输入框聚焦)时收起, 把高度让给输入 */
   [data-shell=app] .tabbar { display: flex; flex: none; background: var(--side); border-top: 1px solid var(--border); padding: 2px 4px env(safe-area-inset-bottom); }
   [data-shell=app] body:has(textarea:focus, input:not([type=checkbox]):focus) .tabbar { display: none; }
   .tabbar a { flex: 1; position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 7px 0 6px; font-size: 11px; color: var(--faint); text-decoration: none; cursor: pointer; }
@@ -833,7 +847,7 @@
     </div>
   </section>
 
-  <!-- ============ 更多(app 外壳底栏第四格: 记忆/技能/活动/模型/训练/语料/记录/API/监控 + 语言/安装/退出; 列表由 renderMore 按 MORE 生成) ============ -->
+  <!-- ============ 更多(app 外壳底栏最后一格: 记忆/技能/活动/模型/训练/语料/记录/API/监控 + 语言/安装/退出; 列表由 renderMore 按 MORE 生成) ============ -->
   <!-- ============ 云手机(危险模式开着且手机 ready 才显示; 视频流 WebCodecs 解, 不支持就退回每秒一张截图; 脚本见 "云手机" 段) ============ -->
   <section class="view" id="v-phone">
     <div class="empty" id="ph-empty"><h2 data-i18n="ph_off_t">云手机没开</h2><div data-i18n="ph_off"></div></div>
@@ -849,6 +863,11 @@
       </div>
     </div>
   </section>
+  <!-- ============ 搜索(app 外壳底栏第三格: 对话/任务/技能/模型/记忆/训练记录/页面的全局模糊搜索; 结果由 renderSearch 生成) ============ -->
+  <section class="view" id="v-search"><div class="wrap">
+    <div class="sbox"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg><input id="sr-q" type="search" enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false" data-i18n-ph="sr_ph"></div>
+    <div id="sr-list"></div>
+  </div></section>
   <section class="view" id="v-more"><div class="wrap">
     <div class="mhead"><img src="/logo.jpg" alt=""><div><b>YoungAi</b><div class="st"><span class="dot" id="more-dot"></span><span id="more-eng"></span></div></div></div>
     <div id="more-list"></div>
@@ -858,6 +877,7 @@
 <div class="tabbar">
   <a data-tab="chat"><svg class="i" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg><span data-i18n="tab_chat">助理</span></a>
   <a data-tab="tasks"><svg class="i" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/></svg><span data-i18n="tab_tasks">任务</span><span class="tpct" id="tab-tasks"></span></a>
+  <a data-tab="search"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg><span data-i18n="tab_search">搜索</span></a>
   <a data-tab="phone" id="tab-phone" hidden><svg class="i" viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M11 18h2"/></svg><span data-i18n="tab_phone">云手机</span></a>
   <a data-tab="more"><svg class="i" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg><span data-i18n="tab_more">更多</span><span class="tpct" id="tab-dl"></span><span class="tdot" id="tab-train-dot" hidden></span></a>
 </div>
@@ -1079,6 +1099,7 @@ const I18N = {
     act_audit: "活动流水", act_audit_sub: "每一次工具调用, 最新在前: 做了什么、谁放行的、成没成。鼠标停在一行上看结果。", act_none: "暂无", cls_read: "读", cls_write: "写", cls_web: "上网", cls_exec: "命令",
     pt_done: "训练完成: {0} 已关联侧车 {1}, 切到它并打开后训练开关即可挂上",
     tab_more: "更多", ts_prog: "进度", ts_cfg: "设置", d_pick: "点这里选择文件上传", mh_runs: "每一趟训练的配置、状态与结果",
+    tab_search: "搜索", sr_ph: "搜对话、任务、技能、模型、记忆…", sr_recent: "最近搜过", sr_clear: "清空", sr_all: "全部 ›", sr_none: "没找到「{0}」。对话只搜标题, 正文要打开对话看", sr_pages: "页面",
     more_g_asst: "助理", more_g_train: "训练", more_g_dev: "开发", more_g_app: "应用", more_lang: "语言", more_lang_v: "中文",
     more_install: "安装到主屏幕", more_install_sub: "像 App 一样全屏打开, 有自己的图标", more_install_ios: "在 Safari 里点底部的「分享」→「添加到主屏幕」",
     more_install_http: "现在是 http 打开的, 浏览器只给 https 或本机地址装 PWA(见 docs/pwa.md)", more_installed: "已安装, 正以 App 方式运行",
@@ -1242,6 +1263,7 @@ const I18N = {
     act_audit: "Activity log", act_audit_sub: "Every tool call, newest first: what it did, who allowed it, whether it worked. Hover a row to see the result.", act_none: "None yet", cls_read: "read", cls_write: "write", cls_web: "web", cls_exec: "command",
     pt_done: "Training finished: {0} is linked to sidecar {1}; switch to it and turn on Post-train to attach it",
     tab_more: "More", ts_prog: "Progress", ts_cfg: "Setup", d_pick: "Tap to choose files to upload", mh_runs: "Config, status and results of every run",
+    tab_search: "Search", sr_ph: "Search chats, tasks, skills, models, memory…", sr_recent: "Recent searches", sr_clear: "Clear", sr_all: "All ›", sr_none: "Nothing matches “{0}”. Chats are searched by title only; open a chat to read its messages", sr_pages: "Pages",
     more_g_asst: "Assistant", more_g_train: "Training", more_g_dev: "Developer", more_g_app: "App", more_lang: "Language", more_lang_v: "English",
     more_install: "Add to Home Screen", more_install_sub: "Opens full-screen like an app, with its own icon", more_install_ios: "In Safari, tap Share at the bottom → Add to Home Screen",
     more_install_http: "Opened over http; browsers only install PWAs from https or this machine's own address (see docs/pwa.md)", more_installed: "Installed, running as an app",
@@ -1316,8 +1338,8 @@ async function getJSON(url, opt) { const r = await fetch(url, Object.assign({ ca
 
 /* ---------------- 状态 ---------------- */
 let status = null, runs = [], detail = null, selected = null, userPicked = false, switching = 0, failCount = 0;
-const TABS = ["chat", "tasks", "mem", "skills", "act", "models", "train", "data", "runs", "api", "monitor", "phone", "more"];   /* 标题 = t("tab_<名>"), 副标题 = t("hint_<名>")(没有就空) */
-const SUB = ["mem", "skills", "act", "models", "train", "data", "runs", "api", "monitor"];   /* app 外壳里这几页从"更多"进: 底栏点亮"更多", 顶栏左键是返回 */
+const TABS = ["chat", "tasks", "search", "mem", "skills", "act", "models", "train", "data", "runs", "api", "monitor", "phone", "more"];   /* 标题 = t("tab_<名>"), 副标题 = t("hint_<名>")(没有就空) */
+const SUB = ["mem", "skills", "act", "models", "train", "data", "runs", "api", "monitor"];   /* app 外壳里这几页没有自己的底栏格: 底栏点亮进来的那一格(见 subFrom), 顶栏左键是返回 */
 const isApp = () => document.documentElement.dataset.shell === "app";
 /* 没有 #hash(直接开 http://host:8000/)时答"正显示的那页"(showTab 记下的): 曾经答 null, 页面明明在聊天页,
    poll 却以为不在、不再拉 /api/models/list, 后训练开关一切换就永远卡在"切换中…"且按钮灰掉(10-11 实撞)。
@@ -1331,14 +1353,19 @@ function showTab(tab) {
   text("page-title", t("tab_" + tab)); $("page-hint").textContent = I18N.zh["hint_" + tab] ? t("hint_" + tab) : "";
   syncShell(tab);
   /* 手机上程序聚焦输入框会直接弹键盘, 盖住半屏: app 外壳不自动聚焦, 用户点输入框才弹 */
-  if (tab === "train") { loadDetail(); if (isApp() && !trainPane) setTrainPane(training() || runs.length ? "prog" : "cfg"); } if (tab === "data") loadData(); if (tab === "chat") { if (!isApp()) inputEl.focus(); loadSessions(); } if (tab === "tasks") loadTasks(); if (tab === "models") loadModels(); if (tab === "mem") loadMem(true); if (tab === "skills") loadSkills(); if (tab === "act") loadAct(); if (tab === "api") loadApi(); if (tab === "monitor") syncMonitor(); if (tab === "more") renderMore(); phView(tab === "phone");
+  if (tab === "train") { loadDetail(); if (isApp() && !trainPane) setTrainPane(training() || runs.length ? "prog" : "cfg"); } if (tab === "data") loadData(); if (tab === "chat") { if (!isApp()) inputEl.focus(); loadSessions(); } if (tab === "tasks") loadTasks(); if (tab === "models") loadModels(); if (tab === "mem") loadMem(true); if (tab === "skills") loadSkills(); if (tab === "act") loadAct(); if (tab === "api") loadApi(); if (tab === "monitor") syncMonitor(); if (tab === "more") renderMore(); if (tab === "search") srLoad(); phView(tab === "phone");
 }
 document.querySelectorAll("nav a[data-tab], .tabbar a[data-tab]").forEach(a => a.onclick = () => { location.hash = a.dataset.tab; });
 
 /* ---------------- app 外壳: 顶栏 / 底栏 / 抽屉 / 训练分段 / 表格卡片(desk 外壳下这些元素都藏着, 下面的代码跑了也看不见) ---------------- */
 function chatTitle() { const s = sessions.find(x => x.id === curSid); return s && s.title || t("tab_chat"); }
+/* 二级页(SUB)从哪一格进来就挂在哪一格下: 底栏点亮它, 顶栏返回回到它。从搜索点进技能, 返回该回搜索而不是"更多";
+   引擎状态点进模型页同理回助理。直接开 #skills 这种没有来处的, 算"更多" */
+let subFrom = "more";
 function syncShell(tab) {
-  document.querySelectorAll(".tabbar a").forEach(a => a.classList.toggle("on", a.dataset.tab === (SUB.includes(tab) ? "more" : tab)));
+  if (SUB.includes(tab) && syncShell.last && !SUB.includes(syncShell.last)) subFrom = syncShell.last;   /* 二级页之间互跳(训练记录 → 训练)不换来处 */
+  syncShell.last = tab;
+  document.querySelectorAll(".tabbar a").forEach(a => a.classList.toggle("on", a.dataset.tab === (SUB.includes(tab) ? subFrom : tab)));
   const left = $("tb-left"), mode = tab === "chat" ? "menu" : SUB.includes(tab) ? "back" : "";
   left.dataset.mode = mode; left.style.visibility = mode ? "" : "hidden";   /* 占位不撤: 标题始终居中 */
   $("tb-new").style.visibility = tab === "chat" ? "" : "hidden";
@@ -1346,7 +1373,7 @@ function syncShell(tab) {
   drawer(false);
 }
 function drawer(on) { document.documentElement.classList.toggle("drawer", !!on && isApp()); }
-$("tb-left").onclick = () => $("tb-left").dataset.mode === "back" ? (location.hash = "more") : drawer(true);
+$("tb-left").onclick = () => $("tb-left").dataset.mode === "back" ? (location.hash = subFrom) : drawer(true);
 $("tb-new").onclick = () => selectSession(null);
 $("tb-sub").onclick = () => { location.hash = "models"; };   /* 引擎状态 → 模型页(加载/换模型都在那) */
 $("scrim").onclick = () => drawer(false);
@@ -1397,8 +1424,8 @@ function labelRows(tb) {
 { const mo = new MutationObserver(ms => ms.forEach(m => labelRows(m.target)));
   document.querySelectorAll("table.cards tbody").forEach(tb => { mo.observe(tb, { childList: true }); labelRows(tb); }); }
 
-/* ---------------- 更多(app 外壳的第四格) ---------------- */
-const MORE = [["more_g_asst", ["mem", "skills", "act"]], ["more_g_train", ["models", "train", "data", "runs"]], ["more_g_dev", ["api", "monitor"]]];   /* 助理/任务/云手机是底栏前三格(云手机等手机 ready 才显示), 不在这里重复 */
+/* ---------------- 更多(app 外壳底栏最后一格) ---------------- */
+const MORE = [["more_g_asst", ["mem", "skills", "act"]], ["more_g_train", ["models", "train", "data", "runs"]], ["more_g_dev", ["api", "monitor"]]];   /* 助理/任务/搜索/云手机在底栏(云手机等手机 ready 才显示), 不在这里重复 */
 let installEvt = null;   /* 安卓 Chrome 判定能装时发 beforeinstallprompt: 留着, 用户在"更多"里点安装时再弹系统框 */
 window.addEventListener("beforeinstallprompt", e => { installEvt = e; if (curTab() === "more") renderMore(); });
 window.addEventListener("appinstalled", () => { installEvt = null; if (curTab() === "more") renderMore(); });
@@ -1437,6 +1464,97 @@ function renderMore() {
   if (sessGet()) g.appendChild(moreRow(icon("M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10"), t("au_logout"), "", "", () => $("logout").click(), "red"));
   box.appendChild(g);
 }
+/* ---------------- 搜索(app 外壳底栏第三格; 10-15 用户: "全局模糊搜索快捷方式") ----------------
+   没加后端接口: 对话/任务/技能/模型/记忆/训练记录本来就有接口, 进页时各拉一遍, 在页面里搜。
+   对话只搜标题: 正文要打开那个对话才流过来, 搜正文得服务端加索引。
+   空着时是"最近": 最近搜过的词 + 对话/任务/技能/模型各列最新几条; 输入以后每类按分数排。 */
+const SR_HOME = 4, SR_MAX = 6, SR_RECENT = 8;   /* 一类超过 6 条手机上就要翻屏; 想看全的点组标题右边的"全部"进那一页 */
+let srMem = null;   /* 记忆四个文件的原文({profile, habits, env, rules}), 进搜索页才拉 */
+/* 把一个词按顺序拆字去标题里找(中间可以隔字), 返回总共隔了几个字; 找不全返回 -1。"训录"能中"训练记录" */
+function srGaps(T, w) { let p = 0, gap = 0; for (const ch of w) { const i = T.indexOf(ch, p); if (i < 0) return -1; if (p) gap += i - p; p = i + ch.length; } return gap; }
+/* 空格分开的每个词都得中, 有一个不中就是 0 分。标题开头 > 标题里有 > 标题按顺序有这些字 > 正文里有。
+   拆字只对标题: 正文动辄几百字, 按顺序凑字几乎什么都凑得上, 全是噪音 */
+function srScore(ws, title, body) {
+  const T = (title || "").toLowerCase(), B = (body || "").toLowerCase(); let s = 0;
+  for (const w of ws) {
+    const i = T.indexOf(w), g = i < 0 ? srGaps(T, w) : -1;
+    if (i === 0) s += 100; else if (i > 0) s += 80; else if (g >= 0) s += Math.max(10, 50 - 5 * g); else if (B.includes(w)) s += 30; else return 0;
+  }
+  return s;
+}
+function srHl(str, ws) {   /* 标题里第一个整词命中的地方标亮; 只有拆字命中的不标(标一串零散的字反而难认) */
+  const f = document.createDocumentFragment(), L = str.toLowerCase();
+  const w = ws.find(w => L.includes(w)); if (!w) { f.append(str); return f; }
+  const i = L.indexOf(w); f.append(str.slice(0, i)); f.appendChild(node("mark", null, str.slice(i, i + w.length))); f.append(str.slice(i + w.length));
+  return f;
+}
+/* 每类一组: tab = 组标题与图标取自哪一页, all = 点"全部"去哪, items 已按"最近"排好(空搜索时直接取前几条)。
+   home: false 的组只在有搜索词时出现(记忆一行一条、页面是导航, 空着列出来没意义) */
+function srGroups() {
+  const g = [];
+  g.push({ tab: "chat", all: () => { location.hash = "chat"; setTimeout(() => drawer(true)); },   /* 对话列表在抽屉里; 等 hashchange 换完页(它会先关抽屉)再拉开 */
+    items: [...sessions].sort((a, b) => b.updated - a.updated).map(s => ({ title: s.title || t("a_untitled"), sub: whenOf(s.updated) + (s.state !== "idle" ? " · " + t("s_" + s.state) : ""), go: () => selectSession(s.id) })) });
+  g.push({ tab: "tasks", items: [...tasks].sort((a, b) => (a.state === "done") - (b.state === "done") || b.created - a.created)
+    .map(x => ({ title: x.text, sub: taskStatus(x)[1] + (x.last ? " · " + x.last : ""), body: (x.note || "") + "\n" + (x.last || ""), go: () => selectSession(x.session) })) });
+  g.push({ tab: "skills", items: skills.map(s => ({ title: s.name, sub: s.description || "", body: (s.description || "") + "\n" + (s.md || ""), go: () => { skNew = false; skSel = s.name; location.hash = "skills"; } })) });
+  g.push({ tab: "models", items: (mdata ? mdata.local : []).map(m => ({ title: modelName(m.path), sub: (mdata.loaded && mdata.loaded.gguf === m.path ? t("m_inuse") + " · " : "") + GB(m.bytes),
+    body: m.path + "\n" + m.sidecars.map(sc => sidecarLabel(m.path, sc)).join("\n"), go: () => { location.hash = "models"; } })) });
+  const mem = [];
+  if (srMem) document.querySelectorAll("#v-mem [data-mem]").forEach(c => (srMem[c.dataset.mem] || "").split("\n").forEach(l => {
+    const line = l.replace(/^\s*(?:[-*+]|\d+\.)\s+/, "").trim(); if (line) mem.push({ title: line, sub: t("mem_" + c.dataset.mem), go: () => { location.hash = "mem"; } });
+  }));
+  g.push({ tab: "mem", home: false, items: mem });
+  g.push({ tab: "runs", home: false, items: runs.map(r => ({ title: r.name, sub: statusLabel(r.status)[0] + " · " + short(r.data), body: r.data, go: () => { selected = r.name; userPicked = true; location.hash = "train"; } })) });
+  g.push({ title: t("sr_pages"), icon: "more", home: false, items: TABS.filter(k => k !== "search" && k !== "more" && !(k === "phone" && $("tab-phone").hidden))
+    .map(k => ({ title: t("tab_" + k), sub: I18N.zh["hint_" + k] ? t("hint_" + k) : I18N.zh["mh_" + k] ? t("mh_" + k) : "", icon: k, go: () => { location.hash = k; } })) });
+  return g;
+}
+const srRecent = () => lsGet("ds4.search.recent", []);
+function srRemember() {   /* 按回车或点了结果才算"搜过": 每敲一个字都记, 最近列表里全是半截词 */
+  const q = $("sr-q").value.trim(); if (!q) return;
+  lsSet("ds4.search.recent", [q, ...srRecent().filter(x => x !== q)].slice(0, SR_RECENT));
+}
+function renderSearch() {
+  const box = $("sr-list"), q = $("sr-q").value.trim(), ws = q.toLowerCase().split(/\s+/).filter(Boolean); box.replaceChildren();
+  const navIcon = k => document.querySelector(`nav a[data-tab="${k}"] svg`);
+  if (!ws.length && srRecent().length) {
+    const h = node("div", "mgt srh"); h.appendChild(node("span", null, t("sr_recent")));
+    const clr = node("a", null, t("sr_clear")); clr.onclick = () => { lsSet("ds4.search.recent", []); renderSearch(); }; h.appendChild(clr); box.appendChild(h);
+    const chips = node("div", "srchips");
+    srRecent().forEach(w => { const b = node("button", null, w); b.onclick = () => { $("sr-q").value = w; renderSearch(); }; chips.appendChild(b); });
+    box.appendChild(chips);
+  }
+  let hits = 0;
+  srGroups().forEach(gr => {
+    if (!ws.length && gr.home === false) return;
+    const items = ws.length ? gr.items.map(it => ({ it, s: srScore(ws, it.title, it.body) })).filter(x => x.s > 0).sort((a, b) => b.s - a.s).slice(0, SR_MAX).map(x => x.it) : gr.items.slice(0, SR_HOME);
+    if (!items.length) return; hits += items.length;
+    const h = node("div", "mgt srh"); h.appendChild(node("span", null, gr.title || t("tab_" + gr.tab)));
+    if (gr.tab) { const a = node("a", null, t("sr_all")); a.onclick = () => { srRemember(); gr.all ? gr.all() : (location.hash = gr.tab); }; h.appendChild(a); }
+    box.appendChild(h);
+    const grp = node("div", "mgroup");
+    items.forEach(it => {
+      const r = node("div", "mrow"), mi = node("span", "mi"), ic = navIcon(it.icon || gr.tab || gr.icon);
+      if (ic) mi.appendChild(ic.cloneNode(true)); r.appendChild(mi);
+      const ml = node("div", "ml"), tt = node("div", "tt"); tt.appendChild(srHl(it.title, ws)); ml.appendChild(tt);
+      if (it.sub) ml.appendChild(node("small", null, it.sub)); r.appendChild(ml); r.appendChild(node("span", "chev", "›"));
+      r.onclick = () => { srRemember(); it.go(); };
+      grp.appendChild(r);
+    });
+    box.appendChild(grp);
+  });
+  if (!hits && ws.length) box.appendChild(node("div", "muted", t("sr_none", q)));
+}
+async function srLoad() {
+  renderSearch();   /* 先拿手上已有的画, 各接口回来再重画一遍 */
+  await Promise.allSettled([loadSessions(), loadTasks(), loadSkills(), loadModels(true), aFetch("memory").then(r => { if (!r.error) srMem = r; })]);
+  if (curTab() === "search") renderSearch();
+}
+/* 拼音输入法打字时 input 事件会带着没上屏的字母一路发过来, 等选完字(compositionend)再搜 */
+$("sr-q").addEventListener("input", e => { if (!e.isComposing) renderSearch(); });
+$("sr-q").addEventListener("compositionend", renderSearch);
+$("sr-q").onkeydown = e => { if (e.key === "Enter" && !imeEnter(e)) { e.preventDefault(); srRemember(); $("sr-q").blur(); } };   /* blur = 收键盘, 让出屏幕看结果 */
+
 document.querySelectorAll("[data-goto]").forEach(a => a.onclick = () => { location.hash = a.dataset.goto; });
 window.addEventListener("hashchange", () => showTab(curTab() || "chat"));
 
