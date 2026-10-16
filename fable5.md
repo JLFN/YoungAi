@@ -11574,3 +11574,11 @@ A = 只在提示里找(Strata 默认索引范围), B = 提示 + 已生成都找;
   ② path="." → `ok:false`, `error: read …/workspace: Is a directory`, 15 s;
   ③ 正常 write_file → read_file → list_dir 三次全 `ok:true decision=auto`, 20 s(产物留在工作区 probe-1016/total.py)。
 - **★撞出服务端另一个 bug(未修)★**: ① 里模型写的是 `<｜DSML｜ invoke name="read_file">` + **裸 `</invoke>`**(少了 ｜DSML｜ 前缀)。流式解析(server_openai_stream.c)看到 invoke 开头就发了工具头和 `{`, 等不到合法的 invoke 结束就 fail; 最终解析判"invalid tool call returned as assistant text finish=stop"。但 `emitted_any` 已为真, 收尾不补发 ⇒ **客户端收到一个参数为半截 `{` 的工具调用, 服务端自己却认为是正文** —— 两边对不上。证据: trace serve_20261015_115815.txt request 356。参数校验这次兜住了(拒+明确报错), 根因在服务端流式与最终解析口径不一致。
+
+## 10-16 晚 · 流式工具调用与最终解析统一结论(b800c44)
+
+- **根因**: 服务端把模型的 DSML 翻成 tool_calls 翻两遍 —— 流式投影边生成边发, 最终解析收尾整块判。两边各认各的标签: 参数级的裸 `<parameter>`/`</parameter>` 10-11 两边都认了, invoke 级的裸 `</invoke>` 两边都不认。request 356 里模型写了裸 `</invoke>`, 投影已发出调用头和 `{` 后卡住, 最终解析整块退回正文, 收尾却照常结束 ⇒ 客户端拿到半截 `{` 调用、服务端自己当正文。只在模型把块写坏时出现(spark 641 次历史调用里写坏 5 次, 都是 web_search 没闭合), 平时 agent 调用不受影响。
+- **修**: 别名挪进 `server_dsml_alias.c`, 最终解析 / KV 语法跟踪 / 两条流式投影同一组函数, 新认裸 `</invoke>`; 收尾若流上已露出的调用与最终解析逐个对不上 ⇒ 发 error 事件(Claude Code 自动重试, 助理 model_llm.c 整轮不执行), 还没露出就被否决 ⇒ 原文补成正文(同 Responses)。
+- **★推翻的方案★**: 先做过"工具块扣到收尾再发 + 解码心跳"。读 Claude Code 2.1.301 实现: 流看门狗默认开、空闲阈值 ≥300 s, 只认 SDK 事件; `ping` 连续 30 个(`IKr=30`)后不再续命, `:` 注释行完全不算 ⇒ 扣着发最多撑约 7.5 分钟, 长上下文写上千行文件必断。上游边生成边投影是 Claude Code 能用的前提, 不能拆。
+- **验证**: Mac `make test` 全绿; spark `ds4_test --server` 绿; `server_tests_tool_agree.c` 九用例 × 两协议, 撤掉别名或撤掉报错分支都失败。spark 换新 ds4-server(model-restart, 100 s 装回)后: 助理不带参数调 read_file → 参数 `{}` + `"path" is required`; 正常写读列三次 ok; Claude Code(默认流超时, `cc_smoke_v3p.sh remote`)修 Clamp bug 6 次工具调用成功; 写 300 行文件一次 Write(约 2400 token 工具块, 66 s)完整正确。
+- **没覆盖**: 真模型几次都写标准标签, 裸 `</invoke>` 只有单测按 trace 原字节覆盖; 没跑 7 分钟以上的工具块; 模型写坏块时助理整轮报错、没有自动重试。
