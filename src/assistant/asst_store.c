@@ -23,6 +23,7 @@ char *asst_slurp(const char *path, size_t *len) {
     if (!f) return NULL;
     ds4_buf b = {0}; char tmp[65536]; size_t n;
     while ((n = fread(tmp, 1, sizeof tmp, f)) > 0) ds4_buf_append(&b, tmp, n);
+    if (ferror(f)) { fclose(f); ds4_buf_free(&b); return NULL; }   /* 读错(路径是目录 = EISDIR)与打不开同口径回 NULL, 调用方本来就处理; 不查就把半截内容当整份交出去 */
     fclose(f);
     if (len) *len = b.len;
     ds4_buf_putc(&b, 0);

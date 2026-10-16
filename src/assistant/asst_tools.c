@@ -175,6 +175,76 @@ bool asst_tools_reach(const asst_tctx *ctx) {
     return false;
 }
 
+/* 值原文 v 合不合 schema 的 type。写成字符串的照收, 与执行端的宽口径一致: 数字/布尔("40"、"true", asst_jint/asst_jbool),
+ * 数组/对象的 JSON 字符串("[{…}]", asst_plan.c as_array) —— 这里收紧了, 以前能跑的调用就变成每轮白报错; 没写 type 或别的类型不核 */
+static bool type_ok(const char *ty, const char *v) {
+    if (!strcmp(ty, "string")) return v[0] == '"';
+    const bool arr = !strcmp(ty, "array"), obj = !strcmp(ty, "object"), num = !strcmp(ty, "integer") || !strcmp(ty, "number");
+    if (!arr && !obj && !num && strcmp(ty, "boolean")) return true;
+    if (arr && v[0] == '[') return true;
+    if (obj && v[0] == '{') return true;
+    char *s = NULL; const char *p = v;
+    if (v[0] == '"' ? !json_string(&p, &s) : !(s = strdup(v))) return false;
+    char *e; bool ok;
+    const char *t = s; json_ws(&t);
+    if (arr || obj) ok = v[0] == '"' && *t == (arr ? '[' : '{');
+    else if (num) { strtod(s, &e); ok = e != s && *e == 0; }
+    else ok = !strcmp(s, "true") || !strcmp(s, "false");
+    free(s); return ok;
+}
+
+/* 参数照这一轮发给模型的那份 schema 核一遍, run_call 在守门之前调: 坏 JSON / 缺必填 / 类型不对 → 返回一句 error, 不进守门也不执行。
+ * 不核会怎样(YoungAi issue #2): 取不到的参数一律当空串往下走, read_file {} 解析成工作区目录, 读目录的 EISDIR 再被当成 0 行,
+ * 模型拿到 ok:true 的 "0 lines; start 1 is past the end", 看不出是自己参数写错了。
+ * 坏 JSON 多半是模型给字符串参数标了 string="false", 服务端按原文拼进 JSON(server_dsml_parse.c, 服务端不知道 schema 故意不修), 拒在这里。
+ * 可选参数给 null 当没给; 只核 type 不核 enum(枚举外的值由执行函数报)。这一轮没发的工具不核, 照旧交守门/执行处理。 */
+char *asst_tool_args_error(const asst_tctx *ctx, const char *tool, const char *args) {
+    const asst_tool *t = find(tool);
+    ds4_buf sch = {0};
+    if (!t || !offered(t, ctx ? ctx : &NO_CTX, t->site == PHONE && asst_phone_on(), &sch)) { ds4_buf_free(&sch); return NULL; }
+    ds4_buf_putc(&sch, 0);
+    const char *q = args && args[0] ? args : "{}";
+    json_ws(&q);
+    bool obj = *q == '{' && json_skip_value(&q);
+    if (obj) json_ws(&q);
+    ds4_buf e = {0};
+    if (!obj || *q) ds4_buf_printf(&e, "arguments are not a valid JSON object: %.300s", args ? args : "");
+    char *fn = NULL, *par = NULL, *props = NULL, *req = NULL;
+    if (obj && !*q) { asst_jraw(sch.ptr, "function", &fn); asst_jraw(fn, "parameters", &par); asst_jraw(par, "properties", &props); asst_jraw(par, "required", &req); }
+    char *raw = NULL;
+    for (int i = 0; req && asst_jarr_at(req, i, &raw); i++) {   /* 必填: 没给或给了 null */
+        char *name = NULL, *v = NULL; const char *p = raw;
+        if (json_string(&p, &name) && (!asst_jraw(args, name, &v) || !strcmp(v, "null"))) {
+            char *def = NULL, *ty = NULL; asst_jraw(props, name, &def); asst_jstr(def, "type", &ty);
+            ds4_buf_printf(&e, "%s\"%s\" is required%s%s%s", e.len ? "; " : "", name, ty ? " (" : "", ty ? ty : "", ty ? ")" : "");
+            free(def); free(ty);
+        }
+        free(name); free(v); free(raw); raw = NULL;
+    }
+    const char *k = props;   /* 给了的参数逐个核类型: 走一遍 properties 对象的键 */
+    if (k) { json_ws(&k); k++; }
+    while (k) {
+        json_ws(&k);
+        char *name = NULL;
+        if (*k != '"' || !json_string(&k, &name)) { free(name); break; }
+        json_ws(&k);
+        const char *d0 = k;
+        if (*k++ != ':' || !json_skip_value(&k)) { free(name); break; }
+        ds4_buf def = {0}; ds4_buf_append(&def, d0 + 1, (size_t)(k - d0 - 1)); ds4_buf_putc(&def, 0);
+        char *ty = NULL, *v = NULL;
+        if (asst_jstr(def.ptr, "type", &ty) && asst_jraw(args, name, &v) && strcmp(v, "null") && !type_ok(ty, v))
+            ds4_buf_printf(&e, "%s\"%s\" must be %s %s, got %.80s", e.len ? "; " : "", name, strchr("aeiou", ty[0]) ? "an" : "a", ty, v);
+        free(ty); free(v); ds4_buf_free(&def); free(name);
+        json_ws(&k);
+        if (*k == ',') { k++; continue; }
+        break;
+    }
+    free(fn); free(par); free(props); free(req); ds4_buf_free(&sch);
+    if (!e.len) { ds4_buf_free(&e); return NULL; }
+    ds4_buf r = {0}; ds4_buf_printf(&r, "error: invalid arguments for %s: %s\n", tool, e.ptr); ds4_buf_free(&e);
+    return ds4_buf_take(&r);
+}
+
 static char *arg(const char *args, const char *key) { char *v = NULL; asst_jstr(args, key, &v); return v; }
 
 static char *web_result(const char *text, const char *url) {

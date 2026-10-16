@@ -23,6 +23,8 @@ static char *slurp(const char *path, size_t max, size_t *len) {
     if (!f) return NULL;
     ds4_buf b = {0}; char tmp[65536]; size_t n;
     while ((n = fread(tmp, 1, sizeof tmp, f)) > 0) { ds4_buf_append(&b, tmp, n); if (b.len > max) { errno = EFBIG; fclose(f); ds4_buf_free(&b); return NULL; } }
+    /* fread 停下可能是读错不是读完: 目录能 fopen, read 却回 EISDIR —— 不查就成了"空文件", read_file 报 0 行当成功(issue #2) */
+    if (ferror(f)) { const int e = errno ? errno : EIO; fclose(f); ds4_buf_free(&b); errno = e; return NULL; }
     fclose(f);
     *len = b.len;
     ds4_buf_putc(&b, 0);

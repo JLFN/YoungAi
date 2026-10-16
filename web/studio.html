@@ -1088,7 +1088,7 @@ const I18N = {
     a_new: "+ 新对话", a_chats: "对话", a_nosess: "还没有对话", a_untitled: "新对话", a_del: "删除", a_del_confirm: "删除这个对话? (挪进 ~/.ds4/assistant/trash/, 盘上还能找回)",
     a_need: "等你批准", a_running: "执行中…", a_thinking: "思考中…", a_args: "参数", a_result: "结果 · {0} 字节", a_reason: "要做: {0}", a_target: "范围: {0}",
     a_once: "仅这次", a_session: "本会话都允许", a_always: "总是允许", a_deny: "拒绝", a_once_only: "这类操作只能逐次批准",
-    dec_auto: "自动放行", dec_once: "你批准了", dec_session: "本会话已允许", dec_always: "永久允许", dec_denied: "你拒绝了", dec_blocked: "规则拦下", dec_cancelled: "已取消",
+    dec_auto: "自动放行", dec_once: "你批准了", dec_session: "本会话已允许", dec_always: "永久允许", dec_denied: "你拒绝了", dec_blocked: "规则拦下", dec_invalid: "参数不对", dec_cancelled: "已取消",
     a_end_stopped: "已停止", a_end_error: "出错了", a_usage: "提示 {0} · 生成 {1} token", s_running: "进行中", s_waiting_approval: "等你批准", s_waiting_device: "等设备回答", s_queued: "排队中…", ph_busy: "助理正在干活, 点停止可打断",
     dec_device: "设备答复了", dev_doing: "这台设备正在做…", dev_other: "在等发消息的那台设备回答; 它不在了就用这台:", dev_mine: "用这台设备回答", dev_tap_read_clipboard: "需要你点一下才能读剪贴板:", dev_tap_pick_file: "请选一个文件:", dev_tap_pick_photo: "请选一张照片:",
     dev_btn_read_clipboard: "读取剪贴板", dev_btn_pick_file: "选择文件", dev_btn_pick_photo: "选择照片", dev_tap_locate: "需要你点一下才能定位:", dev_btn_locate: "定位", dev_no_api: "这个浏览器不支持", dev_http: "位置、剪贴板、分享、麦克风这些能力浏览器只在 https(或本机地址)下开放; 现在是 http 打开的, 助理拿不到位置、读不了剪贴板、分享不了文件, 也没有语音输入",
@@ -1255,7 +1255,7 @@ const I18N = {
     a_new: "+ New chat", a_chats: "Chats", a_nosess: "No conversations yet", a_untitled: "New chat", a_del: "Delete", a_del_confirm: "Delete this conversation? (moved to ~/.ds4/assistant/trash/, still recoverable on disk)",
     a_need: "Needs your approval", a_running: "Running…", a_thinking: "Thinking…", a_args: "Arguments", a_result: "Result · {0} bytes", a_reason: "Wants to: {0}", a_target: "Scope: {0}",
     a_once: "Allow once", a_session: "Allow for this chat", a_always: "Always allow", a_deny: "Deny", a_once_only: "This kind of action can only be approved one at a time",
-    dec_auto: "Auto-allowed", dec_once: "You allowed it", dec_session: "Allowed for this chat", dec_always: "Always allowed", dec_denied: "You denied it", dec_blocked: "Blocked by rules", dec_cancelled: "Cancelled",
+    dec_auto: "Auto-allowed", dec_once: "You allowed it", dec_session: "Allowed for this chat", dec_always: "Always allowed", dec_denied: "You denied it", dec_blocked: "Blocked by rules", dec_invalid: "Invalid arguments", dec_cancelled: "Cancelled",
     a_end_stopped: "Stopped", a_end_error: "Error", a_usage: "prompt {0} · generated {1} tokens", s_running: "Running", s_waiting_approval: "Waiting for you", s_waiting_device: "Waiting for your device", s_queued: "Queued…", ph_busy: "The assistant is working; press Stop to interrupt",
     dec_device: "Answered by your device", dev_doing: "This device is doing it…", dev_other: "Waiting for the device that sent the message; if it's gone, use this one:", dev_mine: "Answer from this device", dev_tap_read_clipboard: "Tap to let it read the clipboard:", dev_tap_pick_file: "Pick a file:", dev_tap_pick_photo: "Pick a photo:",
     dev_btn_read_clipboard: "Read clipboard", dev_btn_pick_file: "Choose file", dev_btn_pick_photo: "Choose photo", dev_tap_locate: "Tap to share your position:", dev_btn_locate: "Locate", dev_no_api: "Not supported by this browser", dev_http: "Browsers only expose location, clipboard, sharing and the microphone over https (or this machine's own address); this page was opened over http, so the assistant can't get your location, read the clipboard, share files, or take voice input",
@@ -2774,7 +2774,7 @@ async function loadAct() {
     tr.classList.toggle("open", actOpen.has(key)); tr.onclick = () => { if (!isApp()) return; actOpen.has(key) ? actOpen.delete(key) : actOpen.add(key); tr.classList.toggle("open"); };
     tr.appendChild(node("td", null, new Date(x.t * 1000).toLocaleString(locale()))); tr.appendChild(node("td", null, x.tool));
     tr.appendChild(node("td", "wrap", (x.args || "").slice(0, 160)));
-    const td = node("td"); td.appendChild(node("span", "badge " + ({ auto: "", blocked: "red", denied: "red", once: "amber", session: "amber", always: "amber" }[x.decision] || ""), t("dec_" + x.decision))); tr.appendChild(td);
+    const td = node("td"); td.appendChild(node("span", "badge " + ({ auto: "", blocked: "red", denied: "red", invalid: "red", once: "amber", session: "amber", always: "amber" }[x.decision] || ""), t("dec_" + x.decision))); tr.appendChild(td);
     tr.appendChild(node("td", x.ok ? "ok" : "bad", x.ok ? "✓" : "✗")); tr.appendChild(node("td", null, fmtMs(x.ms || 0)));
     tr.appendChild(node("td", "muted", (x.session || "").slice(0, 6))); tr.appendChild(node("td", "res", x.result || "–")); au.appendChild(tr); });
   if (!a.audit.length) { const tr = node("tr"); tr.appendChild(node("td", "muted", t("act_none"))); au.appendChild(tr); }

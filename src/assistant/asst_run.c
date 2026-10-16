@@ -61,9 +61,11 @@ static void wait_answer(const char *sid, const char *call_id, const asst_gres *g
     pthread_mutex_unlock(&asst_mu);
 }
 
-static char *run_call(const char *sid, const char *call_id, const char *tool, const char *args, char *decision, size_t dn, int *ok) {
-    asst_gres g; asst_guard(sid, tool, args, &g);
+static char *run_call(const char *sid, const asst_tctx *tc, const char *call_id, const char *tool, const char *args, char *decision, size_t dn, int *ok) {
     *ok = 0;
+    char *bad = asst_tool_args_error(tc, tool, args);   /* 参数不合 schema 不进守门: 否则缺的参数当空串, 守门按工作区放行、执行读出个"0 行"当成功(asst_tools.c) */
+    if (bad) { snprintf(decision, dn, "invalid"); return bad; }
+    asst_gres g; asst_guard(sid, tool, args, &g);
     if (g.dec == ASST_DENY) { snprintf(decision, dn, "blocked"); ds4_buf b = {0}; ds4_buf_printf(&b, "blocked by the assistant's safety rules: %s\n", g.reason); return ds4_buf_take(&b); }
     if (g.dec == ASST_ASK) {
         char dec[16]; wait_answer(sid, call_id, &g, tool, args, dec, sizeof dec);
@@ -162,7 +164,7 @@ static void run_one(const char *sid, const char *text, const char *device, const
             char decision[16] = "cancelled"; int ok = 0; char *res;
             const double t0 = now_s();
             if (stopped || want_stop(NULL)) { stopped = true; res = strdup("cancelled: the user stopped the run\n"); }
-            else res = run_call(sid, id, name, args, decision, sizeof decision, &ok);
+            else res = run_call(sid, &tc, id, name, args, decision, sizeof decision, &ok);
             if (!strcmp(decision, "cancelled")) stopped = true;
             char sig[512]; snprintf(sig, sizeof sig, "%s|%.400s", name, args);
             repeat = !strcmp(sig, last_sig) ? repeat + 1 : 1; snprintf(last_sig, sizeof last_sig, "%s", sig);

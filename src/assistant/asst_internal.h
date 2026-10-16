@@ -218,6 +218,7 @@ bool asst_skill_check(const char *text, char *why, size_t n); /* ★技能不许
 char *asst_skill_put_file(const char *name, const char *rel, const char *data, size_t n);   /* 页面上传随附文件; NULL = 成功, 否则原因(malloc) */
 char *asst_tools_json(const asst_tctx *ctx);   /* OpenAI tools 数组(malloc): 注册表里 avail 为真的行 */
 bool asst_tools_reach(const asst_tctx *ctx);   /* 工具表里有没有能进用户别的 app/账号的工具(share / open_app / 云手机): 决定 system 带不带"设备与账号"记忆 */
+char *asst_tool_args_error(const asst_tctx *ctx, const char *tool, const char *args);   /* 参数不合这一轮的 schema → "error: invalid arguments …"(malloc); 合规 NULL */
 char *asst_tool_exec(const char *session, const char *tool, const char *args, const asst_gres *g, int *ok);   /* 已过守门; 在沙盒里跑 */
 char *asst_tool_post(const char *session, const char *tool, const char *result);   /* 设备工具交回结果后的收尾(locate → 反查地址 + 记进会话); 返回新结果(malloc)或 NULL = 原样 */
 const char *asst_toolbox_desc(void);   /* sbx_toolbox.c: run 工具的描述(启动探测本机装了哪些程序, 一次) */

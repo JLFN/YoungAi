@@ -136,6 +136,9 @@ static void test_fs_tools(void) {
     asst_read_args rb = { big, 1, 0 };
     asst_sbx_run(&sp, asst_fs_read, &rb, &out);
     CHECK(strlen(out) < ASST_READ_BYTES + 2048 && strstr(out, "capped at 16 KB") && strstr(out, "start=17"), "read cap: %zu bytes, %.120s", strlen(out), out); free(out);
+    /* 读目录: fopen 能开、read 回 EISDIR —— 必须报错, 不能是"0 lines"的成功(issue #2) */
+    asst_read_args rd = { ws, 1, 0 };
+    asst_sbx_run(&sp, asst_fs_read, &rd, &out); CHECK(!strncmp(out, "error: read", 11) && strstr(out, strerror(EISDIR)), "read dir must fail: %s", out); free(out);
     asst_edit_args e2 = { p, "nothere", "x", false, trash };
     asst_sbx_run(&sp, asst_fs_edit, &e2, &out); CHECK(strstr(out, "not found") != NULL, "edit miss: %s", out); free(out);
     asst_search_args s = { ws, "gamma", "*.txt" };
@@ -145,6 +148,54 @@ static void test_fs_tools(void) {
     asst_sbx_run(&sp, asst_fs_write, &w2, &out); CHECK(strncmp(out, "error", 5) == 0, "write tool outside ws must fail: %s", out); free(out);
     char back[64] = ""; FILE *f = fopen(secret, "r"); if (f) { if (!fgets(back, sizeof back, f)) back[0] = 0; fclose(f); }
     CHECK(!strcmp(back, "TOPSECRET\n"), "secret untouched: %s", back);
+}
+
+/* 参数照 schema 核(issue #2 的那几种写错): 坏一种就该回 error, 合规的一律 NULL —— 核得太严比不核更糟, 模型每轮白报错 */
+static void test_tool_args(void) {
+    static const char *const bad[][2] = {
+        { "read_file", "{}" }, { "read_file", "{\"path\":null}" }, { "read_file", "{\"path\":123}" }, { "read_file", "{\"path\":coding-eval/total.py}" },
+        { "read_file", "{\"path\":\"a\"} x" }, { "read_file", "[\"a\"]" }, { "read_file", "{\"path\":\"a\",\"start\":\"abc\"}" }, { "edit_file", "{\"path\":\"a\",\"old_string\":\"x\"}" },
+    };
+    static const char *const good[][2] = {
+        { "read_file", "{\"path\":\"a.txt\"}" }, { "read_file", "{\"path\":\"a.txt\",\"start\":\"40\",\"lines\":10}" }, { "read_file", "{\"path\":\"a.txt\",\"start\":null}" },
+        { "list_dir", "{}" }, { "list_dir", "" }, { "search_files", "{\"pattern\":\"x\",\"glob\":null}" }, { "edit_file", "{\"path\":\"a\",\"old_string\":\"x\",\"new_string\":\"y\",\"replace_all\":\"true\"}" },
+        { "no_such_tool", "{" },
+    };
+    for (size_t i = 0; i < sizeof bad / sizeof bad[0]; i++) {
+        char *e = asst_tool_args_error(NULL, bad[i][0], bad[i][1]);
+        CHECK(e && !strncmp(e, "error: invalid arguments", 24), "%s %s must be rejected: %s", bad[i][0], bad[i][1], e ? e : "(accepted)"); free(e);
+    }
+    for (size_t i = 0; i < sizeof good / sizeof good[0]; i++) {
+        char *e = asst_tool_args_error(NULL, good[i][0], good[i][1]);
+        CHECK(!e, "%s %s must pass: %s", good[i][0], good[i][1], e ? e : ""); free(e);
+    }
+    char *e = asst_tool_args_error(NULL, "read_file", "{}"); CHECK(e && strstr(e, "\"path\" is required (string)"), "names the missing arg: %s", e ? e : ""); free(e);
+    /* 数组写成 JSON 字符串: 执行端(asst_plan.c as_array)本来就收, 校验不许比它严 */
+    e = asst_tool_args_error(NULL, "write_xlsx", "{\"path\":\"a.xlsx\",\"sheets\":\"[{\\\"name\\\":\\\"S\\\"}]\"}"); CHECK(!e, "array as a JSON string passes: %s", e ? e : ""); free(e);
+    e = asst_tool_args_error(NULL, "write_xlsx", "{\"path\":\"a.xlsx\",\"sheets\":5}"); CHECK(e && strstr(e, "must be an array"), "number for an array is rejected: %s", e ? e : ""); free(e);
+}
+
+/* ./ds4_asst_test --check-args events.jsonl…: 把真实会话里记下的每次工具调用过一遍参数校验, 打印会被拒的 ——
+ * 改校验口径后先跑这个: 以前能跑的调用被新口径拒掉, 就是校验太严(只看工具表里静态的那些; 设备工具要页面能力, 这里不核) */
+static int check_args_mode(int n, char **files) {
+    int calls = 0, rej = 0;
+    for (int i = 0; i < n; i++) {
+        FILE *f = fopen(files[i], "r"); if (!f) continue;
+        char *line = NULL; size_t cap = 0;
+        while (getline(&line, &cap, f) > 0) {
+            char *ev = NULL, *name = NULL, *args = NULL;
+            if (asst_jstr(line, "ev", &ev) && !strcmp(ev, "tool") && asst_jstr(line, "name", &name) && asst_jstr(line, "args", &args)) {
+                calls++;
+                char *e = asst_tool_args_error(NULL, name, args);
+                if (e) { rej++; printf("%s\n  %s  %.300s\n  %s", files[i], name, args, e); }
+                free(e);
+            }
+            free(ev); free(name); free(args);
+        }
+        free(line); fclose(f);
+    }
+    printf("check-args: %d calls, %d rejected\n", calls, rej);
+    return 0;
 }
 
 /* ./ds4_asst_test --visit URL…: 不经模型直接让助理的浏览器开页面, 每页打印开头 600 字 —— 量"哪些站拦我们"用(10-11 反爬);
@@ -195,6 +246,7 @@ static int tts_mode(int n, char **lines, bool sandboxed) {
 int main(int argc, char **argv) {
     if (argc > 2 && !strcmp(argv[1], "--tts")) return tts_mode(argc - 2, argv + 2, false);
     if (argc > 2 && !strcmp(argv[1], "--tts-sbx")) return tts_mode(argc - 2, argv + 2, true);
+    if (argc > 2 && !strcmp(argv[1], "--check-args")) return check_args_mode(argc - 2, argv + 2);
     if (argc > 2 && !strcmp(argv[1], "--visit")) return visit_mode(argc - 2, argv + 2, 600);
     if (argc > 2 && !strcmp(argv[1], "--visit-all")) return visit_mode(argc - 2, argv + 2, INT_MAX);
     if (argc > 4 && !strcmp(argv[1], "--video")) {
@@ -213,7 +265,7 @@ int main(int argc, char **argv) {
     snprintf(t, sizeof t, "%s/link_to_secret", ws); if (symlink(secret, t)) perror("symlink");
     setenv("SECRET_ENV_FOR_TEST", "leak", 1);
     printf("sandbox: %s\n", asst_sbx_kind());
-    test_files(); test_net_signal(); test_bash(); test_fs_tools();
+    test_files(); test_net_signal(); test_bash(); test_fs_tools(); test_tool_args();
     g_fail += asst_test_logic(base);
     { extern int asst_test_memory(void); g_fail += asst_test_memory(); }   /* 记忆三类 + 交付卡(10-15): 在 logic 之后, 助理根目录与工作区已建好 */
     { extern int asst_test_image(void); g_fail += asst_test_image(); }     /* 改图工具(10-15): 合成图 recolor/crop/draw, 分割模型在就走它 */
