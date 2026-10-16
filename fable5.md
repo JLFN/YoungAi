@@ -11627,3 +11627,11 @@ A = 只在提示里找(Strata 默认索引范围), B = 提示 + 已生成都找;
 - **门**: `ds4_asst_test` 预览段 35/35; `make asst-e2e` 预览段 8 项全过, iframe 里原文 `ls:blocked parent:blocked origin:null js:loaded fetch:blocked img:loaded`, "打开"新标签页 `ls:blocked parent:self origin:null js:loaded fetch:blocked img:loaded`, Host 改成 rewritten.invalid 后(只剩 'self')资源照样加载; `make test` 全绿含 linecount。
 - **判决**: 曾写第 ② 刀 `view_page`(火狐截图 + 控制台错误回给模型), 用户: "直接 HTML 就能渲染, 不要截图" → 整刀回滚(tool_page.c 删、注册/守门/声明/单测撤、tool_browser.c/tool_video.c 还原)。
 - **没做**: spark 真模型 + 手机 https 门没跑; 没同步 spark; 未提交。
+
+## 10-16 夜 · 云手机 system_server 每 100 s 被看门狗杀(lmkd maxevents 减成 -1 空转); 重启手机恢复
+- **现象**: 22:43 重编重启 spark ds4-train(上线网页预览)后页面打不开。真因不在那次改动: 主进程单线程里查手机状态, adb 不通时每次等满 1 s 超时, 页面一轮询就把主循环拖住(监听队列积 17 条)。
+- **手机为什么 adb 不通**: system_server 约每 100 s 被安卓看门狗杀一次(dmesg `zygote received signal 9`; dropbox 第一份 system_server_watchdog 在 **21:14**, 早于 22:43 重启)。看门狗栈: ActivityManager 线程拿着 AMS 总锁卡在 `LmkdConnection.write → sendmsg`, 即往 lmkd 的 socket 写不进去。
+- **lmkd 为什么不收**: 主线程 100% CPU 空转。用户 root 跑的原文: strace -c 3 s 内 `epoll_pwait` 66181 次全错, 每次跟一组 getuid + writev(写错误日志); `epoll_pwait(3, …, -1, -1) = -1 EINVAL` —— **maxevents = -1**, 自己记的 epoll 登记数减过头。logcat main 缓冲全是 `epoll_wait failed (errno=22)`(不到 1 s 就灌满), 哪一处多减的那行日志已被冲掉; crash 缓冲 21:14:40 一串微信进程(mm / :push / :appbrand1) DeadSystemException, 同分钟 dropbox 有 system_server_lowmem ⇒ 出事时开着微信、有内存压力。
+- **源码可疑点(未证实)**: AOSP android13 lmkd.cpp 2325 行 `start_wait_for_proc_kill(pidfd < 0 ? pid : pidfd)`: pidfd 拿不到时把 pid 号当 fd 进 epoll, 等完 `close()` 它, pid 号若撞上 lmkd 自己的 fd 会关掉自家 socket / PSI 监听, 之后加减不配对。日志 `gguf/phone/lmkd_1016.log`(42 MB)。
+- **恢复**: 经 /api/phone/disable → enable 重启云手机(/data 不动), 23:15 ready; 盯 110 s system_server pid 不变, 新 lmkd CPU 0%, 首页 0.4 ms、phone/status ≤ 9 ms、公网穿透 200。
+- **待办(未动)**: ① 主进程里手机状态探测别在单线程主循环上同步等 adb(手机一坏整个工作台跟着卡); ② lmkd 空转会再犯, 要么查清多减的路径, 要么手机侧加检测(system_server 连续被看门狗杀 → 重启手机)。
