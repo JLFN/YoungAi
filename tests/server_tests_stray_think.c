@@ -65,7 +65,7 @@ void test_openai_stream_stray_think_before_tool(void) {
     tool_calls calls = {0};
     TEST_ASSERT(parse_generated_message_ex(full, false, &content, &reasoning, &calls));
     apply_openai_stream_tool_ids(&calls, &st);
-    TEST_ASSERT(openai_sse_finish_live(sv[0], NULL, &r, "c_stray2", &st, full, n, &calls, "tool_calls", 10, 4));
+    TEST_ASSERT(openai_sse_finish_live(sv[0], NULL, &r, "c_stray2", &st, full, n, NULL, &calls, "tool_calls", 10, 4));
     shutdown(sv[0], SHUT_WR);
     char *out = read_socket_text(sv[1]), *c = sse_join_field(out, "content");
     TEST_ASSERT(strstr(c, "think") == NULL && strstr(out, "think>") == NULL);

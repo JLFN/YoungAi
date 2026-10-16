@@ -182,7 +182,7 @@ void test_anthropic_live_stream_sends_incremental_blocks(void) {
 
     tool_calls calls = make_swapped_bash_call();
     TEST_ASSERT(anthropic_sse_finish_live(sv[0], NULL, &r, "msg_test", &st,
-                                          raw, strlen(raw), &calls,
+                                          raw, strlen(raw), NULL, &calls,
                                           "tool_calls", 8));
     shutdown(sv[0], SHUT_WR);
     char *out = read_socket_text(sv[1]);
@@ -258,7 +258,7 @@ void test_anthropic_tool_stream_sends_live_tool_use(void) {
     TEST_ASSERT(calls.v[0].id != NULL);
     TEST_ASSERT(!strncmp(calls.v[0].id, "toolu_", 6));
     TEST_ASSERT(anthropic_sse_finish_live(sv[0], NULL, &r, "msg_tool", &st,
-                                          raw_complete, strlen(raw_complete),
+                                          raw_complete, strlen(raw_complete), NULL,
                                           &calls, "tool_calls", 5));
     shutdown(sv[0], SHUT_WR);
     char *out = read_socket_text(sv[1]);

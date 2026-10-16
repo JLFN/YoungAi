@@ -2,59 +2,6 @@
 
 #include "server_internal.h"
 
-/* 参数开标签认两种: 本写法的, 或裸 "<parameter "。2026-10-11 实撞(tests/server_tests_bare_param.c):
- * system 正文 + 官方工具说明的上下文里, 量化模型在参数开标签位的首选是裸 "<", 写成 <parameter name="x">值</｜DSML｜ parameter>
- * (闭标签照写 DSML 的、不带 string 属性)。同一请求: 助理的中文 system 5/5 这样写, 一句英文 2/5, 不带 system 0/5 ——
- * 渲染与官方 encoding.py 逐字节同, 是模型在这一位的选择; 早上的"语法位贪心"救不了(argmax 就是 "<")。
- * 意图没有歧义(在 invoke 块里、有 name、闭标签是 DSML 的), 解析侧认下来; 模型输出一个字节不改, 精确重放表里存的仍是原字节。
- * 别名带尾空格: "<parameters>" 之类不是开标签。纯 <parameter> 写法(DSML_SYN_PLAIN)本身就是它, 不叠别名。 */
-#define DSML_BARE_PARAM_START "<parameter "
-static bool dsml_has_bare_alias(const dsml_syntax *syn) { return strcmp(syn->param_start, "<parameter") != 0; }
-
-size_t dsml_param_open_len(const dsml_syntax *syn, const char *p) {
-    const size_t n = strlen(syn->param_start);
-    if (!strncmp(p, syn->param_start, n)) return n;
-    if (dsml_has_bare_alias(syn) && !strncmp(p, DSML_BARE_PARAM_START, strlen(DSML_BARE_PARAM_START))) return strlen(DSML_BARE_PARAM_START);
-    return 0;
-}
-
-bool dsml_param_open_full(const dsml_syntax *syn, const char *raw, size_t raw_len, size_t pos) {
-    return raw_full_lit(raw, raw_len, pos, syn->param_start) ||
-           (dsml_has_bare_alias(syn) && raw_full_lit(raw, raw_len, pos, DSML_BARE_PARAM_START));
-}
-
-bool dsml_param_open_partial(const dsml_syntax *syn, const char *raw, size_t raw_len, size_t pos) {
-    return raw_partial_lit(raw, raw_len, pos, syn->param_start) ||
-           (dsml_has_bare_alias(syn) && raw_partial_lit(raw, raw_len, pos, DSML_BARE_PARAM_START));
-}
-
-/* 闭标签同样认裸 "</parameter>"(2026-10-11 深夜实撞, 助理查 DGX Spark 价: 开标签裸了之后闭标签也裸, 一块里两个 invoke 都这样,
- * invoke/calls 标签仍是 DSML 的)。只认 DSML 闭标签的代价: 最终解析找不到闭标签 ⇒ 整块退回正文; 流式把后面整段(含第二个 invoke)
- * 当第一个参数的值推给客户端, 助理拿着带标签的 query 连撞 5 步。三条路(最终解析 / 流式 / KV 语法跟踪)都经这三个函数找闭标签。 */
-#define DSML_BARE_PARAM_END "</parameter>"
-
-size_t dsml_param_close_len(const dsml_syntax *syn, const char *raw, size_t raw_len, size_t pos) {
-    if (raw_full_lit(raw, raw_len, pos, syn->param_end)) return strlen(syn->param_end);
-    if (dsml_has_bare_alias(syn) && raw_full_lit(raw, raw_len, pos, DSML_BARE_PARAM_END)) return strlen(DSML_BARE_PARAM_END);
-    return 0;
-}
-
-/* 缓冲从 pos 起到末尾是某个闭标签的真前缀(至少 min_len 字节): 流式在这里扣住不发, 等下一块 */
-bool dsml_param_close_partial(const dsml_syntax *syn, const char *raw, size_t raw_len, size_t pos, size_t min_len) {
-    if (!raw || pos > raw_len || raw_len - pos < min_len) return false;
-    return raw_partial_lit(raw, raw_len, pos, syn->param_end) ||
-           (dsml_has_bare_alias(syn) && raw_partial_lit(raw, raw_len, pos, DSML_BARE_PARAM_END));
-}
-
-/* [s, s+n) 内最早出现的闭标签(两种写法取靠前的), *len_out = 命中的那个的长度 */
-const char *dsml_param_close_find(const dsml_syntax *syn, const char *s, size_t n, size_t *len_out) {
-    const char *a = find_lit_bounded(s, n, syn->param_end), *b = NULL;
-    if (dsml_has_bare_alias(syn)) b = find_lit_bounded(s, a ? (size_t)(a - s) : n, DSML_BARE_PARAM_END);   /* 只在 a 之前找 */
-    if (b) { if (len_out) *len_out = strlen(DSML_BARE_PARAM_END); return b; }
-    if (a && len_out) *len_out = strlen(syn->param_end);
-    return a;
-}
-
 static long long wall_ms(void) {
     struct timeval tv;
     gettimeofday(&tv, NULL);
@@ -382,7 +329,6 @@ bool parse_generated_message_ex(const char *text, bool require_thinking_closed,
     const char *tool_calls_start = syn->tool_calls_start;
     const char *tool_calls_end = syn->tool_calls_end;
     const char *invoke_start = syn->invoke_start;
-    const char *invoke_end = syn->invoke_end;
 
     const char *p = strstr(start, tool_calls_start);
     if (!p) return false;
@@ -409,8 +355,9 @@ bool parse_generated_message_ex(const char *text, bool require_thinking_closed,
         buf args = {0};
         while (true) {
             p = skip_ascii_ws(p);
-            if (!strncmp(p, invoke_end, strlen(invoke_end))) {
-                p += strlen(invoke_end);
+            const size_t close = dsml_invoke_close_len(syn, p, strlen(p), 0);
+            if (close) {
+                p += close;
                 break;
             }
             if (!dsml_param_open_len(syn, p)) {

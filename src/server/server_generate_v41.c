@@ -303,16 +303,17 @@ static const char *v41_finish(v41_gen *g) {
     const char *content = parsed_content ? parsed_content : (text->ptr ? text->ptr : "");
     if (j->req.stream) {
         bool ok = true;
+        const char *recover = recovered_tool_parse_failure ? parsed_content : NULL;   /* 坏工具块退回了正文: 流式收尾据此补正文或报错(server_openai_stream.c) */
         if (g->stream_dead) ok = false;
         else if (j->req.api == API_ANTHROPIC)
-            ok = anthropic_sse_finish_live(j->fd, s, &j->req, g->id, &g->anthropic_live, text->ptr ? text->ptr : "", text->len,
+            ok = anthropic_sse_finish_live(j->fd, s, &j->req, g->id, &g->anthropic_live, text->ptr ? text->ptr : "", text->len, recover,
                                            &parsed_calls, final_finish, completion);
         else if (g->openai_live_chat)
-            ok = openai_sse_finish_live(j->fd, s, &j->req, g->id, &g->openai_live, text->ptr ? text->ptr : "", text->len,
+            ok = openai_sse_finish_live(j->fd, s, &j->req, g->id, &g->openai_live, text->ptr ? text->ptr : "", text->len, recover,
                                         &parsed_calls, final_finish, prompt_tokens, completion);
         else if (g->responses_live_chat)
             ok = responses_sse_finish_live(j->fd, &j->req, &g->responses_live, text->ptr ? text->ptr : "", text->len,
-                                           recovered_tool_parse_failure ? parsed_content : NULL, &parsed_calls, final_finish,
+                                           recover, &parsed_calls, final_finish,
                                            prompt_tokens, completion, g->responses_created_at);
         else if (g->structured_stream)
             ok = sse_chat_finish(j->fd, &j->req, g->id, content, parsed_reasoning, &parsed_calls, final_finish, prompt_tokens, completion);

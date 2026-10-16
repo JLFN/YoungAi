@@ -56,7 +56,7 @@ void test_openai_stream_bare_param_open(void) {
     tool_calls calls = {0};
     TEST_ASSERT(parse_generated_message_ex(full, false, &content, &reasoning, &calls));
     apply_openai_stream_tool_ids(&calls, &st);
-    TEST_ASSERT(openai_sse_finish_live(sv[0], NULL, &r, "chatcmpl_bare", &st, full, n, &calls, "tool_calls", 10, 4));
+    TEST_ASSERT(openai_sse_finish_live(sv[0], NULL, &r, "chatcmpl_bare", &st, full, n, NULL, &calls, "tool_calls", 10, 4));
     shutdown(sv[0], SHUT_WR);
     char *out = read_socket_text(sv[1]);
     TEST_ASSERT(strstr(out, "\"name\":\"remember\"") != NULL);
@@ -127,7 +127,7 @@ void test_openai_stream_bare_param_close(void) {
     tool_calls calls = {0};
     TEST_ASSERT(parse_generated_message_ex(full, false, &content, &reasoning, &calls));
     apply_openai_stream_tool_ids(&calls, &st);
-    TEST_ASSERT(openai_sse_finish_live(sv[0], NULL, &r, "chatcmpl_bc", &st, full, n, &calls, "tool_calls", 10, 4));
+    TEST_ASSERT(openai_sse_finish_live(sv[0], NULL, &r, "chatcmpl_bc", &st, full, n, NULL, &calls, "tool_calls", 10, 4));
     shutdown(sv[0], SHUT_WR);
     char *out = read_socket_text(sv[1]);
     char *args = sse_join_field(out, "arguments");

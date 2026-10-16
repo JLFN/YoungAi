@@ -291,16 +291,17 @@ static bool openai_tool_stream_update(int fd, server *s, const request *r, const
         if (ts->state == DSML_TOOL_BETWEEN_PARAMS) {
             while (ts->parse_pos < raw_len && isspace((unsigned char)raw[ts->parse_pos])) ts->parse_pos++;
             if (ts->parse_pos >= raw_len) return true;
-            if (raw_full_lit(raw, raw_len, ts->parse_pos, ts->syn->invoke_end)) {
+            const size_t invoke_close = dsml_invoke_close_len(ts->syn, raw, raw_len, ts->parse_pos);   /* 与最终解析同一套标签规则(server_dsml_alias.c) */
+            if (invoke_close) {
                 if (ts->args_open &&
                     !openai_tool_emit_args_fragment(fd, r, id, ts, "}", 1)) return false;
                 ts->args_open = false;
-                ts->parse_pos += strlen(ts->syn->invoke_end);
+                ts->parse_pos += invoke_close;
                 ts->index++;
                 ts->state = DSML_TOOL_BETWEEN_INVOKES;
                 continue;
             }
-            if (raw_partial_lit(raw, raw_len, ts->parse_pos, ts->syn->invoke_end) || dsml_param_open_partial(ts->syn, raw, raw_len, ts->parse_pos)) return true;
+            if (dsml_invoke_close_partial(ts->syn, raw, raw_len, ts->parse_pos) || dsml_param_open_partial(ts->syn, raw, raw_len, ts->parse_pos)) return true;
             if (dsml_param_open_full(ts->syn, raw, raw_len, ts->parse_pos)) {
                 size_t before_pos = ts->parse_pos;
                 dsml_tool_stream_state before_state = ts->state;
@@ -428,10 +429,28 @@ bool openai_sse_stream_update(int fd, server *s, const request *r, const char *i
 
 bool openai_sse_finish_live(int fd, server *s, const request *r, const char *id,
                                    openai_stream *st, const char *raw,
-                                   size_t raw_len, const tool_calls *calls,
+                                   size_t raw_len, const char *recovered_content,
+                                   const tool_calls *calls,
                                    const char *finish, int prompt_tokens,
                                    int completion_tokens) {
     if (!openai_sse_stream_update(fd, s, r, id, st, raw, raw_len, true)) return false;
+    /* 流上已经露出的调用必须与最终解析逐个对上(投影干净走完整块、个数相同); 对不上 = 客户端手里有服务端不认的调用,
+     * 只能报错让它作废这一轮(OpenAI SDK 见 error 抛 APIError; 助理 model_llm.c 见 error 整轮不执行)。
+     * 10-16 实撞: 模型写裸 </invoke>, 投影当时不认、最终解析也不认, 却已发出调用头和 "{", 收尾还报正常结束。
+     * 标签规则两边同一套(server_dsml_alias.c)后正常输出不会走到这里, 剩下的是模型把块写坏了。 */
+    const int ncalls = calls ? calls->len : 0;
+    if (st->tool.emitted_any && (st->tool.state != DSML_TOOL_DONE || st->tool.index != ncalls)) {
+        bool ok = sse_error_event(fd, r, "model produced a malformed tool call; the partial call already streamed is void") &&
+                  send_all(fd, "data: [DONE]\n\n", 14);
+        return ok;
+    }
+    /* 工具块还没露出任何调用就被最终解析否决(recovered_content 非空): 整段退回正文, 与非流式回的 content 一致。
+     * 扣住的尾巴从流游标起补成 content(游标而非 recovered_content: 它从 <think> 起, 那段已作 reasoning 发过; 同 responses_sse_finish_live) */
+    if (recovered_content && raw && !st->tool.emitted_any && st->emit_pos < raw_len) {
+        if (!sse_chat_delta_n(fd, r, id, "content", raw + st->emit_pos, raw_len - st->emit_pos)) return false;
+        st->sent_content = true;
+        st->emit_pos = raw_len;
+    }
 
     buf b = {0};
     long now = (long)time(NULL);

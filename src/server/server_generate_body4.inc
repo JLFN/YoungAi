@@ -61,22 +61,18 @@
 
     if (j->req.stream) {
         bool response_ok = true;
+        /* 解析把坏工具块退回了正文: 三条流式收尾据此补正文(或流上已露出调用时报错) */
+        const char *recover = recovered_tool_parse_failure ? parsed_content : NULL;
         if (j->req.api == API_ANTHROPIC) {
             response_ok = anthropic_sse_finish_live(j->fd, s, &j->req, id, &anthropic_live,
-                                                    text.ptr ? text.ptr : "", text.len,
+                                                    text.ptr ? text.ptr : "", text.len, recover,
                                                     &parsed_calls, final_finish, completion);
         } else if (openai_live_chat) {
             response_ok = openai_sse_finish_live(j->fd, s, &j->req, id, &openai_live,
-                                                 text.ptr ? text.ptr : "", text.len,
+                                                 text.ptr ? text.ptr : "", text.len, recover,
                                                  &parsed_calls, final_finish,
                                                  prompt_tokens, completion);
         } else if (responses_live_chat) {
-            /* If parse recovered a malformed tool call back to plain text,
-             * pass parsed_content so the streaming tail can be flushed; in
-             * the normal path parsed_content is the assistant text we already
-             * streamed and the diff is empty. */
-            const char *recover =
-                recovered_tool_parse_failure ? parsed_content : NULL;
             response_ok = responses_sse_finish_live(j->fd, &j->req, &responses_live,
                                                     text.ptr ? text.ptr : "", text.len,
                                                     recover,

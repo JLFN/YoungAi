@@ -154,8 +154,8 @@ dsml_decode_state dsml_decode_state_for_text(const char *raw, size_t raw_len) {
         if (raw_full_lit(raw, raw_len, pos, syn->tool_calls_end)) {
             return DSML_DECODE_OUTSIDE;
         }
-        if (raw_full_lit(raw, raw_len, pos, syn->invoke_end)) {
-            pos += strlen(syn->invoke_end);
+        if (dsml_invoke_close_len(syn, raw, raw_len, pos)) {
+            pos += dsml_invoke_close_len(syn, raw, raw_len, pos);
             continue;
         }
         if (raw_full_lit(raw, raw_len, pos, syn->invoke_start)) {
@@ -323,8 +323,8 @@ structural:
                 dt->decode = DSML_DECODE_OUTSIDE;
                 return;
             }
-            if (raw_full_lit(raw, raw_len, dt->pos, dt->syn->invoke_end)) {
-                dt->pos += strlen(dt->syn->invoke_end);
+            if (dsml_invoke_close_len(dt->syn, raw, raw_len, dt->pos)) {
+                dt->pos += dsml_invoke_close_len(dt->syn, raw, raw_len, dt->pos);
                 continue;
             }
             if (raw_full_lit(raw, raw_len, dt->pos, dt->syn->invoke_start)) {
@@ -360,7 +360,7 @@ structural:
 
             if (raw_partial_lit(raw, raw_len, dt->pos, dt->syn->tool_calls_end) ||
                 raw_partial_lit(raw, raw_len, dt->pos, dt->syn->invoke_start) ||
-                raw_partial_lit(raw, raw_len, dt->pos, dt->syn->invoke_end) ||
+                dsml_invoke_close_partial(dt->syn, raw, raw_len, dt->pos) ||
                 dsml_param_open_partial(dt->syn, raw, raw_len, dt->pos) ||
                 dsml_param_close_partial(dt->syn, raw, raw_len, dt->pos, 1))
             {

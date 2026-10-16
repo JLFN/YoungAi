@@ -31,6 +31,7 @@ void test_anthropic_live_stream_sends_incremental_blocks(void);
 void test_anthropic_tool_stream_sends_live_tool_use(void);
 void test_anthropic_usage_reports_cache_details(void);
 void test_openai_tool_stream_sends_incremental_text(void);
+void test_tool_stream_agrees_with_final_parse(void);
 void test_openai_stream_usage_reports_cache_details(void);
 void test_responses_usage_reports_cache_details(void);
 void test_openai_chat_stream_splits_reasoning_without_tools(void);

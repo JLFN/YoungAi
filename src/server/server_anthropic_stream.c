@@ -31,17 +31,18 @@ static bool anthropic_tool_stream_update(int fd, server *s, const char *id,
         if (ts->state == DSML_TOOL_BETWEEN_PARAMS) {
             while (ts->parse_pos < raw_len && isspace((unsigned char)raw[ts->parse_pos])) ts->parse_pos++;
             if (ts->parse_pos >= raw_len) return true;
-            if (raw_full_lit(raw, raw_len, ts->parse_pos, ts->syn->invoke_end)) {
+            const size_t invoke_close = dsml_invoke_close_len(ts->syn, raw, raw_len, ts->parse_pos);   /* 与最终解析同一套标签规则(server_dsml_alias.c) */
+            if (invoke_close) {
                 if (ts->args_open &&
                     !anthropic_tool_emit_args_fragment(fd, st, "}", 1)) return false;
                 ts->args_open = false;
                 if (!anthropic_sse_close_block_live(fd, id, st)) return false;
-                ts->parse_pos += strlen(ts->syn->invoke_end);
+                ts->parse_pos += invoke_close;
                 ts->index++;
                 ts->state = DSML_TOOL_BETWEEN_INVOKES;
                 continue;
             }
-            if (raw_partial_lit(raw, raw_len, ts->parse_pos, ts->syn->invoke_end) ||
+            if (dsml_invoke_close_partial(ts->syn, raw, raw_len, ts->parse_pos) ||
                 dsml_param_open_partial(ts->syn, raw, raw_len, ts->parse_pos)) return true;
             if (dsml_param_open_full(ts->syn, raw, raw_len, ts->parse_pos)) {
                 size_t before_pos = ts->parse_pos;
@@ -308,9 +309,24 @@ static bool anthropic_sse_stop_live(int fd, const char *finish,
 
 bool anthropic_sse_finish_live(int fd, server *s, const request *r, const char *id,
                                       anthropic_stream *st, const char *raw,
-                                      size_t raw_len, const tool_calls *calls,
+                                      size_t raw_len, const char *recovered_content,
+                                      const tool_calls *calls,
                                       const char *finish, int completion_tokens) {
     if (!anthropic_sse_stream_update(fd, s, r, id, st, raw, raw_len, true)) return false;
+    /* 流上已经露出的 tool_use 必须与最终解析逐个对上, 对不上就发 error 事件作废这一轮(Claude Code 见 error 自动重试), 不报 stop_reason=tool_use;
+     * 原因与做法同 openai_sse_finish_live。工具块投影保持边生成边发: Claude Code 的流看门狗只认真事件, ping 连续 30 个以后不再续命(2.1.301 实读),
+     * 写长文件的块扣到收尾才发会被它判断流超时 */
+    const int ncalls = calls ? calls->len : 0;
+    if (st->tool.emitted_any && (st->tool.state != DSML_TOOL_DONE || st->tool.index != ncalls))
+        return sse_error_event(fd, r, "model produced a malformed tool call; the partial tool_use already streamed is void");
+    /* 还没露出任何 tool_use 就被最终解析否决: 扣住的原文补成一个 text 块, 与非流式回的 text 一致(做法同 responses_sse_finish_live) */
+    if (recovered_content && raw && !st->tool.emitted_any && st->emit_pos < raw_len) {
+        if (!anthropic_sse_open_block(fd, st, ANTH_BLOCK_TEXT)) return false;
+        if (!anthropic_sse_delta_live(fd, st, ANTH_BLOCK_TEXT, raw + st->emit_pos, raw_len - st->emit_pos)) return false;
+        if (!anthropic_sse_close_block_live(fd, id, st)) return false;
+        st->sent_text = true;
+        st->emit_pos = raw_len;
+    }
 
     if (st->sent_thinking && !st->sent_text && (!calls || calls->len == 0)) {
         if (!anthropic_sse_open_block(fd, st, ANTH_BLOCK_TEXT)) return false;

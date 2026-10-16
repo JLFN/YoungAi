@@ -54,6 +54,7 @@ void ds4_server_unit_tests_run(void) {
     test_anthropic_usage_reports_cache_details();
     test_anthropic_tool_stream_sends_live_tool_use();
     test_openai_tool_stream_sends_incremental_text();
+    test_tool_stream_agrees_with_final_parse();   /* 10-16: 流上露出的工具调用与最终解析同一个结论, 对不上报 error */
     test_openai_stream_usage_reports_cache_details();
     test_responses_usage_reports_cache_details();
     test_openai_chat_stream_splits_reasoning_without_tools();

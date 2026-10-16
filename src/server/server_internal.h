@@ -145,7 +145,7 @@ bool raw_full_lit(const char *raw, size_t raw_len, size_t pos, const char *lit);
 bool raw_partial_lit(const char *raw, size_t raw_len, size_t pos, const char *lit);
 bool raw_partial_any(const char *raw, size_t raw_len, size_t pos, const char *a, const char *b);
 bool text_stream_stray_think(const char *raw, size_t pos, size_t raw_len, bool has_tools, size_t *cut);   /* 正文里游离 </think> 的位置(server_anthropic_stream.c) */
-/* 参数开标签: 本写法的, 或裸 "<parameter "(见 server_dsml_parse.c dsml_param_open_len) */
+/* 参数开标签: 本写法的, 或裸 "<parameter "(见 server_dsml_alias.c) */
 size_t dsml_param_open_len(const dsml_syntax *syn, const char *p);
 bool dsml_param_open_full(const dsml_syntax *syn, const char *raw, size_t raw_len, size_t pos);
 bool dsml_param_open_partial(const dsml_syntax *syn, const char *raw, size_t raw_len, size_t pos);
@@ -153,6 +153,9 @@ bool dsml_param_open_partial(const dsml_syntax *syn, const char *raw, size_t raw
 size_t dsml_param_close_len(const dsml_syntax *syn, const char *raw, size_t raw_len, size_t pos);
 bool dsml_param_close_partial(const dsml_syntax *syn, const char *raw, size_t raw_len, size_t pos, size_t min_len);
 const char *dsml_param_close_find(const dsml_syntax *syn, const char *s, size_t n, size_t *len_out);
+/* invoke 闭标签: 本写法的, 或裸 "</invoke>"(见 server_dsml_alias.c); 最终解析、KV 语法跟踪、两条流式投影一律经这两个, 别直接比 syn->invoke_end */
+size_t dsml_invoke_close_len(const dsml_syntax *syn, const char *raw, size_t raw_len, size_t pos);
+bool dsml_invoke_close_partial(const dsml_syntax *syn, const char *raw, size_t raw_len, size_t pos);
 const char *find_lit_bounded(const char *s, size_t n, const char *lit);
 bool dsml_decode_state_is_tool(dsml_decode_state state);
 bool dsml_decode_state_is_syntax(dsml_decode_state state);
@@ -162,7 +165,7 @@ size_t tool_param_value_stream_safe_len(const char *raw, size_t start, size_t ra
 const dsml_syntax *dsml_render_syntax(void);
 char *dsml_value_unescape(const dsml_syntax *syn, const char *s);
 bool openai_sse_stream_update(int fd, server *s, const request *r, const char *id, openai_stream *st, const char *raw, size_t raw_len, bool final);
-bool openai_sse_finish_live(int fd, server *s, const request *r, const char *id, openai_stream *st, const char *raw, size_t raw_len, const tool_calls *calls, const char *finish, int prompt_tokens, int completion_tokens);
+bool openai_sse_finish_live(int fd, server *s, const request *r, const char *id, openai_stream *st, const char *raw, size_t raw_len, const char *recovered_content, const tool_calls *calls, const char *finish, int prompt_tokens, int completion_tokens);   /* recovered_content 非空 = 最终解析没认下工具块 */
 bool request_uses_openai_live_stream(const request *r);
 bool request_uses_responses_live_stream(const request *r);
 bool request_uses_structured_stream(const request *r);
@@ -209,7 +212,7 @@ bool anthropic_tool_start_param(int fd, anthropic_stream *st, const char *raw, s
 bool anthropic_tool_finish_param(int fd, anthropic_stream *st, const char *raw, size_t value_end, size_t end_len);
 size_t text_stream_safe_limit(const char *raw, size_t start, size_t raw_len, bool has_tools, bool final);
 bool anthropic_sse_stream_update(int fd, server *s, const request *r, const char *id, anthropic_stream *st, const char *raw, size_t raw_len, bool final);
-bool anthropic_sse_finish_live(int fd, server *s, const request *r, const char *id, anthropic_stream *st, const char *raw, size_t raw_len, const tool_calls *calls, const char *finish, int completion_tokens);
+bool anthropic_sse_finish_live(int fd, server *s, const request *r, const char *id, anthropic_stream *st, const char *raw, size_t raw_len, const char *recovered_content, const tool_calls *calls, const char *finish, int completion_tokens);   /* 同 openai_sse_finish_live */
 double now_sec(void);
 void server_log(ds4_log_type type, const char *fmt, ...);
 int tool_memory_max_entries(const tool_memory *m);
