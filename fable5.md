@@ -11563,6 +11563,34 @@ A = 只在提示里找(Strata 默认索引范围), B = 提示 + 已生成都找;
 - **第四趟(4f427e720e69)**: **70 s, 1 次 edit_image(1.25 s), end: done**。点集 4 正(帽子/身/两侧) + 2 负(衣架), 一次成。回答原文: "我来把它改成黑色：用 recolor 把整件衣服（帽子、衣身、袖子）选成黑色，木衣架单独避开。改好了，衣服已经变成黑色，木衣架保持了原来的棕色。文件在这儿，点下面就能下载：- `inbox/hoodie-black.png`（1284x1718 PNG）如果你想连纽扣也一起变黑，或者换个更纯的黑（比如纯黑 #000），跟我说一声我再调。" 对照 10-15 上午同一句话: 28 分钟思考环零产出 / 修采样后 14 次纯分析零产出。成品图看过(记在下一行)。
   成品图(hoodie-black.png, 发了用户): 帽子/衣身/两袖/罗纹下摆全黑, 褶皱纽扣在, 木衣架棕色不动, 流苏边软; 掩膜 38.5%。全部未提交(改动: Makefile, src/image/ 5, src/seg/ 11 + metal/seg.metal, tools/tool_image.c, asst_tools.c/asst_run.c/asst_device.c/asst_internal.h/sbx_guard.c, tests/image tests/seg tests/asst/t_asst_image.c, sync_spark.sh, docs/assistant_image.md/assistant_arch.md)。欠账: Mac 沙盒里 Metal 可用性没测(ds4-seg 是主进程 spawn, 不进沙盒, 所以不影响); 模型页"下载分割权重"入口; recolor 之外的 op 没过真模型门。
 
+## 10-16 · 助理审批机制: 付款必须审批, 方案稿(用户: "设计助手里面审批机制，比如付款场景必须要审批，先落地设计文档"; 未动代码)
+
+- **方案稿 `docs/assistant_approval.md`**。先读现状: 守门只按路径/域名分档, 危险模式下 `phone_*` 一律放行(10-13 定), 所以付款和刷视频对守门是同一件事; 审批卡对云手机只有 `x,y` = 盲签; 等审批不推送(推送只在收尾); 6 位支付密码不在 `asst_secret_like` 里且 `phone_type` 根本不过它。
+- **结论: 审批分两档**。现有一档不动; 新加 **交易** 类(`cls=pay`: 付款 / 下单 / 登录): 每次都问、只能"仅这次"、不能存本会话/总是、policy 关不掉、授权表对 pay 类永远 false(两层各自成立)。
+- **判"这是付款" = 守门里三条确定性信号, 任一命中即问**: ① 此刻前台窗口 FLAG_SECURE(app 自己声明的支付/登录/密码页); ② 落点下最小元素的 text/content-desc 在交易词表(确认支付/立即支付/提交订单/塞钱进红包/Pay/Place order…), `enter`/`swipe`/命中不到元素时看整屏"金额字样 + 交易词"; ③ 前台 activity 名在收银台表(**表空着进代码, 门 0 真机抄一条填一条, 不编**)。三条并联互补漏洞(免密确认页 → ②③, 图标按钮 → ①③, 新 app → ①②), 误报方向只是多问一次。
+- **代价零往返**: `phone_tap` 动作前已跑一次 `dumpsys window`(ime_state), 扩成同时取 mFocusedApp + SECURE; 元素命中用上一帧 look() 的表(内存)。swipe/key/type 多一次 dumpsys(~0.3 s)。读不到屏幕状态 = 拒(禁兜底)。
+- **密码永不经模型**: SECURE 窗口上的 `phone_type` 直接拒(不是问), 用户在云手机页签输(`/api/phone/text` 不经模型, 同短信验证码路)。微信/支付宝密码键盘认不认 `input text` 没验, 门 2 ① 验; 不认 = 云手机付款停在密码页(可接受: 用户要的是必须审批, 不是必须付成)。
+- **审批卡 pay 变体**: approval 事件加 `cls` + `pay:{app, secure, screen, at, hit, amounts, frame_age_s}`; 页面红卡 = 截图+落点红圈 / 屏幕上的金额字样原样 / 命中原因 / "模型没看过这个屏幕"黄字 / 只有 仅这次·拒绝。禁截屏页写明"只知道是 <包>/<页> 的安全窗口, 拿不准就拒"。
+- **等审批推送(对所有审批)**: `wait_answer` 写完事件调 `asst_notify_approval` → "需要你批准: 付款 ¥0.01 · 微信", 在场压着照 6.1 规则。诚实边界: 一次一个运行, 卡挂着全队列停; 不加超时自动拒; 主进程重启丢审批是今天所有审批共有的边界, 不修。
+- **与铁律对照**: 提示词零改动; 页面不猜; 不请第二模型; 词表/收银台表与 hard_warn/sensitive/Luhn 同族(安全策略的确定性表); 无旋钮(无金额阈值/白名单 app/免审批开关)。
+- **我定的两处**: 下单(提交订单/立即购买/立即下单)算交易(免密下单即扣款); 登录页也走这张卡(账号交出去同样不可逆, 且登录页模型只能点不能打字)。
+- **门**: 门 0 spark 抄表(微信红包 ¥0.01 到塞钱页+密码页, 支付宝充值 ¥1 到确认页, 抄 activity/SECURE/按钮文字/金额元素); 门 1 离线 `asst pay` ~25 项(夹具 cashier/secure/feed) + e2e 3 项; 门 2 真机四条: 红包弹卡→拒不重试→批准→密码页拒+页签输; 支付宝/抖音 ≥20 步误问 ≤1; 关页 20 s 内推送落卡; enter/swipe 同样弹卡。
+- **代码落点**: 新 `src/sandbox/sbx_pay.c`(~220); sbx_guard phone 分支 + acts 加 pay; sbx_policy 授权表拒 pay; tool_phone.c 存上一帧 + dumpsys 扩字段; asst_run 事件带 extra + 调推送; asst_notify_approval; studio.html pay 卡; t_asst_phone.c + fixtures; docs/assistant.md §4.1 已加一行指过来; README 免责声明改"付款/登录前会问你"。
+
+## 10-16 · 交易审批落地(用户: "实现代码"; 未提交, 真模型门没跑)
+
+- **门 0(spark 云手机, 只读)**: 微信英文界面。发红包页 `com.tencent.mm.plugin.luckymoney.ui.LuckyMoneyNewPrepareUI`、转账页 `…plugin.remittance.ui.RemittanceUI` 都是 **382 字节空控件树、fl 里没有 SECURE** ⇒ 信号 ①② 在微信上全瞎, 只有 ③ 页面表抓得住。转账页点 0 . 0 1 → Transfer 进密码页 `…framework.app.UIPageFragmentActivity`: `fl=LAYOUT_IN_SCREEN SECURE …`, screencap 0 字节。到密码页按返回退出, 截图核过转账页仍是 ¥0.01 未付、聊天页没多出消息。抄现场脚本 `tests/phone/pay_capture.sh`, 原文 dumpsys 进 `tests/asst/fixtures/phone/` 四份(只有窗口名)。顺带: REST 截图失败原文案"手机多半内存不够"在密码页上是错的方向, 改成两个原因都说。
+- **代码**: 新 `src/sandbox/sbx_pay.c`(184 行): 一条 dumpsys(`mCurrentFocus`/`mFocusedApp`/`ITYPE_IME` + 窗口表 `fl=` 行)解析出焦点窗口/SECURE/键盘; 三信号判定是纯函数(单测喂真机夹具); 收银台表两行(只放门 0 抄到的); 命中且非 SECURE 时现场截一张 `.phone/pay-<t>.png` 给卡片。守门 phone 分支: 读不到前台拒 / 安全窗口打字拒 / 命中 → `cls=pay` ASK once_only warn + extra; 授权表对 pay 永远 false(两层各自成立); 污点按 phone 记。`tool_phone.c`: look() 存上一帧(控件树+焦点+时刻), 键盘判断改用共用读取(守门 3 s 内读过的直接用), 加 `asst_phone_hit`(包含落点的最小带字元素)/`asst_phone_texts`。`asst_run.c`: approval 事件与审计带 `cls`+`pay`, 弹卡调 `asst_notify_approval`(对所有审批: "需要你批准: 付款 ¥0.01 · com.tencent.mm" / "需要你批准: write_file /x")。页面: 交易红卡(包名 · 现场截图 + 红圈 · 金额原样 · 安全窗口说明 · "模型没看过这个屏幕" · 只有两键)。
+- **门 1**: Mac `make test` 全绿(含 linecount); `ds4_asst_test` 新段 asst pay 34/34(Mac, spark; spark 含真读前台一项), push 76/76(+3 审批推送, 明文逐字节核), 其余段计数不变; `make asst-e2e` 106/106(+4: 往事件流追加 pay 审批, 核红头/两键/红圈落点 (360,900)/安全窗口那张)。第一趟 e2e 撞上横图把卡片撑宽, 样式改 max-height+max-width。
+- **没做 / 待定**: 真模型门 2 要重起 spark 生产 ds4-train(换二进制, 模型子进程跟着重装), 没动。微信没控件树 ⇒ 转 ¥0.01 = 4 个数字键 + Transfer = 5 张卡; "同页批一次管到底"是收窄选项, 代价是批第一个键时看不到最终金额 —— 等用户定(方案稿 §9 第 3 条)。
+- **真模型门(同日, spark 生产; 主进程 stop/start 换二进制三次, 模型子进程 1621070 没动, 穿透 frpc 每次跟着起)**:
+  ① "用云手机里的微信给老婆转账 0.01 元"(探针 `asst_send_probe.sh` 加第 7 参数: 审批卡按顺序代答, 用完一律 deny): open → 点 + (第一次点偏, view_image 看清后点中) → Transfer → 转账页点金额框 (130,460) **弹交易卡** `payment page …RemittanceUI`, 卡上现场截图 = 空金额转账页; deny 后模型原话"这一步涉及真金白银, 得你点头才行。要我把 0.01 填进去并确认发出吗?", 没重试。推送同秒 "需要你批准: 付款 · com.tencent.mm" → Android App http 201。审计行 cls pay / decision denied / pay 附加全在。
+  ② 误问率: 抖音刷 10 条(11 swipe + 1 tap 关未成年弹窗) 12 次、微信转账页之前 4 次、饿了么 3 + 19 次 ⇒ 38 次 auto, **0 误问**; **1 次误拒**: 饿了么起到阿里风控容器 ContainerActivity 白屏, `mCurrentFocus=null`, 我把它当读失败拒了 ⇒ 改成用 mFocusedApp 页面名(短名展开)对表、查窗口 SECURE, 夹具 nofocus.win, asst pay 34 → 38。
+  顺带撞出: 截图失败文案里的 "check Settings → danger mode memory" 原样进工具结果, 模型去手机设置里搜 danger/memory 搜了 30 分钟(饿了么第二轮跑满探针 1800 s, 手动 stop) ⇒ 文案只写事实"两种原因, 在手机里都改不了"。饿了么本身卡在风控容器白屏/黑屏是 app 侧环境检测, 不是审批的事。
+- **改口径(用户: "最后打款的那个行为再审批")**: 收银台页面表删(那两页都是付钱前的页), 词表只留"按了钱就出去"的(去掉 转账/发红包/立即购买/去结算/Transfer/Prepare Red Packet 等入口词); 安全窗口卡上放"进这页前最后一屏"(上次截成功的, ≤600 s); 安全窗口批一次管同一窗口编号, 关了失效; asst pay 47 → 49(+2 读前台命令口径)。e2e 106/106(安全窗口卡带最后一屏、"批一次管这一页")。
+  真机三趟转 0.01: ① 前台读错, 没走到(见下); ② 填金额/点 Transfer 不问, 密码页点 (360,665) → 唯一一张卡, deny, 停; 但 before 为空 —— 点 Transfer 后那帧截在过渡动画(¥0.01 + Weixin Pay 加载框)而同帧前台已是密码页, "必须是别的页"条件把它排除了, 删掉; ③ 进密码页没点就退出, 无卡。删条件后的"最后一屏"没在真机上走到。
+- **老 bug(真机撞出, 已修)**: 整份 `dumpsys window` 开头的 LAST ANR 段带旧焦点(饿了么风控页 ANR 后是 null + me.ele), head -1 取到它 ⇒ 一次只开一个 app 的清场每点一下都 force-stop 微信本身, 模型 25 分钟在桌面/抽屉打转(会话 25f24753b710)。sbx_pay / sbx_phone 清场 / oneapp_probe / pay_capture 全改 `dumpsys window displays`; oneapp_probe 修后两趟四步对。另有一趟中途手机 Android 框架整个重启(zygote/system_server 08:11:57 新起, 无 OOM), 饿了么卡风控 13 分钟攒 66 份 ANR, 原因在 root-only dropbox 未查。
+
 ## 10-16 · YoungAi issue #2: read_file 缺参/坏参被当成功(已修)
 
 - **现象**(外部报告, 846c929, 当前 HEAD 照样复现): `read_file {}` / `{"path":null}` / `{"path":123}` / 坏 JSON `{"path":coding-eval/total.py}` / `"."` 全回 `ok:true` + `<工作区>: 0 lines; start 1 is past the end`。
@@ -11582,3 +11610,13 @@ A = 只在提示里找(Strata 默认索引范围), B = 提示 + 已生成都找;
 - **★推翻的方案★**: 先做过"工具块扣到收尾再发 + 解码心跳"。读 Claude Code 2.1.301 实现: 流看门狗默认开、空闲阈值 ≥300 s, 只认 SDK 事件; `ping` 连续 30 个(`IKr=30`)后不再续命, `:` 注释行完全不算 ⇒ 扣着发最多撑约 7.5 分钟, 长上下文写上千行文件必断。上游边生成边投影是 Claude Code 能用的前提, 不能拆。
 - **验证**: Mac `make test` 全绿; spark `ds4_test --server` 绿; `server_tests_tool_agree.c` 九用例 × 两协议, 撤掉别名或撤掉报错分支都失败。spark 换新 ds4-server(model-restart, 100 s 装回)后: 助理不带参数调 read_file → 参数 `{}` + `"path" is required`; 正常写读列三次 ok; Claude Code(默认流超时, `cc_smoke_v3p.sh remote`)修 Clamp bug 6 次工具调用成功; 写 300 行文件一次 Write(约 2400 token 工具块, 66 s)完整正确。
 - **没覆盖**: 真模型几次都写标准标签, 裸 `</invoke>` 只有单测按 trace 原字节覆盖; 没跑 7 分钟以上的工具块; 模型写坏块时助理整轮报错、没有自动重试。
+
+## 10-16 晚 · 微信写死的按钮表(用户: "微信操作比较依赖视觉, 经常选错…位置都是固定的, 记下每一个固定位置按钮" → "微信是固定的可以写死的")
+
+- **现场**: 微信 8.0.79(versionCode 3200)英文界面 720×1280。`uiautomator dump` 在聊天页 381 字节空树, `settings put secure accessibility_enabled 1` 后仍 381, 每次 1964~1984 ms(三次)。`dumpsys activity top` 有完整 View 树(混淆 id + 相对父的边框), 一次十几毫秒。
+- **树的两个盲区(实测)**: ① 键盘/+ 面板弹起时输入栏整体上移 526(1134→608), 树里还在 1134(平移不进树); ② 切到 Contacts Tab 后树里还是会话列表(ViewPager 滚动不进树)。右上 + 菜单是单独 PopupWindow, 不在树里, 且它开着时焦点窗口是 `PopupWindow:…`, `mFocusedApp` 行名字后紧跟 `}`。
+- **做法**: `src/assistant/tools/tool_phone_wx.c`(198 行): 认页面 = 焦点 activity + 树里的 id(聊天页 `bkb`)+ 截图固定像素(底栏绿字认 Tab; x=677 竖笔深 25/上下浅 247 认 + 号, 纯绿 7,193,96 认发送键, 取绿块上下沿中点; 面板白格认 + 面板); 坐标 = 树实时值, 输入栏按扫到的位置平移; 产出 uiautomator 格式 XML, 元素表/交易审批照旧。版本不是 3200 整张表不用并写原因; 认不出的页退回老路。look() 先读前台, 是微信就不跑 uiautomator。
+- **门**: 本机用 6 张真截图 + 完整 dump 跑判页面全对(打字后发送键第一版算成 616, 实为 608 —— 判据成立段偏下 8 像素, 改按绿块上下沿取中后 607); 离线单测 phone 30 → 38(Mac / spark), 夹具只留 ACTIVITY 行 + 可见子树(原 dump 带 wxid, 已剪掉), 截图在测试里现画; linecount ok。
+  真机门 `tests/phone/wx_probe.sh 4`(spark, 每步按表坐标点、看到没到该到的页): 第一趟 10/13 —— 右上菜单整张表没出(焦点是 PopupWindow, 再撞 `}` 结尾), 另两条是探针自己没重看屏/返回层数写死; 修后 **13/13**: Chats → + 菜单 → Contacts → Chats → 搜索页 → 第 4 行聊天 → 点输入框(键盘弹, 输入栏 y=608) → 打 a 出 Send → 删掉回 + → + 面板八格 → 点 Gallery 进 LocalMediaPickerUI → 返回到首页。只打过一个 a 并删掉, 没点 Send, 没进转账页。
+- **耗时**: 一次看屏(截图 + 表)164~271 ms, 原先光 uiautomator 1.97 s 还是空树。
+- **没做**: 生产 ds4-train 没重启(新二进制已在 spark 编好, 换上才生效); 没跑真模型端到端; 朋友圈/个人资料/红包页/Me/Discover 的标题按钮没抄, 这些页退回看截图。未提交。
