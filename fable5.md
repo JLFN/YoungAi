@@ -11620,3 +11620,10 @@ A = 只在提示里找(Strata 默认索引范围), B = 提示 + 已生成都找;
   真机门 `tests/phone/wx_probe.sh 4`(spark, 每步按表坐标点、看到没到该到的页): 第一趟 10/13 —— 右上菜单整张表没出(焦点是 PopupWindow, 再撞 `}` 结尾), 另两条是探针自己没重看屏/返回层数写死; 修后 **13/13**: Chats → + 菜单 → Contacts → Chats → 搜索页 → 第 4 行聊天 → 点输入框(键盘弹, 输入栏 y=608) → 打 a 出 Send → 删掉回 + → + 面板八格 → 点 Gallery 进 LocalMediaPickerUI → 返回到首页。只打过一个 a 并删掉, 没点 Send, 没进转账页。
 - **耗时**: 一次看屏(截图 + 表)164~271 ms, 原先光 uiautomator 1.97 s 还是空树。
 - **没做**: 生产 ds4-train 没重启(新二进制已在 spark 编好, 换上才生效); 没跑真模型端到端; 朋友圈/个人资料/红包页/Me/Discover 的标题按钮没抄, 这些页退回看截图。未提交。
+
+## 10-16 夜 · 助理生成网页 + 页面里直接预览(用户: "助手支持生成网页并且可以预览"; 未提交)
+- **做了什么**: 模型 `write_file` 写的 .html, 文件卡"预览"在卡里 iframe 真渲染, "打开"整页看。不加工具, 只在 write_file 描述里加一句(沙盒无网络、资源用同目录相对路径)。方案稿 `docs/assistant_page.md`。
+- **为什么不能直接按 text/html 开**: `/api/assistant/file` 和工作台同源, 网页脚本(模型写的, 可能被注入)能读 localStorage 的登录票打 /api。另开 `GET /p/<口令>/<路径>`: 响应头 CSP `sandbox allow-scripts allow-modals` + `connect-src 'none'` 等, 文档成不透明源; 口令只能由已登录页面 POST /api/assistant/preview 换(登录票在 localStorage, iframe/新标签带不上, 口令就是登录的延伸), 128 位、60 分钟、表 64 条、只放网页所在目录子树(网页在工作区根上时只放根上一层)。
+- **门**: `ds4_asst_test` 预览段 35/35; `make asst-e2e` 预览段 8 项全过, iframe 里原文 `ls:blocked parent:blocked origin:null js:loaded fetch:blocked img:loaded`, "打开"新标签页 `ls:blocked parent:self origin:null js:loaded fetch:blocked img:loaded`, Host 改成 rewritten.invalid 后(只剩 'self')资源照样加载; `make test` 全绿含 linecount。
+- **判决**: 曾写第 ② 刀 `view_page`(火狐截图 + 控制台错误回给模型), 用户: "直接 HTML 就能渲染, 不要截图" → 整刀回滚(tool_page.c 删、注册/守门/声明/单测撤、tool_browser.c/tool_video.c 还原)。
+- **没做**: spark 真模型 + 手机 https 门没跑; 没同步 spark; 未提交。
