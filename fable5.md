@@ -11635,3 +11635,12 @@ A = 只在提示里找(Strata 默认索引范围), B = 提示 + 已生成都找;
 - **源码可疑点(未证实)**: AOSP android13 lmkd.cpp 2325 行 `start_wait_for_proc_kill(pidfd < 0 ? pid : pidfd)`: pidfd 拿不到时把 pid 号当 fd 进 epoll, 等完 `close()` 它, pid 号若撞上 lmkd 自己的 fd 会关掉自家 socket / PSI 监听, 之后加减不配对。日志 `gguf/phone/lmkd_1016.log`(42 MB)。
 - **恢复**: 经 /api/phone/disable → enable 重启云手机(/data 不动), 23:15 ready; 盯 110 s system_server pid 不变, 新 lmkd CPU 0%, 首页 0.4 ms、phone/status ≤ 9 ms、公网穿透 200。
 - **待办(未动)**: ① 主进程里手机状态探测别在单线程主循环上同步等 adb(手机一坏整个工作台跟着卡); ② lmkd 空转会再犯, 要么查清多减的路径, 要么手机侧加检测(system_server 连续被看门狗杀 → 重启手机)。
+
+## 10-16 夜 · 鹈鹕骑车会话停不下来 = 思考段收口位吐不出 `</think>`(只读诊断, 未动代码)
+- **盘上(spark 会话 3946336dfce1, 23:34 手机发"创建一个HTML，内容是SVG绘制一个鹈鹕骑自行车的2D动画")**: 一轮请求 prompt 8240 / 生成 31161 token / 750 s, 31016 个 think 增量、0 text、0 工具调用, 用户按停(`finish: error` / `end stopped`)。trace `serve_20261016_193238.txt`: think_mode high, 温 1.0 / top_p 1.0 / min_p 0.02(10-15 的采样修已在)。
+- **思考里干了什么**: 前 ~10 万字符把整页 HTML 在思考里写了两遍(`<!DOCTYPE html>` 在思考第 263、630 行, 共 281 个标签), 10-13 加的"别在思考里先写一遍"那条在 system.txt 里, 模型没听。第 1825 行自己写 "(End thinking.) Then call.", 之后 470 行全是 "Let me write. / Now. / Ok. / Let me produce." 的近似环(不是逐字环, 措辞在几种之间换), `</think>` 一次没出。
+- **同病第二条**: 6dc60dd8a570(10-16 13:47, 饿了么只看不买), 32 次工具调用后思考 21.9 万字符, 第 888 行起 1.3 万行 "Hmm, I'll answer now. / Hmm, final answer text." 没收口, 用户按停。
+- **频率**: spark 109 轮里 13 轮 stopped; 思考 >10 万字符没收口的 3 条(77fa13 10-15 top_p 0.95 时代 / 6dc60d / 3946336), 后两条都在 min_p 0.02 之后。
+- **判读(待量)**: 环里每个行首都是"该收口了"的决策位。6dc60d 有 ~6500 个这样的位, 若 `</think>` 被保留且 p ≥ 0.1%, 一次不出的概率 e^-6.5 ≈ 0.15% ⇒ 要么 p < 1e-4(模型), 要么它落在 min_p 门 0.02×p(top-1) 以下被截掉(环里 top-1 0.6~0.9 时门槛 1.2%~1.8%, 跟 10-15 top_p 0.95 吸收态同一机制, 只是刀口低了)。服务端没 logprobs, 要停模型子进程用 `bugmd_gates_spark.sh scoreids` 重打分这两段, 读行首位的 p(`</think>`) 和 min_p 门。
+- **方案(按量出来的结果二选一)**: ① 被 min_p 截 ⇒ 采样截断(min_p/top_p)不作用于结构控制 token(`</think>`、EOS、工具块起始), 它们按模型原始概率参与采样 —— 截断是为切正文乱码长尾(10-12 那批 p<9e-4), 控制位不是正文; CUDA 采样核 + 主机 ds4_sample_logits + Metal 三处同改。② p 本身 <1e-4 ⇒ 采样器救不了, 病根在权重(09-30 待办: 量化把收口压 4~22 倍, 反修/③料加整篇结尾与推理集); 产品层能做的只剩思考预算强制收口, 属兜底, 要用户定。
+- 另: "思考里先写全文"让收口位推迟到 3 万 token 之后, 是诱因不是病根; 10-13 的提示词规则实测无效。
