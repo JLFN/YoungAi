@@ -3,9 +3,14 @@
 # 夹具=Clamp bug + 失败测试(07-12 同规格, /tmp 被 TTL 清后固化于此)。
 # 栈: v3p+残差 + base-native + --nothink + --tool-primer + soul_v3 + 自由区(默认24)。
 # 门: CC 完成 读文件→改 Clamp bug→跑测试 回路; 原始 stream-json 落 /tmp/cc_v3p_smoke.out。
+# 用法: cc_smoke_v3p.sh                → 本机起 v3p 栈再测(原用法)
+#       cc_smoke_v3p.sh remote <端口> [任务] → 不起服务端, 直连已在跑的 ds4-server(例: ssh -L 把 spark 的 127.0.0.1:8001 拉到本机端口),
+#                                        Claude Code 用户的默认配置(不调大流空闲超时), 测的就是"按 API 接 Claude Code 能不能正常用"(10-16)
+#                                        任务缺省 = 修 Clamp bug 再跑测试; 给了就换成它(例: 写一个几百行的文件, 测长参数 tool_use 不被流看门狗掐断)
 set -uo pipefail
 cd "$(dirname "$0")/../.."
-PORT=8023
+MODE="${1:-local}"
+PORT=8023; [ "$MODE" = remote ] && PORT="${2:?remote 要给端口}"
 FIX=/tmp/ccsmoke_v3p
 
 # ── 夹具 ──
@@ -40,6 +45,23 @@ func TestClampBelow(t *testing.T) {
 	}
 }
 EOF
+
+if [ "$MODE" = remote ]; then
+    curl --noproxy '*' -s -o /dev/null -m 10 "http://127.0.0.1:$PORT/v1/models" || { echo "[cc-smoke] 127.0.0.1:$PORT 上没有服务端" >&2; exit 2; }
+    TASK="${3:-Run 'go test ./...'. One test fails because of a bug in clamp.go. Read clamp.go, fix the bug with a minimal edit, then run the test again to prove it passes.}"
+    echo "[cc-smoke] 直连 127.0.0.1:$PORT, 起 claude CLI(max-turns 8)" >&2
+    cd "$FIX"
+    env ANTHROPIC_BASE_URL="http://127.0.0.1:$PORT" ANTHROPIC_AUTH_TOKEN=dsv4-local ANTHROPIC_API_KEY= NO_PROXY='*' no_proxy='*' \
+        ANTHROPIC_MODEL=deepseek-v4-flash ANTHROPIC_DEFAULT_HAIKU_MODEL=deepseek-v4-flash ANTHROPIC_DEFAULT_SONNET_MODEL=deepseek-v4-flash \
+        CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
+      claude -p "$TASK" \
+        --output-format stream-json --verbose --max-turns 8 --dangerously-skip-permissions \
+        > /tmp/cc_remote_smoke.out 2>&1
+    RC=$?
+    echo "[cc-smoke] claude 退出 rc=$RC; 测试: $(cd "$FIX" && go test ./... 2>&1 | tail -1)" >&2
+    echo "[cc-smoke] 原始 stream-json → /tmp/cc_remote_smoke.out" >&2
+    exit $RC
+fi
 
 # ── server(看门狗内嵌) ──
 pkill -9 -x ds4-server 2>/dev/null; sleep 1
