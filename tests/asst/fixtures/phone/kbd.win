@@ -1,0 +1,25 @@
+  mCurrentFocus=Window{11ea208 u0 com.tencent.mm/com.tencent.mm.ui.LauncherUI}
+  mFocusedApp=ActivityRecord{f418ef2 u0 com.tencent.mm/.ui.LauncherUI} t64}
+        InsetsSource type=ITYPE_IME frame=[0,658][720,1280] visibleFrame=[0,658][720,1280] visible=true insetsRoundedCornerFrame=false
+        mSource=InsetsSource type=ITYPE_IME frame=[0,658][720,1280] visibleFrame=[0,658][720,1280] visible=true insetsRoundedCornerFrame=false
+  Window #0 Window{f38278e u0 ScreenDecorOverlayBottom}:
+      fl=NOT_FOCUSABLE NOT_TOUCHABLE NOT_TOUCH_MODAL LAYOUT_IN_SCREEN SPLIT_TOUCH FLAG_SLIPPERY
+  Window #1 Window{f250c24 u0 ScreenDecorOverlay}:
+      fl=NOT_FOCUSABLE NOT_TOUCHABLE NOT_TOUCH_MODAL LAYOUT_IN_SCREEN SPLIT_TOUCH FLAG_SLIPPERY
+  Window #2 Window{99e20c7 u0 NavigationBar0}:
+      fl=NOT_FOCUSABLE NOT_TOUCH_MODAL TOUCHABLE_WHEN_WAKING WATCH_OUTSIDE_TOUCH SPLIT_TOUCH HARDWARE_ACCELERATED FLAG_SLIPPERY
+  Window #3 Window{c728678 u0 NotificationShade}:
+      fl=NOT_FOCUSABLE TOUCHABLE_WHEN_WAKING WATCH_OUTSIDE_TOUCH SPLIT_TOUCH HARDWARE_ACCELERATED DRAWS_SYSTEM_BAR_BACKGROUNDS
+  Window #4 Window{3c8989 u0 StatusBar}:
+      fl=NOT_FOCUSABLE SPLIT_TOUCH HARDWARE_ACCELERATED DRAWS_SYSTEM_BAR_BACKGROUNDS
+  Window #5 Window{92cfb0 u0 ShellDropTarget}:
+      fl=NOT_FOCUSABLE HARDWARE_ACCELERATED
+  Window #6 Window{56bcc12 u0 InputMethod}:
+      fl=NOT_FOCUSABLE LAYOUT_IN_SCREEN SPLIT_TOUCH HARDWARE_ACCELERATED DRAWS_SYSTEM_BAR_BACKGROUNDS
+  Window #7 Window{11ea208 u0 com.tencent.mm/com.tencent.mm.ui.LauncherUI}:
+      fl=LAYOUT_IN_SCREEN LAYOUT_INSET_DECOR SPLIT_TOUCH HARDWARE_ACCELERATED DRAWS_SYSTEM_BAR_BACKGROUNDS
+  Window #8 Window{de87d8d u0 com.android.launcher3/com.android.launcher3.uioverrides.QuickstepLauncher}:
+      fl=LAYOUT_IN_SCREEN LAYOUT_INSET_DECOR SHOW_WALLPAPER SPLIT_TOUCH HARDWARE_ACCELERATED DRAWS_SYSTEM_BAR_BACKGROUNDS
+  Window #9 Window{a3a565e u0 com.android.systemui.wallpapers.ImageWallpaper}:
+      fl=NOT_FOCUSABLE NOT_TOUCHABLE LAYOUT_IN_SCREEN LAYOUT_NO_LIMITS SCALED LAYOUT_INSET_DECOR
+

@@ -26,8 +26,10 @@ static int handle(const tr_req *rq, ds4_buf *out, const char **ctype) {
     return tr_api(rq, out, ctype, 0, g_port);
 }
 
-/* 助理事件流与云手机视频流是长连接: 过了鉴权就把 fd 交给它的线程; 没过返回 false, 落回 handle 答 401/403 */
+/* 助理事件流与云手机视频流是长连接: 过了鉴权就把 fd 交给它的线程; 没过返回 false, 落回 handle 答 401/403。
+ * 网页预览 /p/ 也走这里(不是长连接): 它要自己的响应头(CSP sandbox), handle 的统一响应写不出来; 闸是 URL 里的口令, 不看登录票 */
 static bool takeover(int fd, const tr_req *rq) {
+    if (asst_preview_path(rq->path)) { asst_preview_serve(fd, rq->method, rq->path, rq->host); return true; }
     if (!strcmp(rq->path, "/api/phone/video")) { if (!rq->signed_in) return false; asst_phone_video_attach(fd); return true; }
     if (!asst_sse_path(rq->path)) return false;
     const asst_req a = to_asst(rq); int code; const char *why;

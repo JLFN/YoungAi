@@ -19,4 +19,4 @@ echo "== ② 直接 am start $A(= 桌面图标), 立刻一个动作: A 刚起不
 ./tests/phone/adbprobe shell "am start -n \$(cmd package resolve-activity --brief $A | tail -1) >/dev/null 2>&1" >/dev/null; act; procs
 echo "== ③ 6 s 后再动一下: B 应被停, A 在"; sleep 6; act; procs
 echo "== ④ 回桌面再动一下: 全停"; api key '{"key":"home"}' >/dev/null; sleep 2; act; procs
-echo "== 焦点"; ./tests/phone/adbprobe shell "dumpsys window | grep mFocusedApp" | head -1
+echo "== 焦点"; ./tests/phone/adbprobe shell "dumpsys window displays | grep mFocusedApp" | head -1

@@ -11,7 +11,7 @@
  * 为什么不等页面进 serving 态: macOS 上主进程不扫进程表, 认不出外来的假模型; 这里直接调页面的 send()(发消息那条路照样走设备信息与能力表), serving 门是 train_model 的事, 另有单测。
  * 跑完: 杀两个进程; 测试建的会话挪进 ~/.ds4/assistant/trash/sessions/(与页面删除同路), 报告文件与 inbox 删掉; 本来没有登录文件的话把测试设的那份删掉。 */
 import { spawn, execSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, renameSync, rmSync, mkdirSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, readdirSync, renameSync, rmSync, mkdirSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { createServer } from "node:net";
 import path from "node:path";
@@ -122,6 +122,24 @@ const dl = page.waitForEvent("download", { timeout: 8000 });
 await page.locator(".deliver button", { hasText: "下载" }).first().click();
 const d = await dl; const dlPath = await d.path();
 ok(dlPath && readFileSync(dlPath).equals(readFileSync(report)), "下载字节与盘上文件一致");
+/* 预览(10-16 用户实撞: 点一次叠一张, 有时点了没反应): 取文件拖慢 800 ms 模拟穿透网络, 还没回来时连点两下 = 开了又关, 不许叠出两份;
+   清掉缓存再点开 = 当下就有"读取中"占位、按钮实心(.on), 回来后占位换成内容、仍一份;
+   条目被整张重建(流式时 dirty 就会)后预览还在、仍是一份; 再点关掉 = 零份、按钮不实心 */
+await page.route("**/api/assistant/file?**", async r => { await sleep(800); await r.continue(); });
+const pvBtn = () => page.locator(".deliver").first().locator("button.pvbtn"), pvN = () => page.locator(".deliver").first().locator(".pvbody").count();
+await page.evaluate(() => { const b = document.querySelector(".deliver button.pvbtn"); b.click(); b.click(); }); await sleep(1200);
+ok((await pvN()) === 0 && !(await pvBtn().getAttribute("class")).includes("on"), "预览连点两下 = 开了又关, 没叠出内容");
+await page.evaluate(() => { for (const it of view.items) if (it.pv) { delete it.pv; it.dirty = true; } renderChat(); }); await sleep(200);
+await pvBtn().click(); await sleep(100);
+const pvLoad = await page.locator(".deliver").first().locator(".pvload").textContent().catch(() => null);
+ok(pvLoad === "读取中…" && (await pvN()) === 1 && (await pvBtn().getAttribute("class")).includes("on"), "点开当下: 读取中占位 + 按钮实心: " + pvLoad);
+await sleep(1200);
+ok((await pvN()) === 1 && (await page.locator(".deliver").first().locator(".pvload").count()) === 0 && (await page.locator(".deliver").first().locator("pre.pvbody").count()) === 1, "内容回来: 占位换成正文, 仍一份");
+await page.unroute("**/api/assistant/file?**");
+await page.evaluate(() => { for (const it of view.items) it.dirty = true; renderChat(); }); await sleep(200);
+ok((await pvN()) === 1 && (await pvBtn().getAttribute("class")).includes("on"), "卡重建后预览还在, 仍一份");
+await pvBtn().click(); await sleep(200);
+ok((await pvN()) === 0 && !(await pvBtn().getAttribute("class")).includes("on"), "再点关掉: 零份, 按钮恢复");
 /* 动作按钮 */
 const navHref = await page.locator(".tool.dev a", { hasText: "导航" }).getAttribute("href");
 ok(navHref === "maps://?q=%E9%BE%99%E4%BA%95%E8%8D%89%E5%A0%82&sll=30.2741,120.1551", "导航是真链接, iPhone 走 maps:// 开地图 App: " + navHref);
@@ -224,19 +242,22 @@ const skDir = path.join(ASST, "skills", "e2e-weekly-report");
   await ctxm.close();
 }
 
-/* ---- 任务页(10-14): 一句话创建 → 盘上 tasks/<id>.json + 专属会话(meta.task) → 假模型跑完第一遍 → 行里"跟进 1 次 · 下次 …" → 打开 = 进它的对话 → 删除进 trash ---- */
+/* ---- 任务页(10-14): 一句话创建 → 盘上 tasks/<id>.json + 专属会话(meta.task) → 假模型跑完第一遍 → 行里"跟进 1 次 · 下次 …" → 打开 = 进它的对话 → 删除进 trash
+   10-16 页面上的一句话输入框和定时提醒卡删了(新建 = 右下角"+"进助理聊): 创建这一步改走同一个接口 POST tasks {op:add}, 后面照旧 ---- */
 const tasksDir = path.join(ASST, "tasks");
 {
   const beforeTasks = new Set(existsSync(tasksDir) ? readdirSync(tasksDir) : []);
   const ctx5 = await browser.newContext({ locale: "zh-CN" });
   const p5 = await ctx5.newPage(); p5.on("pageerror", e => console.log("pageerror:", e.message));
   await p5.goto(`http://127.0.0.1:${PORT}/#tasks`); await login(p5); await sleep(300);
-  ok(await p5.evaluate(() => curTab()) === "tasks" && await p5.locator("#tk-text").isVisible(), "任务页打开, 有一句话输入框");
-  /* 通知卡 10-15 按用户令整张删了: 守住它别回来; 提醒卡空 */
+  ok(await p5.evaluate(() => curTab()) === "tasks" && await p5.locator("#tk-fab").isVisible(), "任务页打开, 右下角有 + ");
+  /* 通知卡(10-15)、一句话输入框与定时提醒卡(10-16)按用户令删了: 守住别回来 */
   await sleep(600);
-  ok(await p5.locator("#nt-on, #nt-test, #nt-proxy").count() === 0, "任务页没有通知卡");
-  ok(await p5.locator("#rm-list .muted").count() === 1, "定时提醒卡: 空");
-  await p5.locator("#tk-text").fill("盯着 e2e 的价格, 降了通知我"); await p5.locator("#tk-text").press("Enter"); await sleep(500);
+  ok(await p5.locator("#nt-on, #nt-test, #nt-proxy, #tk-text, #rm-list").count() === 0, "任务页没有通知卡/输入框/提醒卡");
+  await p5.locator("#tk-fab").click(); await sleep(300);
+  ok(await p5.evaluate(() => curTab() + ":" + curSid) === "chat:null", "+ = 进助理开新对话");
+  await p5.goto(`http://127.0.0.1:${PORT}/#tasks`); await sleep(400);
+  await p5.evaluate(() => aFetch("tasks", { op: "add", text: "盯着 e2e 的价格, 降了通知我" }).then(r => { tasks = r.tasks || []; renderTasks(); })); await sleep(500);
   const newTask = readdirSync(tasksDir).filter(f => !beforeTasks.has(f));
   ok(newTask.length === 1, "回车创建 → tasks/ 多一个文件: " + newTask.join(","));
   const tk = newTask.length ? JSON.parse(readFileSync(path.join(tasksDir, newTask[0]), "utf8")) : {};
@@ -258,8 +279,16 @@ const tasksDir = path.join(ASST, "tasks");
   await p5.locator("#tk-list .row b", { hasText: "盯着 e2e 的价格" }).waitFor(); await sleep(2800);   /* 等一轮 poll 把 runs/next 刷进行里 */
   const line = await p5.locator("#tk-list .row small").first().textContent();
   ok(/跟进 1 次/.test(line) && /下次 /.test(line), "行里: 跟进 1 次 · 下次 …: " + line);
-  await p5.locator("#tk-list .row button", { hasText: "打开" }).first().click(); await sleep(400);
-  ok(await p5.evaluate(() => curTab() + ":" + curSid) === "chat:" + tk.session, "打开 = 进它的对话");
+  if (SHOTS) {   /* 任务卡长相(10-16 改成一任务一卡 + 右下角 +): 桌面一张, 手机一张 */
+    mkdirSync(SHOTS, { recursive: true }); await p5.screenshot({ path: path.join(SHOTS, "tasks-desk.png") });
+    const ph = await openPhone(`http://127.0.0.1:${PORT}/?shell=app#tasks`); await login(ph.page); await sleep(800);
+    await ph.page.screenshot({ path: path.join(SHOTS, "tasks-phone.png") }); await ph.ctx.close();
+  }
+  await p5.locator("#tk-list .row button", { hasText: "暂停" }).first().click(); await sleep(400);
+  ok(await p5.evaluate(() => curTab()) === "tasks" && JSON.parse(readFileSync(path.join(tasksDir, newTask[0]), "utf8")).state === "paused", "点卡上的按钮(暂停)不会顺带进对话");
+  await p5.locator("#tk-list .row button", { hasText: "继续" }).first().click(); await sleep(400);
+  await p5.locator("#tk-list .row b", { hasText: "盯着 e2e 的价格" }).click(); await sleep(400);
+  ok(await p5.evaluate(() => curTab() + ":" + curSid) === "chat:" + tk.session, "点卡 = 进它的对话");
   await p5.goto(`http://127.0.0.1:${PORT}/#tasks`); await sleep(400);
   await p5.locator("#tk-list .row button", { hasText: "删除" }).first().click(); await p5.locator("#ask-yes").click(); await sleep(400);
   ok(!existsSync(path.join(tasksDir, newTask[0])) && readdirSync(path.join(ASST, "trash", "tasks")).some(f => f.startsWith(newTask[0].replace(".json", "") + "-")) && !existsSync(path.join(ASST, "sessions", tk.session)), "删除 → 任务进 trash/tasks, 会话进 trash/sessions");
@@ -367,6 +396,167 @@ const tasksDir = path.join(ASST, "tasks");
   });
   ok(alias < -40, "48→16 kHz 重采样: 12 kHz 折叠到 4 kHz 的残留 " + alias.toFixed(1) + " dB(相对 1 kHz, 要 < -40)");
   await ctx6.close();
+}
+
+/* ---- 锁竖屏 + 禁缩放(10-16 用户: "不能双指放大, 横屏了内容也不能横屏"): iPhone 横放 → 整页转回竖的(<head> 里锁竖屏那段)。
+   坐标换算 toPage 和浏览器自己算出来的 body 变换矩阵对账(两边独立: 一个是手推的公式, 一个是 CSS 实际生效的矩阵);
+   转着点底栏、弹下拉菜单都得落在对的地方; 转回竖屏要撤干净。
+   横放走 CDP 设屏幕角度: Playwright 的 "iPhone 13 landscape" 只把窗口改宽, screen.orientation 还报竖屏 0°(实测), 页面按角度判, 认不出横屏 ---- */
+{
+  const ctx7 = await browser.newContext({ ...devices["iPhone 13"], locale: "zh-CN" });
+  try {   /* 这段抛错只记一条 FAIL: 直接抛出去会跳过文件末尾的收拾, 测试会话留在 ~/.ds4/assistant/sessions 里混进真对话(10-16 实撞) */
+  const p7 = await ctx7.newPage(); p7.on("pageerror", e => console.log("pageerror:", e.message));
+  await p7.goto(`http://127.0.0.1:${PORT}/#chat`); await login(p7);
+  const cdp = await ctx7.newCDPSession(p7);
+  const orient = async (w, h, type, angle) => { await cdp.send("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: 3, mobile: true, screenWidth: w, screenHeight: h, screenOrientation: { type, angle } }); await sleep(300); };
+  await orient(750, 342, "landscapePrimary", 90);
+  const st = () => p7.evaluate(() => {
+    const b = document.body.getBoundingClientRect(), tb = document.querySelector(".tabbar").getBoundingClientRect();
+    const m = new DOMMatrix(getComputedStyle(document.body).transform).inverse();
+    let err = 0;
+    for (const [x, y] of [[10, 20], [300, 100], [innerWidth - 5, innerHeight - 5]]) { const q = m.transformPoint({ x, y }), p = toPage(x, y); err = Math.max(err, Math.abs(q.x - p.x), Math.abs(q.y - p.y)); }
+    return { rot: document.documentElement.dataset.rot || "", shell: document.documentElement.dataset.shell, iw: innerWidth, ih: innerHeight, pw: pageW(), ph: pageH(),
+      body: [b.left, b.top, b.width, b.height].map(Math.round), tab: [tb.left, tb.top, tb.width, tb.height].map(Math.round), err: +err.toFixed(2) };
+  });
+  let s = await st();
+  ok(s.rot === "-90" && s.shell === "app" && s.pw === s.ih && s.ph === s.iw && s.body.join() === [0, 0, s.iw, s.ih].join() && s.err < 0.5,
+    "开着时逆时针横放: 整页转 -90°, 页面宽高 = 屏幕高宽, 正好铺满屏幕, toPage 与实际变换矩阵一致: " + JSON.stringify(s));
+  ok(s.tab[0] + s.tab[2] === s.iw && s.tab[3] === s.ih && s.tab[2] < 90, "底栏在手机底部 = 屏幕右边一条竖条: " + JSON.stringify(s.tab));
+  /* 截图走 CDP: p7.screenshot 会先把窗口恢复成机型表的 390×664, 截的那一刻页面又竖回来了(下拉菜单也被 resize 关掉) */
+  const shot7 = async n => { if (!SHOTS) return; mkdirSync(SHOTS, { recursive: true }); writeFileSync(path.join(SHOTS, n + ".png"), Buffer.from((await cdp.send("Page.captureScreenshot", { format: "png" })).data, "base64")); };
+  await shot7("rot-landscape");
+  await p7.reload(); await sleep(600); s = await st();
+  ok(s.rot === "-90" && s.shell === "app" && s.body.join() === [0, 0, s.iw, s.ih].join() && s.err < 0.5, "横着拿直接打开: 第一帧就转好(<head> 里同步判): " + JSON.stringify(s));
+  const vp = await p7.evaluate(() => [getComputedStyle(document.documentElement).touchAction, document.querySelector("meta[name=viewport]").content]);
+  ok(vp[0] === "pan-x pan-y" && /user-scalable=no/.test(vp[1]) && /maximum-scale=1\b/.test(vp[1]), "禁缩放: 根元素只许拖动, viewport 不许缩放: " + JSON.stringify(vp));
+  const tk = await p7.locator(".tabbar a[data-tab=tasks]").boundingBox();
+  await p7.touchscreen.tap(tk.x + tk.width / 2, tk.y + tk.height / 2); await sleep(300);
+  ok(await p7.evaluate(() => location.hash) === "#tasks", "转着点底栏'任务'(按屏幕坐标点): 进得去");
+  await p7.evaluate(() => { location.hash = "models"; }); await sleep(400);   /* 模型页在"更多"里, 不在底栏; 它的"下载源"是常驻的下拉框 */
+  await p7.evaluate(() => document.getElementById("m-ep").scrollIntoView({ block: "center" })); await sleep(300);   /* 在页面下半截, 转着的页面高 750 装不下 */
+  const se = await p7.locator("#m-ep").boundingBox();
+  await p7.touchscreen.tap(se.x + se.width / 2, se.y + se.height / 2); await sleep(300);
+  const pk = await p7.evaluate(() => {
+    const box = document.querySelector("#pick .pbox"), r = box.getBoundingClientRect(), a = pageRect(box), b = pageRect(document.getElementById("m-ep"));
+    return { on: document.getElementById("pick").classList.contains("on"), scr: [r.left, r.top, r.right, r.bottom].map(Math.round), gapBelow: Math.round(a.top - b.bottom), gapAbove: Math.round(b.top - a.bottom), left: Math.round(a.left - b.left) };
+  });
+  ok(pk.on && pk.scr[0] >= 0 && pk.scr[1] >= 0 && pk.scr[2] <= s.iw && pk.scr[3] <= s.ih && (pk.gapBelow === 6 || pk.gapAbove === 6) && Math.abs(pk.left) <= 1,
+    "转着弹下拉菜单: 在屏幕内, 贴着'下载源'框(页面坐标上下差 6 px、左对齐): " + JSON.stringify(pk));
+  await shot7("rot-pick");
+  await p7.evaluate(() => closePick());
+  /* 转回竖屏: 撤掉旋转, 外壳还是 app, 底栏回到底部 */
+  await orient(390, 664, "portraitPrimary", 0);
+  s = await st();
+  ok(s.rot === "" && s.shell === "app" && s.pw === s.iw && s.err < 0.5 && s.tab[1] + s.tab[3] === s.ih && s.tab[2] === s.iw, "竖过来: 不转, 底栏在底部横条: " + JSON.stringify(s));
+  /* 顺时针横放(顶朝右): 转 +90°, 底栏到屏幕左边 */
+  await orient(750, 342, "landscapeSecondary", 270);
+  s = await st();
+  ok(s.rot === "90" && s.body.join() === [0, 0, s.iw, s.ih].join() && s.err < 0.5 && s.tab[0] === 0 && s.tab[3] === s.ih, "顺时针横放: 整页转 +90°, 底栏在屏幕左边: " + JSON.stringify(s));
+  /* 倒过来(10-16 小米实撞: 只管了横放, 倒置 180° 照样翻): 转 180°, 底栏到屏幕顶上 */
+  await orient(390, 664, "portraitSecondary", 180);
+  s = await st();
+  ok(s.rot === "180" && s.pw === s.iw && s.ph === s.ih && s.body.join() === [0, 0, s.iw, s.ih].join() && s.err < 0.5 && s.tab[1] === 0 && s.tab[2] === s.iw,
+    "倒过来: 整页转 180°, 底栏在屏幕顶上(= 手机底部): " + JSON.stringify(s));
+  const tk2 = await p7.locator(".tabbar a[data-tab=chat]").boundingBox();
+  await p7.touchscreen.tap(tk2.x + tk2.width / 2, tk2.y + tk2.height / 2); await sleep(300);
+  ok(await p7.evaluate(() => location.hash) === "#chat", "倒着点底栏'助理': 进得去");
+  await shot7("rot-180");
+  } catch (e) { ok(false, "锁竖屏段抛错: " + e.message.split("\n")[0]); }
+  await ctx7.close();
+}
+/* ---- 交易审批卡(docs/assistant_approval.md §3): 16 GB 的 Mac 没有云手机, 守门那半截在 ds4_asst_test 的 asst pay 段(真机 dumpsys 夹具);
+   这里只验页面: 往测试会话的事件流里追加 tool + approval(字段与 asst_run.c wait_answer 发的一致), 重开页面看红卡。
+   不点按钮: 运行线程并没在等, /approve 会回 409; 按钮走的 answer() 和别的审批卡是同一个函数, 上面已经点过 ---- */
+{
+  const ctx8 = await browser.newContext({ ...devices["iPhone 13"], locale: "zh-CN" });
+  const shotRel = ".phone/pay-e2e.png", shotAbs = path.join(ASST, "workspace", shotRel);
+  try {
+    mkdirSync(path.dirname(shotAbs), { recursive: true }); writeFileSync(shotAbs, readFileSync(path.join(ROOT, "docs/img/monitor-en.png")));
+    const args = JSON.stringify({ x: 360, y: 900 }), app = "com.tencent.mm/com.tencent.mm.plugin.remittance.ui.RemittanceUI";
+    const ev = (id, pay) => JSON.stringify({ ev: "tool", id, name: "phone_tap", args }) + "\n" +
+      JSON.stringify({ ev: "approval", id, name: "phone_tap", args, reason: "payment: payment page " + app, target: "phone", path: "", cls: "pay", pay, once_only: true, warn: true }) + "\n";
+    appendFileSync(path.join(ASST, "sessions", sid, "events.jsonl"),
+      ev("pay-e2e-1", { app, secure: false, screen: shotRel, at: [360, 900], hit: "", amounts: ["¥0.01"], frame_age_s: 2, unseen: false }) +
+      ev("pay-e2e-2", { app: "com.tencent.mm/com.tencent.mm.framework.app.UIPageFragmentActivity", secure: true, screen: "", at: [360, 900], hit: "", amounts: [], frame_age_s: 40, unseen: true, win: "cf74994", before: { screen: shotRel, app, age_s: 4 } }));
+    const p8 = await ctx8.newPage(); p8.on("pageerror", e => console.log("pageerror:", e.message));
+    await p8.goto(`http://127.0.0.1:${PORT}/?session=${sid}#chat`); await login(p8);
+    await p8.waitForFunction(() => document.querySelectorAll(".appr .paytag").length === 2, null, { timeout: 8000 });
+    await p8.waitForFunction(() => { const i = [...document.querySelectorAll(".appr .payshot img")]; return i.length === 2 && i.every(x => x.complete && x.naturalWidth > 0 && x.getBoundingClientRect().height > 0); }, null, { timeout: 8000 });
+    const c = await p8.evaluate(() => [...document.querySelectorAll(".appr .paytag")].map(tg => {
+      const a = tg.closest(".appr"), img = a.querySelector(".payshot img"), d = a.querySelector(".payshot .dot");
+      const im = img && img.getBoundingClientRect(), dr = d && d.getBoundingClientRect();
+      return { tag: tg.textContent, amt: a.querySelector(".payamt").textContent, btns: [...a.querySelectorAll(".abtns button")].map(b => b.textContent), note: (a.querySelector(".abtns .muted") || {}).textContent || "",
+               text: a.textContent, fit: !im || im.right <= a.getBoundingClientRect().right + 1, dot: dr ? [Math.round((dr.left + dr.width / 2 - im.left) / im.width * 720), Math.round((dr.top + dr.height / 2 - im.top) / im.height * 1280)] : null, h: im ? Math.round(im.height) : 0, vh: innerHeight };
+    }));
+    ok(c[0].tag === "付款 · com.tencent.mm" && c[0].amt === "屏幕上的金额: ¥0.01", "交易卡: 红头写前台包名, 金额原样: " + JSON.stringify([c[0].tag, c[0].amt]));
+    ok(c[0].btns.join() === "仅这次,拒绝" && c[0].note.includes("每次都要你批"), "交易卡只有 仅这次 / 拒绝, 不给本会话/总是: " + JSON.stringify([c[0].btns, c[0].note]));
+    ok(c[0].dot && Math.abs(c[0].dot[0] - 360) <= 8 && Math.abs(c[0].dot[1] - 900) <= 8 && c[0].h > 0 && c[0].h <= c[0].vh * 0.4 + 1 && c[0].fit, "现场截图上红圈落在要点的 (360,900), 图高不超 40vh、不出卡片: " + JSON.stringify(c[0].dot) + " h=" + c[0].h);
+    ok(c[1].h > 0 && !c[1].dot && c[1].text.includes("禁止截屏") && c[1].text.includes("UIPageFragmentActivity") && c[1].text.includes("进这一页之前的最后一屏(4 秒前)") && c[1].text.includes("模型没看过这个屏幕(它上一眼是 40 秒前"),
+      "安全窗口那张: 写明禁止截屏与页面名, 放进这页之前的最后一屏(不画红圈: 落点在看不见的那页上): " + c[1].text.slice(0, 160));
+    ok(c[1].btns.join() === "仅这次,拒绝" && c[1].note.includes("批一次管这一页"), "安全窗口那张: 两键, 写明批一次管这一页: " + c[1].note);
+    if (SHOTS) { mkdirSync(SHOTS, { recursive: true }); await p8.locator(".appr .paytag").first().scrollIntoViewIfNeeded(); await p8.screenshot({ path: path.join(SHOTS, "pay-card.png") }); }
+  } catch (e) { ok(false, "交易卡段抛错: " + e.message.split("\n")[0]); }
+  rmSync(shotAbs, { force: true });
+  await ctx8.close();
+}
+/* ---- 网页预览(docs/assistant_page.md §5): 工作区里放一个会"越狱"的网页, 页面里调真的 fileCard() 点预览/打开。
+   网页自己的脚本依次试: 读 localStorage(登录票在那) / 碰 parent.document / fetch 工作台的 /api / 加载同目录 js 与子目录图片, 结果写进 #r。
+   要的是: 前三样全被挡、后两样能用(后者验 CSP 的 'self' + 显式主机在不透明源里照样认同主机)。"打开"的新标签页同一个响应头照样锁着 ---- */
+{
+  const ctx9 = await browser.newContext({ ...devices["iPhone 13"], locale: "zh-CN" });
+  const dir = path.join(ASST, "workspace", "e2e-page");
+  try {
+    mkdirSync(path.join(dir, "img"), { recursive: true });
+    writeFileSync(path.join(dir, "app.js"), "window.__app = true;\n");
+    writeFileSync(path.join(dir, "img", "logo.png"), readFileSync(path.join(ROOT, "docs/img/monitor-en.png")));
+    writeFileSync(path.join(dir, "index.html"), `<!doctype html><meta charset=utf-8><title>e2e 网页</title><h1>预览测试</h1><pre id=r>running</pre><img id=logo src="img/logo.png" width=40>
+<script>const out = []; window.__app = false;
+try { localStorage.getItem("ds4.studio.session"); out.push("ls:open"); } catch (e) { out.push("ls:blocked"); }
+try { void parent.document.title; out.push(parent === window ? "parent:self" : "parent:open"); } catch (e) { out.push("parent:blocked"); }
+out.push("origin:" + self.origin);</script>
+<script src="app.js"></script>
+<script>out.push(window.__app ? "js:loaded" : "js:missing");
+fetch("/api/assistant/sessions").then(() => out.push("fetch:open"), () => out.push("fetch:blocked")).finally(() => {
+  const im = document.getElementById("logo"), fin = () => { out.push(im.naturalWidth > 0 ? "img:loaded" : "img:missing"); document.getElementById("r").textContent = out.join(" "); };
+  im.complete ? fin() : (im.onload = im.onerror = fin);
+});</script>`);
+    const p9 = await ctx9.newPage(); p9.on("pageerror", e => console.log("pageerror:", e.message));
+    await p9.goto(`http://127.0.0.1:${PORT}/#chat`); await login(p9);
+    await p9.evaluate(() => { const c = fileCard("e2e-page/index.html", {}); c.id = "pv-e2e"; document.body.appendChild(c); });
+    const btns = await p9.evaluate(() => [...document.querySelectorAll("#pv-e2e button")].map(b => b.textContent));
+    ok(btns.join() === "下载,预览", "网页卡: 下载 / 预览 两个按钮: " + JSON.stringify(btns));
+    await p9.locator("#pv-e2e .pvbtn").click();
+    await p9.waitForSelector("#pv-e2e iframe.pvframe", { timeout: 8000 });
+    const fr = await p9.evaluate(() => { const f = document.querySelector("#pv-e2e iframe"), a = document.querySelector("#pv-e2e a.pvopen"); return { sb: f.getAttribute("sandbox"), src: f.getAttribute("src"), href: a && a.getAttribute("href"), tgt: a && a.target, open: a && a.textContent }; });
+    ok(fr.sb === "allow-scripts allow-modals" && /^\/p\/[0-9a-f]{32}\/index\.html$/.test(fr.src) && fr.href === fr.src && fr.tgt === "_blank" && fr.open === "打开",
+      "预览 = sandbox iframe 指 /p/<口令>/index.html, 旁边'打开'是 <a target=_blank>: " + JSON.stringify(fr));
+    let frame = null; for (let i = 0; i < 40 && !frame; i++) { frame = p9.frames().find(f => f.url().includes("/p/")); if (!frame) await sleep(100); }
+    await frame.waitForFunction(() => document.getElementById("r") && document.getElementById("r").textContent !== "running", null, { timeout: 8000 });
+    const res = await frame.evaluate(() => document.getElementById("r").textContent);
+    ok(["ls:blocked", "parent:blocked", "origin:null", "js:loaded", "fetch:blocked", "img:loaded"].every(x => res.split(" ").includes(x)),
+      "iframe 里: 票读不到 / 碰不到父页 / 不透明源 / 同目录 js 与子目录图能加载 / fetch /api 被挡: " + res);
+    const r = await fetch(`http://127.0.0.1:${PORT}${fr.href}`), csp = r.headers.get("content-security-policy") || "";
+    ok(r.status === 200 && r.headers.get("content-type").startsWith("text/html") && csp.startsWith("sandbox allow-scripts allow-modals;") && csp.includes("connect-src 'none'") && r.headers.get("referrer-policy") === "no-referrer",
+      "/p/ 直取: 200 text/html + CSP sandbox + connect-src 'none' + no-referrer: " + csp.slice(0, 60));
+    const tab = await ctx9.newPage(); await tab.goto(`http://127.0.0.1:${PORT}${fr.href}`);
+    await tab.waitForFunction(() => document.getElementById("r").textContent !== "running", null, { timeout: 8000 });
+    const res2 = await tab.evaluate(() => document.getElementById("r").textContent);
+    ok(["ls:blocked", "origin:null", "fetch:blocked", "img:loaded"].every(x => res2.split(" ").includes(x)), "'打开'的新标签页同样锁着(响应头生效, 不靠 iframe 属性): " + res2);
+    /* Host 被中间层改掉时(穿透/反代把 Host 换成 127.0.0.1:8000), CSP 里的显式主机就对不上浏览器看到的地址, 只剩 'self' 撑着。
+       起一个把 Host 改成 rewritten.invalid 的小代理, 从它打开同一页: 同目录 js 与图照样要能加载 */
+    const { createServer: httpServer, request: httpReq } = await import("node:http");
+    const px = httpServer((q, s) => { const u = httpReq({ host: "127.0.0.1", port: PORT, path: q.url, method: q.method, headers: { ...q.headers, host: "rewritten.invalid" } }, v => { s.writeHead(v.statusCode, v.headers); v.pipe(s); }); q.pipe(u); });
+    await new Promise(r => px.listen(0, "127.0.0.1", r));
+    const tab3 = await ctx9.newPage(); await tab3.goto(`http://127.0.0.1:${px.address().port}${fr.href}`);
+    await tab3.waitForFunction(() => document.getElementById("r").textContent !== "running", null, { timeout: 8000 });
+    const res3 = await tab3.evaluate(() => document.getElementById("r").textContent); px.close();
+    ok(["ls:blocked", "fetch:blocked", "js:loaded", "img:loaded"].every(x => res3.split(" ").includes(x)), "Host 被改写(CSP 显式主机对不上)时只靠 'self' 资源照样加载: " + res3);
+    const miss = await fetch(`http://127.0.0.1:${PORT}${fr.href.replace("index.html", "../top.html")}`);
+    ok(miss.status === 404, "同一口令越出目录 → 404");
+    if (SHOTS) { mkdirSync(SHOTS, { recursive: true }); await p9.locator("#pv-e2e").scrollIntoViewIfNeeded(); await p9.screenshot({ path: path.join(SHOTS, "page-preview.png") }); }
+  } catch (e) { ok(false, "网页预览段抛错: " + e.message.split("\n")[0]); }
+  rmSync(dir, { recursive: true, force: true });
+  await ctx9.close();
 }
 await browser.close();
 

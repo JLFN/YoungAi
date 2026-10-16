@@ -52,8 +52,11 @@ static void wait_answer(const char *sid, const char *call_id, const asst_gres *g
     ds4_buf_puts(&b, ",\"reason\":"); ds4_json_escape(&b, g->reason);
     ds4_buf_puts(&b, ",\"target\":"); ds4_json_escape(&b, g->target);
     ds4_buf_puts(&b, ",\"path\":"); ds4_json_escape(&b, g->path);
+    ds4_buf_puts(&b, ",\"cls\":"); ds4_json_escape(&b, g->cls);
+    if (g->extra[0]) { ds4_buf_puts(&b, ",\"pay\":"); ds4_buf_puts(&b, g->extra); }   /* 交易卡: 现场截图/落点/金额/命中原因(sbx_pay.c), 页面画成红卡 */
     ds4_buf_printf(&b, ",\"once_only\":%s,\"warn\":%s}", g->once_only ? "true" : "false", g->warn ? "true" : "false");
     asst_ev(sid, b.ptr); ds4_buf_free(&b);
+    asst_notify_approval(sid, tool, g);   /* 卡挂着整条队列都停: 人多半不在页面前, 推一条叫回来(在看的那台设备照在场规则压着) */
     pthread_mutex_lock(&asst_mu);
     while (!appr_dec[0] && !cur_stop) pthread_cond_wait(&asst_cv, &asst_mu);
     snprintf(dec, dn, "%s", cur_stop && !appr_dec[0] ? "stop" : appr_dec);
@@ -61,18 +64,19 @@ static void wait_answer(const char *sid, const char *call_id, const asst_gres *g
     pthread_mutex_unlock(&asst_mu);
 }
 
-static char *run_call(const char *sid, const asst_tctx *tc, const char *call_id, const char *tool, const char *args, char *decision, size_t dn, int *ok) {
+static char *run_call(const char *sid, const asst_tctx *tc, const char *call_id, const char *tool, const char *args, char *decision, size_t dn, int *ok, asst_gres *g) {   /* g = 守门结果, 交回调用方记审计 */
     *ok = 0;
     char *bad = asst_tool_args_error(tc, tool, args);   /* 参数不合 schema 不进守门: 否则缺的参数当空串, 守门按工作区放行、执行读出个"0 行"当成功(asst_tools.c) */
     if (bad) { snprintf(decision, dn, "invalid"); return bad; }
-    asst_gres g; asst_guard(sid, tool, args, &g);
-    if (g.dec == ASST_DENY) { snprintf(decision, dn, "blocked"); ds4_buf b = {0}; ds4_buf_printf(&b, "blocked by the assistant's safety rules: %s\n", g.reason); return ds4_buf_take(&b); }
-    if (g.dec == ASST_ASK) {
-        char dec[16]; wait_answer(sid, call_id, &g, tool, args, dec, sizeof dec);
+    asst_guard(sid, tool, args, g);
+    if (g->dec == ASST_DENY) { snprintf(decision, dn, "blocked"); ds4_buf b = {0}; ds4_buf_printf(&b, "blocked by the assistant's safety rules: %s\n", g->reason); return ds4_buf_take(&b); }
+    if (g->dec == ASST_ASK) {
+        char dec[16]; wait_answer(sid, call_id, g, tool, args, dec, sizeof dec);
         if (!strcmp(dec, "stop")) { snprintf(decision, dn, "cancelled"); return strdup("cancelled: the user stopped the run\n"); }
-        if (!strcmp(dec, "deny")) { snprintf(decision, dn, "denied"); ds4_buf b = {0}; ds4_buf_printf(&b, "the user denied this (%s). Do not retry the same thing; ask the user or find another way.\n", g.reason); return ds4_buf_take(&b); }
+        if (!strcmp(dec, "deny")) { snprintf(decision, dn, "denied"); ds4_buf b = {0}; ds4_buf_printf(&b, "the user denied this (%s). Do not retry the same thing; ask the user or find another way.\n", g->reason); return ds4_buf_take(&b); }
         snprintf(decision, dn, "%s", dec);
-        if (!g.once_only && (!strcmp(dec, "session") || !strcmp(dec, "always"))) asst_guard_grant(sid, g.cls, g.target, dec);
+        if (!strcmp(g->cls, "pay") && !strcmp(dec, "once")) asst_pay_approved(sid, g->extra);   /* 安全窗口批一次管这一页(sbx_pay.c) */
+        if (!g->once_only && (!strcmp(dec, "session") || !strcmp(dec, "always"))) asst_guard_grant(sid, g->cls, g->target, dec);
     } else snprintf(decision, dn, "auto");
     if (asst_device_tool(tool)) {   /* 设备工具: 交给发消息的那台设备; 要结果的等它答复(页面关着就等着, 和等审批一样), 交出去的动作立刻回 */
         char *r = NULL; *ok = asst_device_request(sid, cur_client, call_id, tool, args, &r);
@@ -81,9 +85,9 @@ static char *run_call(const char *sid, const asst_tctx *tc, const char *call_id,
         return r;
     }
     snprintf(cur_call, sizeof cur_call, "%s", call_id);
-    char *r = asst_tool_exec(sid, tool, args, &g, ok);
+    char *r = asst_tool_exec(sid, tool, args, g, ok);
     cur_call[0] = 0;
-    if (*ok) asst_guard_mark(sid, g.cls, g.path);
+    if (*ok) asst_guard_mark(sid, g->cls, g->path);
     return r;
 }
 
@@ -96,9 +100,11 @@ void asst_run_progress(const char *text) {
     asst_ev(cur, b.ptr); ds4_buf_free(&b);
 }
 
-static void audit_call(const char *sid, const char *tool, const char *args, const char *decision, int ok, double ms, const char *result) {
+static void audit_call(const char *sid, const char *tool, const char *args, const char *decision, int ok, double ms, const char *result, const asst_gres *g) {
     ds4_buf b = {0};
     ds4_buf_printf(&b, "{\"session\":\"%s\",\"tool\":", sid); ds4_json_escape(&b, tool);
+    ds4_buf_puts(&b, ",\"cls\":"); ds4_json_escape(&b, g->cls);   /* 活动页按类筛: "所有付款审批" = cls pay */
+    if (g->extra[0]) { ds4_buf_puts(&b, ",\"pay\":"); ds4_buf_puts(&b, g->extra); }
     char cut[401]; snprintf(cut, sizeof cut, "%s", args); ds4_buf_puts(&b, ",\"args\":"); ds4_json_escape(&b, cut);
     ds4_buf_printf(&b, ",\"decision\":\"%s\",\"ok\":%s,\"ms\":%.0f,\"sandbox\":\"%s\"", decision, ok ? "true" : "false", ms, asst_sbx_kind());
     snprintf(cut, sizeof cut, "%s", result); ds4_buf_puts(&b, ",\"result\":"); ds4_json_escape(&b, cut);
@@ -161,17 +167,17 @@ static void run_one(const char *sid, const char *text, const char *device, const
             ds4_buf_puts(&e, "{\"ev\":\"tool\",\"id\":"); ds4_json_escape(&e, id); ds4_buf_puts(&e, ",\"name\":"); ds4_json_escape(&e, name);
             ds4_buf_puts(&e, ",\"args\":"); ds4_json_escape(&e, args); ds4_buf_putc(&e, '}');
             asst_ev(sid, e.ptr); ds4_buf_free(&e);
-            char decision[16] = "cancelled"; int ok = 0; char *res;
+            char decision[16] = "cancelled"; int ok = 0; char *res; asst_gres g; memset(&g, 0, sizeof g);
             const double t0 = now_s();
             if (stopped || want_stop(NULL)) { stopped = true; res = strdup("cancelled: the user stopped the run\n"); }
-            else res = run_call(sid, &tc, id, name, args, decision, sizeof decision, &ok);
+            else res = run_call(sid, &tc, id, name, args, decision, sizeof decision, &ok, &g);
             if (!strcmp(decision, "cancelled")) stopped = true;
             char sig[512]; snprintf(sig, sizeof sig, "%s|%.400s", name, args);
             repeat = !strcmp(sig, last_sig) ? repeat + 1 : 1; snprintf(last_sig, sizeof last_sig, "%s", sig);
             if (repeat >= 3) { ds4_buf r = {0}; ds4_buf_printf(&r, "[note: this is the %d-th identical %s call in a row; if it is not working, change approach or ask the user]\n", repeat, name); ds4_buf_puts(&r, res); free(res); res = ds4_buf_take(&r); }
             if (++ncalls > ASST_CALL_BUDGET) { ds4_buf r = {0}; ds4_buf_puts(&r, res); ds4_buf_printf(&r, "\n[note: %d tool calls in this run and still no final answer. Answer the user now with what you have and say what is missing; keep searching only if the user explicitly asked for exhaustive work.]\n", ncalls); free(res); res = ds4_buf_take(&r); }
             const double ms = (now_s() - t0) * 1000;
-            if (strcmp(decision, "cancelled")) audit_call(sid, name, args, decision, ok, ms, res);
+            if (strcmp(decision, "cancelled")) audit_call(sid, name, args, decision, ok, ms, res, &g);
             ds4_buf t = {0};
             ds4_buf_puts(&t, "{\"ev\":\"tool_end\",\"id\":"); ds4_json_escape(&t, id);
             ds4_buf_printf(&t, ",\"ok\":%s,\"decision\":\"%s\",\"ms\":%.0f,\"result\":", ok ? "true" : "false", decision, ms);

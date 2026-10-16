@@ -190,9 +190,16 @@ tap, swipe, press keys, type, open apps. The workbench gets a **Phone** tab with
 your browser), and `/api/phone/*` is a plain REST API that the page, the model and your own scripts all share
 ([`docs/assistant_phone.md`](https://github.com/fodelf/YoungAi/blob/restructure/docs/assistant_phone.md)). Read this before you flip the switch:
 
-- **The model acts on its own.** With danger mode on, nobody confirms each tap. The phone starts empty (no SIM, no accounts,
+- **The model acts on its own.** With danger mode on, nobody confirms ordinary taps. The phone starts empty (no SIM, no accounts,
   no app store), but **any account you sign into and any APK you install there, the model can use** — it may send messages,
   place orders, pay, or delete things. Whoever turns the switch on bears the consequences.
+- **The step that actually pays asks you first, every time.** Filling in an amount or tapping "Transfer" / "Buy now" goes
+  through; before a tap, swipe or Enter on a window the app marks as secure (password, payment, login pages) or on a button
+  reading Pay / Place order / 确认支付 …, a red card appears: a fresh screenshot with the spot it wants to tap and the amount on
+  screen, or, for a secure window that cannot be captured, the last screen before it (who gets how much). It can only be allowed
+  once and is never remembered; one approval on a secure window covers the rest of that window and ends when it closes.
+  The model cannot type on secure windows: you type passwords yourself in the Phone tab. This catches the pages it can recognise:
+  a final pay button with no UI text on a window not marked secure goes through unasked.
 - **Screen content is untrusted input.** Text inside apps and web pages can try to instruct the model. The phone runs in its
   own namespaces with a hard memory cap and cannot reach your LAN or the host, but this is not a guarantee against every misuse.
 - **It will not bypass anti-bot checks.** If an app shows a slide captcha or a risk-control screen, you do it yourself in the

@@ -85,6 +85,7 @@ static bool approval_hit(const char *line, const char *cls, const char *path) {
 }
 
 bool asst_approved_always(const char *cls, const char *path) {
+    if (!strcmp(cls, "pay")) return false;   /* 交易永远逐次问(docs/assistant_approval.md): 手写进 approvals.jsonl 的也不认; 和守门的 once_only 各自成立, 哪层写错都不多放行 */
     char p[ASST_PATH + 24]; snprintf(p, sizeof p, "%s/approvals.jsonl", asst_root);
     char *all = asst_slurp(p, NULL); bool hit = false;
     for (char *line = all, *nl; line && *line && !hit; line = nl + 1) { nl = strchr(line, '\n'); if (nl) *nl = 0; hit = approval_hit(line, cls, path); if (!nl) break; }
@@ -108,6 +109,7 @@ static int g_nsess;
 static pthread_mutex_t gmu = PTHREAD_MUTEX_INITIALIZER;
 
 bool asst_approved_session(const char *sid, const char *cls, const char *path) {
+    if (!strcmp(cls, "pay")) return false;
     bool hit = false;
     pthread_mutex_lock(&gmu);
     for (int i = 0; i < g_nsess && !hit; i++)

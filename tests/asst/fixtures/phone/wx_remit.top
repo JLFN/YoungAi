@@ -1,0 +1,68 @@
+    versionCode=3200 minSdk=24 targetSdk=34
+popups=0
+  ACTIVITY com.tencent.mm/.plugin.remittance.ui.RemittanceUI 9a0c770 pid=1010202
+    View Hierarchy:
+      DecorView@f86dbef[RemittanceUI]
+        com.tencent.mm.ui.widget.SwipeBackLayout{4e84e7b VFE...... ........ 0,0-720,1280 #7f0a67a6 app:id/nsv}
+          com.tencent.mm.ui.statusbar.DrawStatusBarFrameLayout{d48a6fc V.ED..... ........ 0,0-720,1280}
+            android.widget.LinearLayout{db81185 V.E...... ........ 0,48-720,1184}
+              android.widget.FrameLayout{f0f480b V.E...... ........ 0,0-720,1136}
+                androidx.appcompat.widget.ActionBarOverlayLayout{4f736e8 V.E...... ........ 0,0-720,1136 #7f0a18be app:id/crd}
+                  androidx.appcompat.widget.ContentFrameLayout{63044f1 V.E...... ........ 0,86-720,1136 #1020002 android:id/content}
+                    com.tencent.mm.ui.FrostedContentView{d60f3fd V.E...... ........ 0,0-720,1050 #7f0a49f3 app:id/jlt}
+                      com.tencent.mm.ui.widget.pulldown.MMWeUIBounceView{f6d4101 V.E...... ........ 0,0-720,1050 #7f0a4a0a app:id/v9m}
+                        androidx.core.widget.NestedScrollView{11fcc62 VFED..... ........ 0,0-720,1050}
+                          android.widget.LinearLayout{3192ba6 V.E...... ......ID 0,0-720,0}
+                        android.widget.FrameLayout{9c11f3 V.E...... ........ 0,0-720,1050}
+                          android.widget.RelativeLayout{56859e7 V.E...... ........ 0,0-720,1050}
+                            android.widget.ScrollView{87cd994 VFED..... ........ 0,0-720,1050 #7f0a5bdd app:id/root_view}
+                              android.widget.LinearLayout{3ebec3d V.E...... ........ 0,0-720,1050}
+                                android.widget.LinearLayout{4dddeb0 V.E...... ........ 0,0-720,169 #7f0a37e5 app:id/gyr}
+                                  android.widget.LinearLayout{6324cae V.E...... ........ 58,43-554,126}
+                                    android.widget.TextView{2ba35dc V.ED..... ........ 0,0-496,45 #7f0a59eb app:id/lwo}
+                                    android.widget.TextView{9da26e5 V.ED..... ........ 0,49-252,83 #7f0a59ec app:id/lwp}
+                                  android.widget.ImageView{35bda4f V.ED..... ........ 583,45-662,124 #7f0a59ea app:id/lwn}
+                                android.widget.LinearLayout{871a129 V.E...... ........ 0,169-720,1050 #7f0a0a63 app:id/auq}
+                                  android.widget.LinearLayout{653cfc4 V.E...... ........ 0,0-720,309 #7f0a59e1 app:id/lwe}
+                                    android.widget.LinearLayout{3da85ba V.E...... ........ 58,0-662,230 #7f0a59d2 app:id/lw0}
+                                      android.widget.TextView{68b4c61 V.ED..... ........ 0,58-185,87 #7f0a59fd app:id/lx6}
+                                      com.tencent.mm.wallet_core.ui.formview.WalletFormView{e9b4386 VFE...... ........ 0,119-604,230 #7f0a4a9f app:id/jq4}
+                                        android.widget.LinearLayout{955ead V.E...... ........ 0,0-582,111 #7f0a4a9e app:id/jq3}
+                                          com.tencent.mm.wallet_core.ui.WalletTextView{652c447 V.ED..... ........ 0,0-58,111 #7f0a73bc app:id/pf5}
+                                          com.tenpay.android.wechat.TenpaySecureEditText{ef56474 VFED..CL. .F...... 49,10-582,100 #7f0a7310 app:id/pbn aid=1073741824}
+                                    android.widget.RelativeLayout{a5cc6b V.E...... ........ 58,223-662,266}
+                                      android.widget.RelativeLayout{81b535c V.E...... ........ 0,0-604,43}
+                                        android.widget.ImageView{c30b665 V.ED..... ........ 0,0-604,43 #7f0a7356 app:id/pcp}
+                                    android.widget.LinearLayout{a2d3c8 V.E...... ........ 58,280-662,309 #7f0a59ae app:id/lv5}
+                                      android.widget.TextView{e784d1d VFED..C.. ........ 0,0-103,29 #7f0a0230 app:id/lu}
+                            com.tencent.mm.wallet_core.keyboard.WcPayKeyboard{f519e19 V.E...... ........ 0,635-720,1050 #7f0a755d app:id/pok}
+                              android.widget.LinearLayout{fb49478 VFE...C.. ........ 0,0-720,415 #7f0a3d95 app:id/keyboard_base}
+                                android.view.View{1eff751 V.ED..... ........ 0,0-720,1}
+                                androidx.gridlayout.widget.GridLayout{1da8024 V.E...... ........ 0,1-720,415 #7f0a3da5 app:id/keyboard_gl}
+                                  com.tencent.mm.wallet_core.ui.WalletTextView{cebb78d VFED..C.. ........ 14,14-176,100 #7f0a3d89 app:id/keyboard_1}
+                                  com.tencent.mm.wallet_core.ui.WalletTextView{6584d42 VFED..C.. ........ 190,14-353,100 #7f0a3d8a app:id/keyboard_2}
+                                  com.tencent.mm.wallet_core.ui.WalletTextView{e2f3153 VFED..C.. ........ 367,14-529,100 #7f0a3d8b app:id/keyboard_3}
+                                  android.widget.RelativeLayout{4517a90 VFE...C.. ........ 543,14-706,100 #7f0a3d9a app:id/keyboard_del}
+                                    com.tencent.mm.ui.widget.imageview.WeImageView{5693f89 V.ED..... ........ 60,21-103,64}
+                                  com.tencent.mm.wallet_core.ui.WalletTextView{c21fb8e VFED..C.. ........ 14,114-176,200 #7f0a3d8c app:id/keyboard_4}
+                                  com.tencent.mm.wallet_core.ui.WalletTextView{2f18faf VFED..C.. ........ 190,114-353,200 #7f0a3d8d app:id/keyboard_5}
+                                  com.tencent.mm.wallet_core.ui.WalletTextView{afbafbc VFED..C.. ........ 367,114-529,200 #7f0a3d8e app:id/keyboard_6}
+                                  com.tencent.mm.wallet_core.ui.WalletTextView{41d4b45 VFED..C.. ........ 543,114-706,400 #7f0a3d92 app:id/keyboard_action}
+                                  com.tencent.mm.wallet_core.ui.WalletTextView{9c6429a VFED..C.. ........ 14,214-176,300 #7f0a3d8f app:id/keyboard_7}
+                                  com.tencent.mm.wallet_core.ui.WalletTextView{ed177cb VFED..C.. ........ 190,214-353,300 #7f0a3d90 app:id/keyboard_8}
+                                  com.tencent.mm.wallet_core.ui.WalletTextView{3b20ba8 VFED..C.. ........ 367,214-529,300 #7f0a3d91 app:id/keyboard_9}
+                                  com.tencent.mm.wallet_core.ui.WalletTextView{e4c56c1 VFED..C.. ........ 14,314-353,400 #7f0a3d88 app:id/keyboard_0}
+                                  com.tencent.mm.wallet_core.ui.WalletTextView{335ee66 VFED..C.. ........ 367,314-529,400 #7f0a3da3 app:id/keyboard_dot}
+                  androidx.appcompat.widget.ActionBarContainer{af4f8d6 V.ED..... ........ 0,0-720,86 #7f0a00d3 app:id/ei}
+                    androidx.appcompat.widget.Toolbar{f069dfd V.E...... ........ 0,0-720,86 #7f0a00cf app:id/ef}
+                      android.widget.RelativeLayout{9a35757 V.E...... ........ 0,0-720,86 #7f0a00d8 app:id/el}
+                        android.widget.RelativeLayout{372e244 V.E...... ........ 0,0-720,86 #7f0a013b app:id/gp}
+                          android.widget.LinearLayout{8a28af2 V.E...... ......ID 360,0-360,86 #7f0a6b98 app:id/oct}
+                            android.widget.LinearLayout{cb71543 V.E...... ......ID 0,22-0,64}
+                              android.widget.TextView{8241cf9 V.ED..... ......ID 0,0-0,42 #1020014 android:id/text1}
+                        android.widget.LinearLayout{26db887 VFE...C.. ........ 0,0-71,86 #7f0a0157 app:id/actionbar_up_indicator}
+                          com.tencent.mm.ui.widget.imageview.WeImageView{90cbd16 V.ED..... ........ 14,0-57,86 #7f0a0158 app:id/actionbar_up_indicator_btn}
+                        android.widget.LinearLayout{d733f2d V.E...... ......I. 720,0-720,0 #7f0a184a app:id/coz}
+                          android.widget.LinearLayout{7c0e084 V.E...... ......I. 0,0-0,0 #7f0a1849 app:id/coy}
+                      androidx.appcompat.widget.ActionMenuView{89a6cc7 V.E...... ......ID 720,0-720,86}
+        android.view.View{cf51498 V.ED..... ........ 0,1184-720,1280 #1020030 android:id/navigationBarBackground}

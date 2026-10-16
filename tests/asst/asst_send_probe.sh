@@ -8,9 +8,11 @@
 #   接着上一条聊(10-15 计划模式真模型门: 提计划 → 同一段对话里回答问题)就把上一次打印的 session 填进第 5 个参数; 只等这条消息之后的 end。
 #   最后打印这条消息之后模型的回答原文(给人看原样输出, 判读只作参考)。
 #   消息写 --start(要带第 5 个参数): 不发消息, 替这段对话的计划按"开始"(POST tasks {op:start}, 和页面计划卡同一条路), 之后照样等这一轮跑完。
+#   第 7 个参数 = 审批卡代答(10-16 交易审批真模型门): 逗号分隔, 按出卡顺序一张用一个(once / deny), 例 "deny" 或 "once,once,deny";
+#   答案用完之后再出的卡一律 deny —— 探针替人点头只能点到写明的那几下, 多出来的(比如走到了密码页)默认不放。每张卡打印 cls / 原因 / 交易附加信息。
 #   口令读 ~/.ds4/assistant/token(本机也要带, 不然 studio 登录门会拒); 事件从 ~/.ds4/assistant/sessions/<新会话>/events.jsonl 读(页面的唯一真相)。
 set -uo pipefail
-MSG="${1:?消息}"; TOOL="${2:-make_video}"; TMO="${3:-600}"; PORT="${4:-8000}"; SID_IN="${5:-}"; FILES="${6:-}"
+MSG="${1:?消息}"; TOOL="${2:-make_video}"; TMO="${3:-600}"; PORT="${4:-8000}"; SID_IN="${5:-}"; FILES="${6:-}"; ANSWERS="${7:-}"
 TOK=$(cat ~/.ds4/assistant/token) || { echo "没有 ~/.ds4/assistant/token"; exit 1; }
 BODY=$(python3 -c 'import json,sys; print(json.dumps({"session":sys.argv[2],"text":sys.argv[1],"client":"probe","device":{"kind":"desktop","tz":"Asia/Shanghai","lang":"zh-CN"},"caps":["file"],"apps":[],"files":[f for f in sys.argv[3].split(",") if f]}))' "$MSG" "$SID_IN" "$FILES")
 EV0=0; [ -n "$SID_IN" ] && EV0=$(wc -l < "$HOME/.ds4/assistant/sessions/$SID_IN/events.jsonl" 2>/dev/null || echo 0)   # 接着聊: 之前的事件不算
@@ -29,7 +31,19 @@ fi
 EV="$HOME/.ds4/assistant/sessions/$SID/events.jsonl"
 echo "session $SID"
 t0=$(date +%s)
+NA=0; DONE_IDS=" "
 while :; do
+    # 新出的审批卡: 打印 + 按 ANSWERS 代答(用完 = deny)
+    for AP in $(tail -n +$((EV0 + 1)) "$EV" 2>/dev/null | python3 -c 'import json,sys
+for l in sys.stdin:
+    e = json.loads(l)
+    if e.get("ev") == "approval": print(e["id"])' 2>/dev/null); do
+        case "$DONE_IDS" in *" $AP "*) continue;; esac
+        DEC=$(printf '%s' "$ANSWERS" | cut -d, -f$((NA + 1))); [ -n "$DEC" ] && [ $NA -lt $(printf '%s' "$ANSWERS" | awk -F, '{print NF}') ] || DEC=deny
+        NA=$((NA + 1)); DONE_IDS="$DONE_IDS$AP "
+        echo "== 审批卡 #$NA → $DEC"; grep -F "\"ev\":\"approval\",\"id\":\"$AP\"" "$EV" | python3 -c 'import json,sys; e=json.loads(sys.stdin.readline()); print("  ", e["name"], e["args"][:120], "| cls", e.get("cls"), "| once_only", e.get("once_only"), "\n   reason:", e["reason"], "\n   pay:", json.dumps(e.get("pay"), ensure_ascii=False))'
+        echo "   → $(curl -s --noproxy '*' -m 10 -H "X-DS4-Assistant: 1" -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' -d "{\"session\":\"$SID\",\"id\":\"$AP\",\"decision\":\"$DEC\"}" "http://127.0.0.1:$PORT/api/assistant/approve")"
+    done
     if [ -s "$EV" ] && tail -n +$((EV0 + 1)) "$EV" | grep -q "\"ev\":\"end\""; then break; fi
     [ $(( $(date +%s) - t0 )) -ge "$TMO" ] && { echo "★${TMO}s 内没结束★"; break; }
     sleep 5

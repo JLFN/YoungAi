@@ -9,8 +9,83 @@ static int pass, fail;
 int asst_phone_keycode(const char *name);
 char *asst_phone_type_cmd(const char *text);
 
+/* ⑤ 微信写死的按钮表(tool_phone_wx.c): View 树夹具 = 10-16 spark 云手机上 dumpsys activity top 的微信段(只留 ACTIVITY 行和可见子树, 不含账号/聊天内容);
+ * 截图在这里现画 —— 只画判页面要看的那几个像素(真截图带聊天内容, 不进仓库)。真截图上的同一套断言在 fable5 10-16 那条里 */
+#define WX_L "com.tencent.mm/com.tencent.mm.ui.LauncherUI"
+static char *wx_fx(const char *name) { char p[256]; snprintf(p, sizeof p, "tests/asst/fixtures/phone/wx_%s.top", name); return asst_slurp(p, NULL); }
+static uint8_t *wx_canvas(void) { uint8_t *p = malloc(720 * 1280 * 3); memset(p, 247, 720 * 1280 * 3); return p; }   /* 微信底栏/面板底色 */
+static void wx_fill(uint8_t *p, int x1, int y1, int x2, int y2, int r, int g, int b) {
+    for (int y = y1; y <= y2; y++) for (int x = x1; x <= x2; x++) { uint8_t *q = p + ((size_t)y * 720 + x) * 3; q[0] = (uint8_t)r; q[1] = (uint8_t)g; q[2] = (uint8_t)b; }
+}
+static char *wx_run(const char *fx, const char *focus, const uint8_t *rgb, char *note) {
+    char *d = wx_fx(fx); char *x = asst_phone_wx_xml(d, focus, rgb, 720, 1280, note, 192); free(d);
+    if (!x) return NULL;
+    char *t = asst_phone_ui_text(x); free(x); return t;
+}
+static void wx_tests(void) {
+    char note[192]; char *d = wx_fx("home");
+    CHECK(d != NULL, "wx fixtures present (run from the repo root)"); free(d); if (!d) return;
+    /* 首页: 底栏 Chats 那格文字是绿的 */
+    uint8_t *im = wx_canvas(); wx_fill(im, 70, 1152, 110, 1165, 7, 193, 96);
+    char *t = wx_run("home", WX_L, im, note);
+    CHECK(t && strstr(t, "\"Chats tab\" (current tab) Button at 90,1133"), "chats tab detected from the green label");
+    CHECK(t && strstr(t, "\"Search\" (search contacts, chats and messages) Button at 591,91") && strstr(t, "\"+ menu\" (New Chat, Add Contacts, Scan, Money) Button at 677,91"), "title bar buttons from the view tree");
+    CHECK(t && strstr(t, "\"Chat row 1\" (the name is in the screenshot at this height) Button at 360,199") && strstr(t, "\"Chat row 5\"") && !strstr(t, "\"Chat row 6\""), "five chat rows at their real heights");
+    free(t);
+    /* 通讯录 Tab: 同一份树(ViewPager 滚动树里看不出), 截图说是第二格 → 不给会话行 */
+    free(im); im = wx_canvas(); wx_fill(im, 250, 1152, 290, 1165, 7, 193, 96);
+    t = wx_run("home", WX_L, im, note);
+    CHECK(t && strstr(t, "\"Contacts tab\" (current tab)") && !strstr(t, "Chat row"), "contacts tab: no chat rows");
+    free(t);
+    /* 右上菜单开着(窗口表里有 PopupWindow, 焦点窗口就是它): 页面看 mFocusedApp, 只给菜单四项 */
+    d = wx_fx("home"); char *pp = strstr(d, "popups=0"); if (pp) pp[7] = '1';
+    ds4_buf pd = {0}; ds4_buf_puts(&pd, "  mFocusedApp=ActivityRecord{ff1b5b1 u0 com.tencent.mm/.ui.LauncherUI} t94}\n"); ds4_buf_puts(&pd, d); free(d);
+    char *x = asst_phone_wx_xml(pd.ptr, "PopupWindow:54f12cf", im, 720, 1280, note, sizeof note); ds4_buf_free(&pd);
+    t = x ? asst_phone_ui_text(x) : NULL; free(x);
+    CHECK(t && strstr(t, "\"New Chat\" (menu is open; press back to close it) Button at 553,197") && strstr(t, "\"Money\" Button at 553,503") && !strstr(t, "Chats tab"), "popup menu items only");
+    free(t);
+    /* 底栏不是恰好一格绿(弹窗压暗等) → 不认 */
+    free(im); im = wx_canvas();
+    CHECK(wx_run("home", WX_L, im, note) == NULL, "no green tab: page not recognised");
+    /* 聊天页, 键盘收起: "+"的竖笔在 x=677 中线 1134 */
+    wx_fill(im, 677, 1123, 677, 1144, 25, 25, 25);
+    t = wx_run("chat", WX_L, im, note);
+    CHECK(t && strstr(t, "\"More (+)\"") && strstr(t, "Button at 677,1134") && strstr(t, "\"Message box\" EditText at 324,1134"), "chat input bar at rest");
+    CHECK(t && strstr(t, "\"Back\" Button at 61,91") && !strstr(t, "\"Gallery\""), "title bar back; no panel");
+    free(t);
+    /* 键盘/面板弹起: 输入栏上移 526(树里还在原位), 面板的白格子在 → 八个入口 */
+    free(im); im = wx_canvas(); wx_fill(im, 677, 597, 677, 618, 25, 25, 25);
+    wx_fill(im, 60, 725, 161, 826, 255, 255, 255); wx_fill(im, 555, 725, 656, 826, 255, 255, 255); wx_fill(im, 60, 914, 161, 1015, 255, 255, 255);
+    t = wx_run("chat", WX_L, im, note);
+    CHECK(t && strstr(t, "\"Message box\" EditText at 324,608") && strstr(t, "\"Transfer\" Button at 440,964") && strstr(t, "\"Gallery\" Button at 110,775"), "raised bar and plus panel");
+    CHECK(t && strstr(t, "\"Back\" Button at 61,91"), "title bar does not move");
+    free(t);
+    /* 打了字: "+"换成绿色发送键(58 高), 中线按绿块上下沿取 */
+    free(im); im = wx_canvas(); wx_fill(im, 612, 579, 702, 637, 7, 193, 96);
+    t = wx_run("chattyped", WX_L, im, note);
+    CHECK(t && strstr(t, "\"Send\" Button at 657,608"), "send button with the keyboard up");
+    free(t);
+    /* 没截图(或服务号的菜单栏): 只给标题栏 */
+    t = wx_run("chat", WX_L, NULL, note);
+    CHECK(t && strstr(t, "\"Back\"") && !strstr(t, "Message box"), "no screenshot: title bar only");
+    free(t); free(im);
+    /* 转账页、搜索页: 树就够(不平移) */
+    t = wx_run("remit", "com.tencent.mm/com.tencent.mm.plugin.remittance.ui.RemittanceUI", NULL, note);
+    CHECK(t && strstr(t, "\"1\" Button at 95,827") && strstr(t, "\"0\" Button at 183,1127") && strstr(t, "\"Transfer\" (goes on to the password page) Button at 624,1027"), "transfer keypad");
+    free(t);
+    t = wx_run("search", "com.tencent.mm/com.tencent.mm.plugin.fts.ui.FTSMainUI", NULL, note);
+    CHECK(t && strstr(t, "\"Search box\" EditText at 377,108") && strstr(t, "\"Back\" Button at 40,109"), "search page");
+    free(t);
+    /* 版本不对: 整张表不用, 说清楚为什么 */
+    d = wx_fx("remit"); char *vc = strstr(d, "versionCode=3200"); if (vc) vc[15] = '1';
+    x = asst_phone_wx_xml(d, "com.tencent.mm/com.tencent.mm.plugin.remittance.ui.RemittanceUI", NULL, 0, 0, note, sizeof note); free(d);
+    CHECK(!x && strstr(note, "versionCode 3201 has no built-in layout table"), "other WeChat version: table not used"); free(x);
+    CHECK(asst_phone_wx_xml("versionCode=3200", "com.other/x.Y", NULL, 0, 0, note, sizeof note) == NULL, "other apps untouched");
+}
+
 int asst_test_phone(void) {
     pass = fail = 0;
+    wx_tests();
     /* ① NAL */
     const unsigned char s[] = { 0, 0, 0, 1, 0x67, 1, 2, 0, 0, 1, 0x68, 3, 0, 0, 0, 1, 0x65, 9, 9, 9, 0, 0, 1, 0x41, 7, 0, 0 };
     size_t st[8]; const size_t k = asst_phone_nal_split(s, sizeof s, st, 8);
@@ -50,7 +125,7 @@ int asst_test_phone(void) {
     CHECK(strstr(oc.ptr, "-lt 0 ] && continue"), "explicit open spares nothing, however young");
     ds4_buf_free(&oc);
     ds4_buf ac = {0}; asst_phone_one_app_sh(&ac, NULL);
-    CHECK(strstr(ac.ptr, "fg=$(dumpsys window") && strstr(ac.ptr, "mFocusedApp="), "after an action the foreground app is the one kept");
+    CHECK(strstr(ac.ptr, "fg=$(dumpsys window displays ") && strstr(ac.ptr, "mFocusedApp="), "after an action the foreground app is the one kept (read from the current displays section, not the LAST ANR snapshot)");
     CHECK(strstr(ac.ptr, "pm list packages -3") && strstr(ac.ptr, "-lt 5 ] && continue"), "third-party only, young processes spared");
     CHECK(strstr(ac.ptr, "echo \"stopped $p\"") && !strcmp(ac.ptr + ac.len - 6, "; true"), "reports what it stopped and never fails the action");
     ds4_buf_free(&ac);

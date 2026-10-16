@@ -4,6 +4,7 @@
  * 屏幕上的文字是不可信内容(网页/app 里的字可能是写给模型看的指令): 守门按上过网处理(taint_web), 见 sbx_guard.c。
  * 出错会怎样: 手机中途被关 → 守门拒; adb 连不上 → "error: …" 回给模型, 不假装成功。 */
 #include "../asst_internal.h"
+#include "../../image/ds4_image.h"
 #include <ctype.h>
 #include <sys/stat.h>
 #include <time.h>
@@ -15,7 +16,7 @@
 bool asst_phone_tool(const char *name) { return !strncmp(name, "phone_", 6); }
 
 /* ---- uiautomator XML → 元素表 ---- */
-typedef struct { char text[96], desc[96], cls[48], id[96]; int x, y, w, h; bool click, edit; } elem;
+typedef struct { char text[96], desc[96], cls[48], id[96]; int x, y, w, h, x1, y1; bool click, edit; } elem;   /* x,y = 中心; x1,y1 = 左上角(命中测试用) */
 
 static bool attr(const char *node, const char *name, char *out, size_t n) {   /* name="…" 取值(只在这个 <node … > 内) */
     char key[64]; snprintf(key, sizeof key, " %s=\"", name);
@@ -45,7 +46,7 @@ static int parse(const char *xml, elem *out, int max) {
         int x1, y1, x2, y2; if (sscanf(b, "[%d,%d][%d,%d]", &x1, &y1, &x2, &y2) != 4) continue;
         if (x2 <= x1 || y2 <= y1) continue;
         if (!e.text[0] && !e.desc[0] && !e.click && !e.edit) continue;   /* 没字没功能的布局容器不给模型 */
-        e.x = (x1 + x2) / 2; e.y = (y1 + y2) / 2; e.w = x2 - x1; e.h = y2 - y1;
+        e.x = (x1 + x2) / 2; e.y = (y1 + y2) / 2; e.w = x2 - x1; e.h = y2 - y1; e.x1 = x1; e.y1 = y1;
         out[n++] = e;
     }
     return n;
@@ -81,15 +82,59 @@ char *asst_phone_ui_json(const char *xml) {
     return ds4_buf_take(&b);
 }
 
-/* ---- 软键盘在不在、占到哪(窗口管理器的 inset: ITYPE_IME frame=[0,top][720,1280] visible=true) ----
+/* ---- 软键盘在不在、占到哪: 读前台那条 dumpsys(sbx_pay.c, 守门也读它)里 ITYPE_IME 的 frame/visible ----
  * 为什么要报: 有的 app 的聊天页不给 uiautomator 控件树(10-14 微信实撞: dump 成功但只有 381 字节的空树), 模型只能凭截图估坐标;
  * 键盘一弹, 发送键从底部挪到键盘上沿, 模型按上一帧的位置去点就打在键盘的回车上(一连五次, 审计 3c50c3), 回车只换行, 永远发不出去。 */
-typedef struct { bool shown; int top; } ime_st;
-static ime_st ime_state(void) {
-    ime_st s = { false, 1280 }; char err[128];
-    char *r = asst_phone_shell("dumpsys window 2>/dev/null | grep -m1 -oE 'ITYPE_IME frame=\\[[0-9]+,[0-9]+\\]\\[[0-9]+,[0-9]+\\] visibleFrame=[^ ]+ visible=(true|false)'", 8000, err, sizeof err);
-    if (r) { int x1, y1, x2, y2; char v[8] = ""; if (sscanf(r, "ITYPE_IME frame=[%d,%d][%d,%d] visibleFrame=%*s visible=%7s", &x1, &y1, &x2, &y2, v) == 5) { s.shown = !strcmp(v, "true"); s.top = y1; } free(r); }
-    return s;
+
+/* ---- 模型上一次看到的那一帧: 交易审批(sbx_pay.c)拿它对落点下的字。只有工人线程读写(工具与守门都在它上面跑), 不加锁 ---- */
+static struct { char *xml; char focus[192]; long t; char shot[64], shot_focus[192]; long shot_t; } g_frame;   /* shot*: 最后一次截成功的(安全窗口截不到, 交易卡拿它当"进密码页前的最后一屏") */
+static void frame_set(const char *xml, const char *focus) {
+    free(g_frame.xml); g_frame.xml = xml ? strdup(xml) : NULL;
+    snprintf(g_frame.focus, sizeof g_frame.focus, "%s", focus ? focus : ""); g_frame.t = (long)time(NULL);
+}
+void asst_phone_last_shot(char *rel, size_t rn, char *focus, size_t fn, long *t) {
+    snprintf(rel, rn, "%s", g_frame.shot); snprintf(focus, fn, "%s", g_frame.shot_focus); *t = g_frame.shot_t;
+}
+void asst_phone_frame(char **xml, char *focus, size_t fn, long *t) {
+    *xml = g_frame.xml ? strdup(g_frame.xml) : NULL; snprintf(focus, fn, "%s", g_frame.focus); *t = g_frame.t;
+}
+
+int asst_phone_hit(const char *xml, int x, int y, char *text, size_t n) {
+    elem *els = calloc(UI_MAX_ELEMS, sizeof *els); const int k = parse(xml, els, UI_MAX_ELEMS);
+    int best = -1; long area = 0;
+    for (int i = 0; i < k; i++) {
+        const elem *e = &els[i];
+        if (!e->text[0] && !e->desc[0]) continue;   /* 没字的(图标按钮)不算: 要的是"点的是什么字" */
+        if (x < e->x1 || x >= e->x1 + e->w || y < e->y1 || y >= e->y1 + e->h) continue;
+        const long a = (long)e->w * e->h; if (best < 0 || a < area) { best = i; area = a; }
+    }
+    if (best >= 0) snprintf(text, n, "%s", els[best].text[0] ? els[best].text : els[best].desc);
+    free(els);
+    return best >= 0;
+}
+
+char *asst_phone_texts(const char *xml) {
+    elem *els = calloc(UI_MAX_ELEMS, sizeof *els); const int k = parse(xml, els, UI_MAX_ELEMS);
+    ds4_buf b = {0}; ds4_buf_puts(&b, "");
+    for (int i = 0; i < k; i++) {
+        if (els[i].text[0]) { ds4_buf_puts(&b, els[i].text); ds4_buf_putc(&b, '\n'); }
+        if (els[i].desc[0] && strcmp(els[i].desc, els[i].text)) { ds4_buf_puts(&b, els[i].desc); ds4_buf_putc(&b, '\n'); }
+    }
+    free(els);
+    return ds4_buf_take(&b);
+}
+
+/* 前台是微信: 用写死的按钮表(tool_phone_wx.c)代替 uiautomator —— 它在微信上只拿到空树, 每次还白花 1~2 s。
+ * 版本不对 / 认不出这一页 → NULL, note 说明原因, 调用方退回 uiautomator + 看截图 */
+static char *wx_tree(const char *focus, const char *shot_rel, char *note, size_t nn) {
+    if (strncmp(focus, "com.tencent.mm/", 15) && strncmp(focus, "PopupWindow:", 12)) return NULL;   /* 弹出窗口: 底下是谁由 tool_phone_wx.c 看 mFocusedApp 定 */
+    char err[256]; char *dump = asst_phone_shell(asst_phone_wx_cmd(), 20000, err, sizeof err);
+    if (!dump) { snprintf(note, nn, "could not read WeChat's view tree: %s", err); return NULL; }
+    ds4_img im = {0}; char ie[128];
+    if (shot_rel[0]) { char path[ASST_PATH + 96]; snprintf(path, sizeof path, "%s/%s", asst_ws, shot_rel); if (!img_load(path, &im, ie, sizeof ie)) im.rgb = NULL; }
+    char *x = asst_phone_wx_xml(dump, focus, im.rgb, im.w, im.h, note, nn);
+    img_free(&im); free(dump);
+    return x;
 }
 
 /* ---- 看一眼: 截图落工作区 + 元素表 + 键盘 ---- */
@@ -105,16 +150,23 @@ static char *look(int *ok) {
         saved = asst_write_file(path, png.ptr, png.len, 0600);
     }
     ds4_buf_free(&png);
-    char *xml = asst_phone_shell("rm -f /sdcard/ds4ui.xml; uiautomator dump /sdcard/ds4ui.xml >/dev/null 2>&1; cat /sdcard/ds4ui.xml 2>/dev/null", 20000, err2, sizeof err2);
+    asst_phone_win k; char ke[128];
+    const bool have = asst_phone_win_now(&k, 0, ke, sizeof ke);
+    char wnote[192] = ""; char *xml = have ? wx_tree(k.focus, saved ? rel : "", wnote, sizeof wnote) : NULL;
+    const bool wx = xml != NULL;
+    if (!wx) xml = asst_phone_shell("rm -f /sdcard/ds4ui.xml; uiautomator dump /sdcard/ds4ui.xml >/dev/null 2>&1; cat /sdcard/ds4ui.xml 2>/dev/null", 20000, err2, sizeof err2);
     const bool tree = xml && strstr(xml, "<node ");
     ds4_buf b = {0};
     if (saved) ds4_buf_printf(&b, "screenshot: %s\n", rel);
     else ds4_buf_printf(&b, "screenshot: none (%s; this happens on login/payment screens that forbid capture — work from the element list below)\n", shot ? "could not save" : err);
+    if (wx) ds4_buf_puts(&b, "elements below are WeChat's built-in layout table (exact positions; WeChat hides its UI tree). Names, messages and search results are not in it: read them from the screenshot.\n");
+    else if (wnote[0]) ds4_buf_printf(&b, "note: %s\n", wnote);
     if (tree) { char *t = asst_phone_ui_text(xml); ds4_buf_puts(&b, t); free(t); }
     else ds4_buf_printf(&b, "elements: none (%s)\n", xml ? "this screen exposes no UI tree; work from the screenshot: 720x1280, origin top-left, y grows downward" : err2);
+    frame_set(tree ? xml : NULL, have ? k.focus : "");
+    if (saved) { snprintf(g_frame.shot, sizeof g_frame.shot, "%s", rel); snprintf(g_frame.shot_focus, sizeof g_frame.shot_focus, "%s", have ? k.focus : ""); g_frame.shot_t = g_frame.t; }
     free(xml);
-    const ime_st k = ime_state();
-    if (k.shown) ds4_buf_printf(&b, "keyboard: shown, covering y %d..1280. Its keys only type; its enter key inserts a newline or confirms the field. To send/submit, tap the app's own button, which sits above y %d.\n", k.top, k.top);
+    if (have && k.ime_shown) ds4_buf_printf(&b, "keyboard: shown, covering y %d..1280. Its keys only type; its enter key inserts a newline or confirms the field. To send/submit, tap the app's own button, which sits above y %d.\n", k.ime_top, k.ime_top);
     else ds4_buf_puts(&b, "keyboard: hidden\n");
     *ok = saved || tree;
     return ds4_buf_take(&b);
@@ -205,7 +257,10 @@ char *asst_phone_tool_exec(const char *sid, const char *tool, const char *args, 
     if (!strcmp(tool, "phone_open")) asst_phone_open_cmd(&full, cmd);
     else { ds4_buf_puts(&full, typed ? typed : cmd); ds4_buf_puts(&full, "; "); asst_phone_one_app_sh(&full, NULL); }
     free(typed);
-    const ime_st before = !strcmp(tool, "phone_tap") ? ime_state() : (ime_st){ false, 1280 };   /* 动作前的键盘状态: 点完键盘可能收起/弹出, 判"点在键盘上"要按动作前 */
+    /* 动作前的键盘状态: 点完键盘可能收起/弹出, 判"点在键盘上"要按动作前。守门几毫秒前刚读过同一条(交易审批), 3 s 内的直接用, 不多一次往返;
+     * 等审批等了很久就过期重读 */
+    asst_phone_win before; memset(&before, 0, sizeof before); before.ime_top = 1280; char be[128];
+    if (!strcmp(tool, "phone_tap") && !asst_phone_win_now(&before, 3000, be, sizeof be)) before.ime_shown = false;
     char *r = asst_phone_shell(full.ptr, 30000, err, sizeof err); ds4_buf_free(&full);
     if (!r) { ds4_buf b = {0}; ds4_buf_printf(&b, "error: phone command failed: %s\n", err); return ds4_buf_take(&b); }
     if (strstr(r, "clipboard: ")) { ds4_buf b = {0}; ds4_buf_printf(&b, "error: could not put the text on the phone's clipboard: %s\n", r); free(r); return ds4_buf_take(&b); }
@@ -218,8 +273,8 @@ char *asst_phone_tool_exec(const char *sid, const char *tool, const char *args, 
     free(r);
     usleep(SETTLE_MS * 1000);
     char *frame = look(ok);
-    if (before.shown && ty >= before.top)   /* 10-14 实撞: 模型连点五次"发送"全落在键盘的回车键上 */
-        ds4_buf_printf(&b, "note: that tap at %ld,%ld landed on the on-screen keyboard (it covered y %d..1280), not on the app. The app's buttons are above y %d.\n", tx, ty, before.top, before.top);
+    if (before.ime_shown && ty >= before.ime_top)   /* 10-14 实撞: 模型连点五次"发送"全落在键盘的回车键上 */
+        ds4_buf_printf(&b, "note: that tap at %ld,%ld landed on the on-screen keyboard (it covered y %d..1280), not on the app. The app's buttons are above y %d.\n", tx, ty, before.ime_top, before.ime_top);
     if (!b.len) { ds4_buf_free(&b); return frame; }
     ds4_buf_puts(&b, frame); free(frame); return ds4_buf_take(&b);
 }

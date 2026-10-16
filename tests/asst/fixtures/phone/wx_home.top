@@ -1,0 +1,238 @@
+    versionCode=3200 minSdk=24 targetSdk=34
+popups=0
+  ACTIVITY com.tencent.mm/.ui.LauncherUI 475c168 pid=1010202
+    View Hierarchy:
+      DecorView@400da64[LauncherUI]
+        android.widget.LinearLayout{43fa4cd V.E...... ........ 0,0-720,1184}
+          com.tencent.mm.ui.HomeUI$FitSystemWindowLayoutView{ff1b4e0 V.E...... ........ 0,0-720,1184}
+            or3.e{b1b83ce V.E...... ........ 0,0-720,1184}
+              android.widget.FrameLayout{c3412ef V.E...... ........ 0,0-720,1184}
+                android.widget.FrameLayout{3cb11fc V.E...... ........ 0,0-720,1184 #7f0a3e62 app:id/uxb}
+                  android.widget.FrameLayout{1d9a085 V.E...... ........ 0,0-720,1184 #7f0a3e61 app:id/huh}
+                    androidx.appcompat.widget.ActionBarOverlayLayout{4700eda V.E...... ........ 0,0-720,1184 #7f0a18be app:id/crd}
+                      androidx.appcompat.widget.ContentFrameLayout{ed8ef0b V.E...... ........ 0,0-720,1184 #1020002 android:id/content}
+                        com.tencent.mm.blink.FirstScreenFrameLayout{508e058 V.E...... ........ 0,0-720,1184 #7f0a3237 app:id/g6w}
+                          android.widget.FrameLayout{8b551e8 V.E...... ........ 0,0-720,1184}
+                            com.tencent.mm.ui.base.CustomViewPager{598c001 VFED..... ........ 0,0-720,1184 #7f0a50f1 app:id/kod}
+                              com.tencent.mm.ui.FrostedContentView{e503ea6 V.E...... ........ 0,0-720,1184 #7f0a49f3 app:id/jlt}
+                                com.tencent.mm.ui.widget.pulldown.MMWeUIBounceView{5a570e7 V.E...... ........ 0,0-720,1184 #7f0a4a0a app:id/v9m}
+                                  androidx.core.widget.NestedScrollView{981a494 VFED..... ........ 0,0-720,1184}
+                                    android.widget.LinearLayout{ad05b3d V.E...... ......ID 0,0-720,0}
+                                  android.widget.FrameLayout{4b19f32 V.E...... ........ 0,0-720,1184}
+                                    com.tencent.mm.ui.conversation.MainUIView{ce3483 V.E...... ........ 0,0-720,1184 #7f0a4756 app:id/j99}
+                                      com.tencent.mm.ui.conversation.ConversationListView{89cd933 VFED..CL. ........ 0,0-720,1184 #7f0a4737 app:id/j8g}
+                                        com.tencent.mm.plugin.taskbar.ui.TaskBarContainer{e67d986 V.E...... ........ 0,-1021-720,134}
+                                          android.widget.RelativeLayout{b567c7e V.E...... ........ 0,0-720,1155}
+                                            android.widget.FrameLayout{53595df V.E...... ........ 0,0-720,1054 #7f0a0528 app:id/a0i}
+                                              android.widget.LinearLayout{4f4f22c V.E...... ........ 0,48-720,1054 #7f0a047c app:id/wn}
+                                                android.widget.RelativeLayout{81cb4f5 V.E...... ........ 0,0-720,86}
+                                                  android.widget.TextView{dd9e28a V.ED..... ........ 313,0-407,86 #7f0a047e app:id/wp}
+                                                android.view.View{47b9d56 V.ED..... ........ 0,86-720,87}
+                                                android.widget.LinearLayout{91661d7 V.E...... ........ 0,87-720,1006}
+                                                  com.tencent.mm.plugin.taskbar.ui.TaskBarView{8920735 VFED..... ........ 0,0-720,919 #7f0a047f app:id/wq}
+                                                    aq4.q{18e2240 V.E...... ........ 0,0-720,101}
+                                                      android.widget.FrameLayout{136997e VFE...C.. ........ 0,0-720,101 #7f0a1651 app:id/cg7}
+                                                        android.widget.LinearLayout{c77eedf V.E...... ........ 43,29-677,101}
+                                                          com.tencent.mm.ui.widget.imageview.WeImageView{952d72c V.ED..... ........ 229,14-272,57}
+                                                          android.widget.TextView{ddd35f5 V.ED..... ........ 279,17-404,54 #7f0a047d app:id/wo}
+                                                    tp4.l{153226c V.E...... ........ 0,101-720,223}
+                                                      androidx.constraintlayout.widget.ConstraintLayout{e1ecf8a V.E...... ........ 0,0-720,122}
+                                                        android.widget.FrameLayout{ac3a18 V.E...... ........ 0,0-720,122 #7f0a1651 app:id/cg7}
+                                                          android.widget.LinearLayout{9983c71 VFE...C.. ........ 0,0-720,122}
+                                                            android.widget.TextView{8a25a56 V.ED..... ........ 193,73-501,106 #7f0a4c03 app:id/vaj}
+                                                            com.tencent.mm.ui.widget.imageview.WeImageView{92adad7 V.ED..... ........ 508,72-526,108 #7f0a4c02 app:id/vai}
+                                            com.tencent.mm.plugin.taskbar.api.GyroView{245c565 V.ED..... ........ 315,1051-405,1069 #7f0a375a app:id/gw5}
+                                            com.tencent.mm.plugin.appbrand.widget.desktop.AppBrandDesktopContainerView{af8023a V.E...... ........ 0,0-720,1155 #7f0a196d app:id/cvn}
+                                            android.widget.FrameLayout{51e11de V.E...... ........ 0,1054-720,1155 #7f0a0479 app:id/wk}
+                                              android.widget.FrameLayout{6f36fbf V.E...... ........ 0,0-720,101}
+                                                com.tencent.mm.plugin.taskbar.ui.TaskBarBottomView{e6cf68c V.ED..... ........ 0,0-720,101 #7f0a0477 app:id/wi}
+                                                android.widget.RelativeLayout{3cbd1d5 V.E...... ........ 0,0-720,101 #7f0a1651 app:id/cg7}
+                                                  android.widget.LinearLayout{7756dea VFE...C.. ........ 0,14-82,101 #7f0a0157 app:id/actionbar_up_indicator}
+                                                  android.widget.RelativeLayout{938ef78 V.E...... ........ 216,14-504,101 #7f0a013b app:id/gp}
+                                                    android.widget.LinearLayout{504b651 V.E...... ........ 0,0-288,87}
+                                                      android.widget.LinearLayout{6347eb6 V.E...... ........ 0,22-288,64}
+                                                        android.widget.TextView{9b997b7 V.ED..... ........ 0,0-288,42 #1020014 android:id/text1}
+                                                  android.widget.LinearLayout{701d042 V.E...... ........ 576,36-720,79}
+                                                    android.widget.RelativeLayout{e45f853 V.E...... ........ 0,0-72,43}
+                                                      com.tencent.mm.ui.widget.imageview.WeImageView{8a63590 VFED..C.. ........ 0,0-43,43 #7f0a5d68 app:id/meb}
+                                                    android.widget.RelativeLayout{160ae8e V.E...... ........ 72,0-144,43}
+                                                      com.tencent.mm.ui.widget.imageview.WeImageView{b2dc6af VFED..C.. ........ 0,0-43,43 #7f0a5314 app:id/plus_icon}
+                                        android.widget.LinearLayout{2bfec6 V.E...... ........ 0,134-720,134}
+                                        android.widget.LinearLayout{d7ffe87 V.E...... ........ 0,134-720,134}
+                                        android.widget.LinearLayout{276b1b4 V.E...... ........ 0,134-720,134}
+                                        android.widget.LinearLayout{9594152 V.E...... ........ 0,134-720,134}
+                                        android.widget.LinearLayout{453fc23 V.E...... ........ 0,134-720,134}
+                                        android.widget.LinearLayout{4a73520 V.E...... ........ 0,134-720,134}
+                                        android.widget.LinearLayout{4218ed9 V.E...... ........ 0,134-720,134}
+                                        android.widget.LinearLayout{a6209e V.E...... ........ 0,134-720,134}
+                                        android.widget.LinearLayout{ce0377f V.E...... ........ 0,134-720,134}
+                                        android.widget.LinearLayout{79a834c V.E...... ........ 0,134-720,134}
+                                        android.widget.LinearLayout{9933f95 V.E...... ........ 0,134-720,134}
+                                        com.tencent.mm.ui.conversation.ConversationFolderItemView{7e564f8 VFE...CL. ........ 0,134-720,264 #7f0a16d9 app:id/cj1}
+                                          android.widget.LinearLayout{be5da45 V.E...... ........ 0,0-720,130 #7f0a16d8 app:id/cj0}
+                                            android.widget.RelativeLayout{fbd259a V.E...... ........ 29,14-130,115}
+                                              android.widget.ImageView{41a1ecb V.ED..... ........ 0,7-86,93 #7f0a0706 app:id/a_4}
+                                              android.widget.ImageView{b8ed5c1 V.ED..... ........ 76,2-94,20 #7f0a070f app:id/a_h}
+                                            android.widget.RelativeLayout{5380166 V.E...... ........ 137,0-720,130}
+                                              android.widget.LinearLayout{429dca7 V.E...... ........ 0,0-583,130}
+                                                android.widget.LinearLayout{7380554 V.E...... ........ 0,25-554,67 #7f0a69d8 app:id/o4k}
+                                                  android.widget.LinearLayout{2e3b99f V.E...... ........ 0,0-434,42 #7f0a69d9 app:id/wem}
+                                                    com.tencent.mm.ui.base.NoMeasuredTextView{97b41fe V.ED..... ........ 0,0-434,42 #7f0a4e79 app:id/kbq}
+                                                  android.widget.TextView{d7eaaec V.ED..... ........ 463,0-554,30 #7f0a6f59 app:id/otg}
+                                                android.widget.LinearLayout{58adeb5 V.E...... ........ 0,67-554,107}
+                                                  android.widget.LinearLayout{fa294a V.E...... ........ 0,4-540,36}
+                                                    com.tencent.mm.ui.base.NoMeasuredTextView{c2189d8 V.ED..... ........ 0,0-540,32 #7f0a3e27 app:id/ht5}
+                                                  android.widget.LinearLayout{757b131 V.E...... ........ 540,0-554,40}
+                                              android.view.View{23697a2 V.ED..... ........ 0,129-583,130 #7f0a1a6d app:id/d0v}
+                                        com.tencent.mm.ui.conversation.ConversationFolderItemView{dbd6155 VFE...CL. ........ 0,264-720,394 #7f0a16d9 app:id/cj1}
+                                          android.widget.LinearLayout{771df25 V.E...... ........ 0,0-720,130 #7f0a16d8 app:id/cj0}
+                                            android.widget.RelativeLayout{91778fa V.E...... ........ 29,14-130,115}
+                                              android.widget.ImageView{136deab V.ED..... ........ 0,7-86,93 #7f0a0706 app:id/a_4}
+                                            android.widget.RelativeLayout{7d42ac6 V.E...... ........ 137,0-720,130}
+                                              android.widget.LinearLayout{582ba87 V.E...... ........ 0,0-583,130}
+                                                android.widget.LinearLayout{8e8bdb4 V.E...... ........ 0,25-554,67 #7f0a69d8 app:id/o4k}
+                                                  android.widget.LinearLayout{2fe737f V.E...... ........ 0,0-434,42 #7f0a69d9 app:id/wem}
+                                                    com.tencent.mm.ui.base.NoMeasuredTextView{c514c5a V.ED..... ........ 0,0-434,42 #7f0a4e79 app:id/kbq}
+                                                  android.widget.TextView{c20f4c V.ED..... ........ 463,0-554,30 #7f0a6f59 app:id/otg}
+                                                android.widget.LinearLayout{411db95 V.E...... ........ 0,67-554,107}
+                                                  android.widget.LinearLayout{6c014aa V.E...... ........ 0,4-540,36}
+                                                    com.tencent.mm.ui.base.NoMeasuredTextView{ca6d438 V.ED..... ........ 0,0-540,32 #7f0a3e27 app:id/ht5}
+                                                  android.widget.LinearLayout{3019c11 V.E...... ........ 540,0-554,40}
+                                              android.view.View{aa28f02 V.ED..... ........ 0,129-583,130 #7f0a1a6d app:id/d0v}
+                                        com.tencent.mm.ui.conversation.ConversationFolderItemView{1aa935e VFE...CL. ........ 0,394-720,524 #7f0a16d9 app:id/cj1}
+                                          android.widget.LinearLayout{9a1d405 V.E...... ........ 0,0-720,130 #7f0a16d8 app:id/cj0}
+                                            android.widget.RelativeLayout{95efc5a V.E...... ........ 29,14-130,115}
+                                              android.widget.ImageView{5f10e8b V.ED..... ........ 0,7-86,93 #7f0a0706 app:id/a_4}
+                                              android.widget.TextView{493bb68 V.ED..... ........ 64,0-96,32 #7f0a6b1d app:id/o_u}
+                                            android.widget.RelativeLayout{b008426 V.E...... ........ 137,0-720,130}
+                                              android.widget.LinearLayout{2e00867 V.E...... ........ 0,0-583,130}
+                                                android.widget.LinearLayout{29d2614 V.E...... ........ 0,25-554,67 #7f0a69d8 app:id/o4k}
+                                                  android.widget.LinearLayout{d3b9d5f V.E...... ........ 0,0-434,42 #7f0a69d9 app:id/wem}
+                                                    com.tencent.mm.ui.base.NoMeasuredTextView{8976b95 V.ED..... ........ 0,0-434,42 #7f0a4e79 app:id/kbq}
+                                                  android.widget.TextView{2cf23ac V.ED..... ........ 463,0-554,30 #7f0a6f59 app:id/otg}
+                                                android.widget.LinearLayout{218c875 V.E...... ........ 0,67-554,107}
+                                                  android.widget.LinearLayout{11f300a V.E...... ........ 0,4-540,36}
+                                                    com.tencent.mm.ui.base.NoMeasuredTextView{6e0ce98 V.ED..... ........ 0,0-540,32 #7f0a3e27 app:id/ht5}
+                                                  android.widget.LinearLayout{e3a76f1 V.E...... ........ 540,0-554,40}
+                                              android.view.View{b9db662 V.ED..... ........ 0,129-583,130 #7f0a1a6d app:id/d0v}
+                                        com.tencent.mm.ui.conversation.ConversationFolderItemView{d580812 VFE...CL. ........ 0,524-720,654 #7f0a16d9 app:id/cj1}
+                                          android.widget.LinearLayout{32db8e5 V.E...... ........ 0,0-720,130 #7f0a16d8 app:id/cj0}
+                                            android.widget.RelativeLayout{eebafba V.E...... ........ 29,14-130,115}
+                                              android.widget.ImageView{393373f V.ED..... ........ 0,7-86,93 #7f0a0706 app:id/a_4}
+                                            android.widget.RelativeLayout{46f7b6a V.E...... ........ 137,0-720,130}
+                                              android.widget.LinearLayout{90e085b V.E...... ........ 0,0-583,130}
+                                                android.widget.LinearLayout{2e778f8 V.E...... ........ 0,25-554,67 #7f0a69d8 app:id/o4k}
+                                                  android.widget.LinearLayout{cc327d3 V.E...... ........ 0,0-446,42 #7f0a69d9 app:id/wem}
+                                                    com.tencent.mm.ui.base.NoMeasuredTextView{387aec V.ED..... ........ 0,0-446,42 #7f0a4e79 app:id/kbq}
+                                                  android.widget.TextView{56c6f10 V.ED..... ........ 475,0-554,30 #7f0a6f59 app:id/otg}
+                                                android.widget.LinearLayout{f625a09 V.E...... ........ 0,67-554,107}
+                                                  android.widget.LinearLayout{45440e V.E...... ........ 0,4-540,36}
+                                                    com.tencent.mm.ui.base.NoMeasuredTextView{8116c3c V.ED..... ........ 0,0-540,32 #7f0a3e27 app:id/ht5}
+                                                  android.widget.LinearLayout{cd8dc5 V.E...... ........ 540,0-554,40}
+                                              android.view.View{e69c6e6 V.ED..... ........ 0,129-583,130 #7f0a1a6d app:id/d0v}
+                                        com.tencent.mm.ui.conversation.ConversationFolderItemView{c004ff3 VFE...CL. ........ 0,654-720,784 #7f0a16d9 app:id/cj1}
+                                          android.widget.LinearLayout{1d8d779 V.E...... ........ 0,0-720,130 #7f0a16d8 app:id/cj0}
+                                            android.widget.RelativeLayout{b90ccbe V.E...... ........ 29,14-130,115}
+                                              android.widget.ImageView{3fd411f V.ED..... ........ 0,7-86,93 #7f0a0706 app:id/a_4}
+                                              android.widget.TextView{9a65c6c V.ED..... ........ 64,0-96,32 #7f0a6b1d app:id/o_u}
+                                            android.widget.RelativeLayout{108f6ca V.E...... ........ 137,0-720,130}
+                                              android.widget.LinearLayout{63ed03b V.E...... ........ 0,0-583,130}
+                                                android.widget.LinearLayout{4d2d358 V.E...... ........ 0,25-554,67 #7f0a69d8 app:id/o4k}
+                                                  android.widget.LinearLayout{a890bb3 V.E...... ........ 0,0-481,42 #7f0a69d9 app:id/wem}
+                                                    com.tencent.mm.ui.base.NoMeasuredTextView{6c27ec7 V.ED..... ........ 0,0-481,42 #7f0a4e79 app:id/kbq}
+                                                  android.widget.TextView{d5cb570 V.ED..... ........ 510,0-554,30 #7f0a6f59 app:id/otg}
+                                                android.widget.LinearLayout{46190e9 V.E...... ........ 0,67-554,107}
+                                                  android.widget.LinearLayout{4e7e16e V.E...... ........ 0,4-540,36}
+                                                    com.tencent.mm.ui.base.NoMeasuredTextView{82fb89c V.ED..... ........ 0,0-540,32 #7f0a3e27 app:id/ht5}
+                                                  android.widget.LinearLayout{b3952a5 V.E...... ........ 540,0-554,40}
+                                              android.view.View{a56b046 V.ED..... ........ 0,129-583,130 #7f0a1a6d app:id/d0v}
+                                        android.widget.LinearLayout{13fbdd1 V.E...... ........ 0,784-720,1189 #7f0a106e app:id/bp9}
+                                          android.view.View{a0ed027 V.ED..... ........ 0,0-720,405}
+                                      android.view.View{e038659 V.ED..... ........ 0,0-720,48 #7f0a65a1 app:id/nhm}
+                                android.view.View{18a69b4 V.ED..... ........ 0,0-720,48 #7f0a6c48 app:id/og9}
+                              com.tencent.mm.ui.FrostedContentView{fe19fe7 V.E...... ........ 720,0-1440,1184 #7f0a49f3 app:id/jlt}
+                                com.tencent.mm.ui.widget.pulldown.MMWeUIBounceView{573a794 V.E...... ........ 0,0-720,1184 #7f0a4a0a app:id/v9m}
+                                  androidx.core.widget.NestedScrollView{fc5a23d VFED..... ........ 0,0-720,1184}
+                                    android.widget.LinearLayout{6c2da32 V.E...... ......ID 0,0-720,0}
+                                  android.widget.FrameLayout{41e5383 V.E...... ........ 0,0-720,1184}
+                                    android.widget.LinearLayout{8ada900 V.E...... ........ 0,0-720,1184}
+                                      android.widget.FrameLayout{16f2539 V.E...... ........ 0,0-720,1184}
+                                        com.tencent.mm.view.recyclerview.WxRecyclerView{cc0677e VFE...... ........ 0,0-720,1184 #7f0a0262 app:id/mg}
+                                        android.widget.RelativeLayout{6e8a4df V.E...... ........ 0,0-720,1184}
+                                          com.tencent.mm.ui.base.AlphabetScrollBar{6c4552c VFED..... ........ 680,174-720,1009 #7f0a0272 app:id/mx}
+                                        android.widget.LinearLayout{f93dbf5 V.E...... ........ 0,0-720,1184 #7f0a4382 app:id/imk}
+                                          android.widget.TextView{4dcaffb V.ED..... ........ 322,571-454,613}
+                              com.tencent.mm.ui.FrostedContentView{7134271 V.E...... ........ 1440,0-2160,1184 #7f0a49f3 app:id/jlt}
+                                com.tencent.mm.ui.widget.pulldown.MMWeUIBounceView{5d7e856 V.E...... ........ 0,0-720,1184 #7f0a4a0a app:id/v9m}
+                                  androidx.core.widget.NestedScrollView{e3c50d7 VFED..... ........ 0,0-720,1184}
+                                    android.widget.LinearLayout{d9a1dc4 V.E...... ......ID 0,0-720,0}
+                                  android.widget.FrameLayout{94894ad V.E...... ........ 0,0-720,1184}
+                                    android.widget.RelativeLayout{c0233e2 V.E...... ........ 0,0-720,1184 #7f0a5438 app:id/l2w}
+                                      com.tencent.mm.view.TouchableLayout{b8b2373 V.E...... ........ 0,0-720,1184 #7f0a6c96 app:id/oht}
+                                        com.tencent.mm.ui.widget.listview.PullDownListView{cfd5230 V.ED..CL. ........ 0,0-720,1184 #102000a android:id/list}
+                                      android.widget.LinearLayout{806cea9 V.E...... ........ 0,0-720,1184 #7f0a4382 app:id/imk}
+                                        android.widget.TextView{fea83cf V.ED..... ........ 322,571-454,613}
+                              com.tencent.mm.ui.FrostedContentView{cb25d3a V.E...... ........ 2160,0-2880,1184 #7f0a49f3 app:id/jlt}
+                                com.tencent.mm.ui.widget.pulldown.MMWeUIBounceView{5358deb V.E...... ........ 0,0-720,1184 #7f0a4a0a app:id/v9m}
+                                  androidx.core.widget.NestedScrollView{7cd3748 VFED..... ........ 0,0-720,1184}
+                                    android.widget.LinearLayout{2e8a9e1 V.E...... ......ID 0,0-720,0}
+                                  android.widget.FrameLayout{5d91306 V.E...... ........ 0,0-720,1184}
+                                    com.tencent.mm.ui.ProfileDispatchTouchEventLayout{ddd1dc7 V.E...... ........ 0,0-720,1184 #7f0a5438 app:id/l2w}
+                                      com.tencent.mm.view.TouchableLayout{5227ff4 V.E...... ........ 0,0-720,1184 #7f0a6c96 app:id/oht}
+                                        com.tencent.mm.ui.widget.listview.PullDownListView{d65031d V.ED..CL. ........ 0,0-720,1184 #102000a android:id/list}
+                                      android.widget.LinearLayout{635992 V.E...... ........ 0,0-720,1184 #7f0a4382 app:id/imk}
+                                        android.widget.TextView{2e1a760 V.ED..... ........ 322,571-454,613}
+                            com.tencent.mm.ui.LauncherUIBottomTabView{9a3d07d V.E...... ........ 0,1083-720,1184 #7f0a3e64 app:id/huj}
+                              android.widget.LinearLayout{159febf V.E...... ........ 0,0-720,101}
+                                android.widget.RelativeLayout{1d74055 VFE...CL. ..S..... 0,0-180,101 #7f0a683f app:id/nvt}
+                                  android.widget.LinearLayout{5a9d98c V.E...... ..S..... 0,10-180,90 #7f0a3932 app:id/h5y}
+                                    android.widget.RelativeLayout{7e278d5 V.E...... ..S..... 0,0-180,50}
+                                      com.tencent.mm.ui.TabIconView{5fc88ea V.ED..... ..S..... 65,0-115,50 #7f0a395a app:id/h6y}
+                                      android.widget.TextView{8fe285b V.ED..... ..S..... 101,0-133,32 #7f0a6f42 app:id/osw}
+                                    android.widget.TextView{d39c7db V.ED..... ..S..... 57,50-122,80 #7f0a3978 app:id/icon_tv}
+                                android.widget.RelativeLayout{f40ff8 VFE...CL. ........ 180,0-360,101 #7f0a683f app:id/nvt}
+                                  android.widget.LinearLayout{ae10278 V.E...... ........ 0,10-180,90 #7f0a3932 app:id/h5y}
+                                    android.widget.RelativeLayout{15ecd51 V.E...... ........ 0,0-180,50}
+                                      com.tencent.mm.ui.TabIconView{59249b6 V.ED..... ........ 65,0-115,50 #7f0a395a app:id/h6y}
+                                    android.widget.TextView{a8306b7 V.ED..... ........ 46,50-134,80 #7f0a3978 app:id/icon_tv}
+                                android.widget.RelativeLayout{6988cd1 VFE...CL. ........ 360,0-540,101 #7f0a683f app:id/nvt}
+                                  android.widget.LinearLayout{e5fce24 V.E...... ........ 0,10-180,90 #7f0a3932 app:id/h5y}
+                                    android.widget.RelativeLayout{371ed8d V.E...... ........ 0,0-180,50}
+                                      com.tencent.mm.ui.TabIconView{5f14b42 V.ED..... ........ 65,0-115,50 #7f0a395a app:id/h6y}
+                                    android.widget.TextView{3b75753 V.ED..... ........ 47,50-132,80 #7f0a3978 app:id/icon_tv}
+                                android.widget.RelativeLayout{f48250d VFE...CL. ........ 540,0-720,101 #7f0a683f app:id/nvt}
+                                  android.widget.LinearLayout{edda890 V.E...... ........ 0,10-180,90 #7f0a3932 app:id/h5y}
+                                    android.widget.RelativeLayout{d1cd589 V.E...... ........ 0,0-180,50}
+                                      com.tencent.mm.ui.TabIconView{f4cd98e V.ED..... ........ 65,0-115,50 #7f0a395a app:id/h6y}
+                                    android.widget.TextView{fd615af V.ED..... ........ 74,50-105,80 #7f0a3978 app:id/icon_tv}
+                      androidx.appcompat.widget.ActionBarContainer{2744145 V.ED..... ........ 0,48-720,134 #7f0a00d3 app:id/ei}
+                        androidx.appcompat.widget.Toolbar{7c1009a VFE...C.. ........ 0,0-720,86 #7f0a00cf app:id/ef}
+                          android.widget.RelativeLayout{c785dcb VFE...C.. ........ 0,0-720,86 #7f0a0154 app:id/hb}
+                            android.widget.RelativeLayout{1d5f9a8 V.E...... ........ 118,0-601,86 #7f0a013b app:id/gp}
+                              android.widget.LinearLayout{a1cacc1 V.E...... ........ 172,0-311,86}
+                                android.widget.LinearLayout{91e8c66 V.E...... ........ 0,22-139,64}
+                                  android.widget.TextView{68b4600 V.ED..... ........ 0,0-139,42 #1020014 android:id/text1}
+                            android.widget.LinearLayout{68653fd V.E...... ........ 0,0-75,86 #7f0a0157 app:id/actionbar_up_indicator}
+                              android.widget.TextView{f94bb43 V.ED..... ......ID 75,0-75,86 #7f0a0159 app:id/hbo}
+                            android.widget.LinearLayout{c3455c0 V.E...... ........ 548,0-720,86 #7f0a184a app:id/coz}
+                              android.widget.LinearLayout{6e932f9 V.E...... ........ 0,0-172,86 #7f0a1849 app:id/coy}
+                                android.widget.RelativeLayout{af71ad3 VFE...CL. ........ 0,0-86,86 #7f0a4913 app:id/jha}
+                                  com.tencent.mm.ui.widget.imageview.WeImageView{468c23e V.ED..... ........ 29,21-72,64 #7f0a3925 app:id/h5n}
+                                android.widget.RelativeLayout{8df0509 VFE...C.. ........ 86,0-172,86 #7f0a48ea app:id/jga}
+                                  com.tencent.mm.ui.widget.imageview.WeImageView{ee90dec V.ED..... ........ 14,21-57,64 #7f0a3925 app:id/h5n}
+                          androidx.appcompat.widget.ActionMenuView{a0d8ee V.E...... ......ID 720,0-720,86}
+              android.widget.FrameLayout{e9a2c97 V.E...... ........ -655,0-720,1184}
+                com.tencent.mm.plugin.multitask.ui.panel.MultiTaskContainerView{5052e84 V.E...... ........ 0,0-720,1184 #7f0a4bbe app:id/jxo}
+                android.widget.FrameLayout{579366d V.E...... ........ 0,0-720,1184}
+                  com.tencent.mm.plugin.multitask.ui.MultiTaskPanelContainer{87f92a2 V.E...... ........ 0,0-720,1184 #7f0a4b92 app:id/jv6}
+                    android.widget.LinearLayout{84afb33 V.E...... ........ 0,0-720,1184}
+                      android.widget.RelativeLayout{ce8aef0 V.E...... ........ 0,48-655,134 #7f0a4bc4 app:id/jxt}
+                        com.tencent.mm.ui.widget.MMTextView{1ffcc69 V.ED..... ........ 0,20-98,65 #7f0a4bc5 app:id/jxu}
+                        com.tencent.mm.ui.widget.imageview.WeImageView{c6836ee VFED..C.. ........ 554,21-655,64 #7f0a4bc3 app:id/jxs}
+                      android.widget.FrameLayout{a41ca1c V.E...... ........ 0,163-655,1184}
+                        com.tencent.mm.plugin.multitask.ui.panel.MultiTaskCoordinatorLayout{73fc625 V.ED..... ........ 0,0-655,1021 #7f0a4bc0 app:id/jxq}
+                          com.tencent.mm.plugin.multitask.ui.panel.OverScrollMultiTaskRecyclerView{3c89163 VFED..... ........ 0,0-655,1021 #7f0a4bbf app:id/jxp}
+                            android.widget.FrameLayout{55466dc VFE...CL. ......ID 25,0-630,0}
+                        android.view.View{a24d3fa V.ED..... ........ 36,0-317,374 #7f0a4b93 app:id/jv9}
+        android.view.View{7a09dab V.ED..... ........ 0,1184-720,1280 #1020030 android:id/navigationBarBackground}
+        android.view.View{caf6c08 V.ED..... ........ 0,0-720,48 #102002f android:id/statusBarBackground}

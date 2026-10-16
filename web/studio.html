@@ -17,7 +17,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
 <link rel="icon" href="/logo.jpg">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -31,14 +31,57 @@
 /* 外壳二选一(10-12 用户: "重新以 app 的方式设计, 根据浏览器打开的环境使用不同的布局"): 同一份 DOM, <html data-shell="desk|app"> 决定长相。
    app = 触屏(手指点, pointer: coarse)或装成 PWA 独立窗口打开, 且窗口窄于 900 px —— 手机竖横屏、iPad 竖屏;
    其余(电脑浏览器, 窗口拉多窄都算; iPad 横屏)= desk, 即原来的左右布局, 一行不动。URL ?shell=app|desk 可强制(电脑上调手机版用)。
+   手机(isPhone)一律 app: 横过来时页面被转回竖的(见下面锁竖屏), 不能因为横屏宽度过了 900 就换成电脑布局。
    放在 <head> 里同步跑: 等页面画完再判, 手机上会先闪一下电脑布局。旋转/改窗口大小时页面脚本会再判一次。 */
 (function () {
   const q = new URLSearchParams(location.search).get("shell");
   const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  /* 手机 = 触屏且屏幕短边 < 600 px。用 screen 不用 innerWidth: 弹键盘、横竖屏都不变。iPad、折叠屏展开不算, 横屏照样走电脑布局 */
+  window.isPhone = () => matchMedia("(pointer: coarse)").matches && Math.min(screen.width, screen.height) < 600;
   window.shellPick = () => q === "app" || q === "desk" ? q :
-    (matchMedia("(pointer: coarse)").matches || standalone) && innerWidth < 900 ? "app" : "desk";
+    window.isPhone() || (matchMedia("(pointer: coarse)").matches || standalone) && innerWidth < 900 ? "app" : "desk";
   document.documentElement.dataset.shell = window.shellPick();
   document.documentElement.dataset.standalone = standalone ? "1" : "0";
+})();
+/* 手机锁竖屏, 怎么转都不动(10-16 用户: "横屏了内容也不能横屏, 一直锁定竖屏"; 同日小米上倒过来 180° 照样翻: "怎么旋转都不动")。两层:
+   1) screen.orientation.lock("portrait-primary") = 系统真锁。写 "portrait" 不够: 它把倒着竖(180°)也算竖屏, 倒过来系统照翻。
+      浏览器只在装成 App 打开或全屏时才给锁, 普通标签页里会被拒, iOS 干脆没有这个接口;
+   2) 锁不住就自己把整页反着转回去(CSS 见 html[data-rot]): 横放转 ∓90°, 倒置转 180°, 人看到的始终是贴在手机上的竖屏布局。
+   转了以后屏幕坐标(clientX/Y、getBoundingClientRect、innerWidth/Height)和页面坐标不再是一回事: 凡是拿它们去摆弹窗、算点在哪的代码
+   一律过 toPage / pageRect / pageW / pageH, 直接用原值会点歪、菜单弹到屏幕外。没转的时候这几个就是原值, 电脑上零影响。
+   转没转按屏幕角度判, 不按宽高比: 小屏手机竖着弹键盘, 可视区比宽还矮, 按宽高比会误判成横屏、整页转起来; 倒置时宽高比根本不变。 */
+(function () {
+  const root = document.documentElement;
+  let rot = 0, sw = 0, sh = 0, pw = 0, ph = 0;   /* 屏幕坐标下的窗口宽高 / 转回来以后页面的宽高 */
+  const angle = () => typeof window.orientation === "number" ? window.orientation   /* iOS 只有这个; 90 = 手机逆时针横放(顶朝左), 180 = 倒置 */
+    : screen.orientation ? (screen.orientation.angle > 180 ? screen.orientation.angle - 360 : screen.orientation.angle) : 0;
+  const lock = () => { if (!window.isPhone()) return; try { screen.orientation.lock("portrait-primary").catch(() => {}); } catch (_) {} };
+  const apply = () => {
+    const a = window.isPhone() ? angle() : 0;
+    sw = innerWidth; sh = innerHeight;
+    /* 再拿宽高比确认一次: 刚转的那一下角度先变、窗口尺寸后变, 以 resize 那次为准 */
+    rot = (a === 90 || a === -90) && sw > sh ? -a : (a === 180 || a === -180) && sw <= sh ? 180 : 0;
+    if (!rot) { delete root.dataset.rot; return; }
+    [pw, ph] = rot === 180 ? [sw, sh] : [sh, sw];
+    root.dataset.rot = rot; root.style.setProperty("--pw", pw + "px"); root.style.setProperty("--ph", ph + "px");
+  };
+  /* 全屏(云手机画面)的元素在浏览器顶层画, 不吃 body 的旋转: 那时坐标不用换。安卓全屏时 lock 是给的, 一进全屏就真锁住 */
+  const on = () => rot && !document.fullscreenElement;
+  window.toPage = (x, y) => !on() ? { x, y } : rot === -90 ? { x: sh - y, y: x } : rot === 90 ? { x: y, y: sw - x } : { x: sw - x, y: sh - y };
+  window.pageRect = el => {
+    const r = el.getBoundingClientRect(); if (!on()) return r;
+    const a = window.toPage(r.left, r.top), b = window.toPage(r.right, r.bottom);
+    const left = Math.min(a.x, b.x), top = Math.min(a.y, b.y), right = Math.max(a.x, b.x), bottom = Math.max(a.y, b.y);
+    return { left, top, right, bottom, width: right - left, height: bottom - top };
+  };
+  window.pageW = () => on() ? pw : innerWidth;
+  window.pageH = () => on() ? ph : innerHeight;
+  apply(); lock();
+  addEventListener("resize", apply); addEventListener("orientationchange", apply);
+  if (screen.orientation) screen.orientation.addEventListener("change", apply);
+  document.addEventListener("fullscreenchange", lock);
+  /* 禁双指缩放: viewport 的 user-scalable=no 安卓认, iOS 10 起不认(无障碍理由), 只能拦 Safari 私有的 gesture* 事件 */
+  ["gesturestart", "gesturechange"].forEach(n => document.addEventListener(n, e => e.preventDefault(), { passive: false }));
 })();
 </script>
 <style>
@@ -194,6 +237,12 @@
   .tool .tbody { padding: 0 12px 10px; display: flex; flex-direction: column; gap: 6px; } .tool .tbody pre.box { max-height: 260px; }
   .appr { padding: 4px 12px 12px; display: flex; flex-direction: column; gap: 8px; } .appr .why { font-weight: 600; } .appr pre.box { max-height: 220px; }
   .abtns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  /* 交易卡(docs/assistant_approval.md §3): 红头 · 此刻的手机屏幕 + 落点红圈 · 屏幕上的金额原样 · 只有 仅这次/拒绝。截图封 40vh: 手机上一屏看完整张卡 */
+  .appr .paytag { align-self: flex-start; background: #dc2626; color: #fff; font-weight: 700; border-radius: 6px; padding: 3px 10px; font-size: 13px; }
+  .appr .payshot { position: relative; align-self: flex-start; line-height: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .appr .payshot { max-width: 100%; } .appr .payshot img { max-height: min(40vh, 420px); max-width: 100%; width: auto; height: auto; display: block; }
+  .appr .payshot .dot { position: absolute; width: 26px; height: 26px; margin: -13px 0 0 -13px; border: 3px solid #ef4444; border-radius: 50%; box-shadow: 0 0 0 3px rgba(255,255,255,.7); }
+  .appr .payamt { font-size: 15px; font-weight: 700; } .appr .payunseen { color: var(--amber); }
   .plan { margin-left: 42px; border: 1px solid var(--accent-line); border-radius: 10px; background: var(--panel); font-size: 13.5px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
   .plan.ask { border-color: rgba(245,158,11,.6); } .plan.closed { opacity: .7; }
   .plan .phead { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; } .plan .ptitle { flex: 1; min-width: 0; font-size: 14px; }
@@ -213,6 +262,14 @@
   .deliver { border: 1px solid var(--accent-line); background: var(--accent-soft); border-radius: 10px; padding: 8px 12px; }
   .deliver .fname { font: 600 13px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--accent-2); word-break: break-all; flex: 1; min-width: 120px; }
   .deliver button { font-size: 12.5px; padding: 5px 11px; }
+  .deliver button.pvbtn.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }   /* 预览开着 = 实心, 一眼看出 */
+  /* 读取中占位: 点了先展开这块, 内容回来替换; 高度给到图片的一半左右, 回来时页面不会猛跳一大截 */
+  .deliver .pvload { width: 100%; min-height: 120px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 1px dashed var(--accent-line); border-radius: 8px; color: var(--dim); font-size: 12.5px; }
+  .deliver .pvload::before { content: ""; width: 16px; height: 16px; border: 2px solid var(--accent-line); border-top-color: var(--accent); border-radius: 50%; animation: pvspin .8s linear infinite; }
+  @keyframes pvspin { to { transform: rotate(360deg); } }
+  .deliver .pvimg { width: 100%; max-height: 360px; object-fit: contain; border-radius: 8px; }
+  .deliver .pvframe { width: 100%; height: min(70vh, 640px); border: 1px solid var(--accent-line); border-radius: 8px; background: #fff; }   /* 网页预览: 白底, 模型写的页多半没设背景 */
+  .deliver a.pvopen { font-size: 12.5px; padding: 5px 11px; border: 1px solid var(--accent-line); border-radius: 8px; color: var(--accent-2); text-decoration: none; }
   .tool.dev .appr button.primary, .tool.dev .appr a.primary { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .tool.dev .appr a.primary { display: block; box-sizing: border-box; text-align: center; text-decoration: none; background: var(--grad); border: 1px solid transparent; border-radius: 8px; padding: 7px 10px; color: #fff; font-weight: 600; }   /* 导航/打开/拨打是真链接(见 actionHref), 长得和按钮一样 */
     .deliver pre.box { width: 100%; max-height: 300px; }
@@ -243,15 +300,22 @@
   .mic-ov.cancel { border-color: var(--err); } .mic-ov.cancel .t { color: var(--err); } .mic-ov.cancel .lvl i { background: var(--err); }
   .sdot.waiting_device { background: var(--accent-2); animation: pulse .9s infinite; }
   @media (max-width: 760px) { .deliver { margin-left: 0; } }
-  .tk-list .row { display: flex; align-items: flex-start; gap: 10px; padding: 11px 10px; border-radius: 9px; border: 1px solid var(--line); margin-bottom: 8px; }
+  /* 任务页 = 一个任务一张卡(.row), 按钮排在卡底一行。以前按钮竖在右侧一列: 手机上那列窄, 四五个按钮叠成一摞把整行撑得很高(10-16 用户实撞) */
+  #v-tasks { padding-bottom: 96px; }   /* 给右下角"+"让位, 否则最后一张卡的按钮被它盖住点不到 */
+  .tk-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; align-items: start; }
+  .tk-list .row { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+  .tk-list .row { cursor: pointer; } .tk-list .row:hover { border-color: var(--accent-line); } .tk-list .row:active { background: var(--hover); }
+  [data-shell=app] .tk-list .row:hover { border-color: var(--border); }   /* 触屏点完 :hover 会粘在卡上, 回到列表还亮着一圈边 */
   .tk-list .row.done { opacity: .62; }
   .tk-list .row .sdot { margin-top: 6px; }
   .tk-list .row .tx { flex: 1; min-width: 0; }
   .tk-list .row b { font-weight: 600; font-size: 13.5px; word-break: break-word; }
   .tk-list .row small { display: block; color: var(--dim); font-size: 12px; line-height: 1.4; margin-top: 3px; word-break: break-word; }
-  .tk-list .row .last { color: var(--text); white-space: pre-wrap; max-height: 5.6em; overflow: hidden; }
-  .tk-list .row .ops { display: flex; gap: 4px; flex: none; flex-wrap: wrap; justify-content: flex-end; }
+  .tk-list .row .last { color: var(--text); white-space: pre-wrap; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }   /* 全文在它的对话里, 卡上只露个头 */
+  .tk-list .row .ops { display: flex; gap: 4px; flex-wrap: wrap; flex-basis: 100%; }   /* 占满一行 = 掉到卡底 */
   .tk-list .row .ops button { padding: 3px 8px; font-size: 12px; }
+  .tk-fab { position: fixed; right: 28px; bottom: 28px; z-index: 20; width: 52px; height: 52px; padding: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 18px rgba(0,0,0,.28); }
+  .tk-fab svg.i { width: 24px; height: 24px; stroke-width: 2.2; }
   .mem-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
   .sk-grid { display: grid; grid-template-columns: minmax(260px, 1fr) 2fr; gap: 16px; align-items: start; }
   @media (max-width: 1100px) { .sk-grid { grid-template-columns: 1fr; } }
@@ -473,9 +537,25 @@
   .tb-btn { display: none; }
   [data-shell=app] .desk-only { display: none !important; }
   [data-shell=app] .app-only { display: revert; }
-  /* touch-action: manipulation = 保留拖动和双指缩放, 关掉双击放大(连点两下按钮/文字整页突然放大, 还要等 300 ms 判是不是双击)。
+  /* touch-action: pan-x pan-y = 只许拖动: 双指缩放和双击放大都关掉(10-16 用户: "不能双指拖动就放大"; 双击放大还要等 300 ms 判是不是双击)。
+     写在根上才管得住整页缩放 —— 缩放归根元素管, 子元素写了不算。iOS 另外靠 <head> 里拦 gesture 事件。
      overscroll-behavior 写在根上才管得住安卓 Chrome 的下拉刷新: 消息区拉到顶再往下拽, 整页刷新、对话流断掉 */
-  [data-shell=app] { -webkit-tap-highlight-color: transparent; touch-action: manipulation; overscroll-behavior: none; }
+  [data-shell=app] { -webkit-tap-highlight-color: transparent; touch-action: pan-x pan-y; overscroll-behavior: none; }
+  /* 假锁竖屏(为什么、什么时候转见 <head> 里的脚本): body 改成 fixed 的竖条(页面宽 --pw × 高 --ph, 脚本按转后的方向写), 绕左上角转再平移回屏幕里。
+     fixed 的弹窗/抽屉/提示条在转过的 body 里按 body 摆, 跟着一起转, 不用单独管。
+     安全区: 系统按当前方向报刘海/底部横条在哪条边, 转回来以后它们落在页面的哪一边, 照着补 padding(页面上原有的 safe-area-inset-* 这时指错了边) */
+  html[data-rot] { overflow: hidden; }
+  html[data-rot] body { position: fixed; top: 0; left: 0; width: var(--pw); height: var(--ph); transform-origin: 0 0; }
+  html[data-rot="-90"] body { transform: translateY(var(--pw)) rotate(-90deg);
+    padding: env(safe-area-inset-left) env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom); }
+  html[data-rot="90"] body { transform: translateX(var(--ph)) rotate(90deg);
+    padding: env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left) env(safe-area-inset-top); }
+  html[data-rot="180"] body { transform: translate(var(--pw), var(--ph)) rotate(180deg);
+    padding: env(safe-area-inset-bottom) env(safe-area-inset-left) env(safe-area-inset-top) env(safe-area-inset-right); }
+  /* vw/vh 是按屏幕算的, 横着转时 vw 是长边: 按 vw 封顶的宽度会比页面还宽, 改按页面宽(--pw)/高(--ph) */
+  html[data-rot] .pickbtn, html[data-rot] .composer .tools select { max-width: calc(var(--pw) * .44); }
+  html[data-rot] #pick .pbox { max-width: calc(var(--pw) * .8); max-height: calc(var(--ph) * .5); }
+  html[data-rot][data-immersive] .phwrap { min-height: var(--ph); }
   /* 误选文字: 整页一律不可选, 只有输入框例外; 复制正文改成长按整块(脚本 PRESS_COPY)。
      为什么连消息正文也禁: 安卓 Chrome 的"轻触搜索"(developer.chrome.com/blog/tap-to-search)对可选文字两种都触发 ——
      轻点文字弹、长按选中文字也弹(底部冒"点按可查看更多"那条), 后一种页面关不掉, 官方给的唯一办法就是 user-select: none。
@@ -500,6 +580,10 @@
   [data-shell=app] input, [data-shell=app] select, [data-shell=app] textarea { font-size: 16px; }   /* iOS: 小于 16px 的输入框一聚焦整页就放大 */
   [data-shell=app] .view { padding: 14px 14px 28px; overscroll-behavior: contain; }
   [data-shell=app] .card { padding: 14px; border-radius: 14px; }
+  [data-shell=app] .tk-list { grid-template-columns: 1fr; gap: 10px; }
+  [data-shell=app] .tk-list .row { padding: 12px 14px; border-radius: 14px; }
+  [data-shell=app] .tk-list .row .last { -webkit-line-clamp: 2; }
+  [data-shell=app] .tk-fab { right: 16px; bottom: calc(72px + env(safe-area-inset-bottom)); }   /* 底栏在文档流里, fixed 按视口算: 不抬高就压在底栏上 */
   /* 顶栏: 左键(对话页 = 抽屉, 二级页 = 返回) · 标题 + 引擎状态 · 右键(对话页 = 新对话); 状态栏透明(standalone)时让出刘海 */
   [data-shell=app] .topbar { height: auto; padding: env(safe-area-inset-top) 4px 0; gap: 0; background: var(--side); }
   [data-shell=app] .topbar > :not(.tb-btn):not(.tb-title) { display: none; }
@@ -648,14 +732,12 @@
 
   <!-- ============ 任务 ============
        一句话 = 一个任务(~/.ds4/assistant/tasks/<id>.json) + 一个专属对话; 助理到点往那个对话里发"继续这个任务", 什么时候再看由模型自己定(task_check_in), 做完了 task_done。
-       列表 = GET /api/assistant/tasks; 操作 POST tasks {op}; "打开"就是进它的对话(助理页), 工具卡/审批卡全是现成的。 -->
+       列表 = GET /api/assistant/tasks; 操作 POST tasks {op}; "打开"就是进它的对话(助理页), 工具卡/审批卡全是现成的。
+       10-16 用户令: 页面只剩任务卡片列表 + 右下角"+"; 新建不在这页输一句话了, "+"进助理开新对话, 聊出来的任务(模型调 plan_propose)自己出现在这里。
+       定时提醒卡同日删掉: notify 排的提醒照常到点推, 服务端 /api/assistant/reminders 没动, 只是页面上不再列。 -->
   <section class="view" id="v-tasks">
-    <div class="card"><div class="card-title" data-i18n="tk_new">新任务</div><div class="muted" data-i18n="tk_new_sub" style="margin-bottom:10px"></div>
-      <div style="display:flex;gap:10px;align-items:center"><input id="tk-text" data-i18n-ph="tk_ph" style="flex:1" autocapitalize="off"><button class="primary" id="tk-add" data-i18n="tk_add">创建</button></div></div>
-    <div class="card"><div class="card-title" data-i18n="tk_list">任务</div><div class="muted" data-i18n="tk_list_sub" style="margin-bottom:10px"></div>
-      <div id="tk-list" class="tk-list"></div></div>
-    <div class="card"><div class="card-title" data-i18n="rm_title">定时提醒</div><div class="muted" data-i18n="rm_sub" style="margin-bottom:10px"></div>
-      <div id="rm-list" class="tk-list"></div></div>
+    <div id="tk-list" class="tk-list"></div>
+    <button class="primary tk-fab" id="tk-fab" data-i18n-title="tk_fab"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
   </section>
 
   <!-- ============ 记忆 ============ -->
@@ -1069,14 +1151,12 @@ const I18N = {
     pl_after: "这条回答结束后切换", pl_fail: "切换失败: {0}", pl_on: "挂着: {0}", pl_newer: "(有更新的: {0}, 关再开换上)", pl_can: "可挂: {0}", pl_tip: "挂/卸自己训出来的后训练件",
     pl_switching: "切换中…", pl_err: "侧车没切成: {0}",
     tab_mem: "记忆", tab_act: "活动", hint_chat: "住在这台机器上的个人助理: 记忆是你能改的纯文本, 每次动手都在沙盒里, 越界先问你", hint_mem: "助理记得的事与你给它的规矩(新开的对话生效)", hint_act: "沙盒、允许的目录、永久授权、每一次工具调用",
-    tab_tasks: "任务", hint_tasks: "一句话交给助理持续跟着的事: 它到点自己再看一遍, 进展都在这里",
-    tk_new: "新任务", tk_new_sub: "一句话说清要持续跟的事(盯一个价格、追一件事的进展、每天整理一份东西…)。助理马上做第一遍, 之后什么时候再看由它自己定, 做完了会收口。", tk_ph: "例如: 盯着 DGX Spark 的价格, 降到 3 万以下告诉我", tk_add: "创建",
-    tk_list: "任务", tk_list_sub: "每个任务有自己的对话, 点\"打开\"能看它每一次做了什么。", tk_empty: "还没有任务。",
-    tk_open: "打开", tk_pause: "暂停", tk_resume: "继续", tk_run: "现在跟进", tk_done: "完成", tk_del: "删除", tk_del_confirm: "删除这个任务和它的对话? (挪进 ~/.ds4/assistant/trash/, 盘上还能找回)",
+    tab_tasks: "任务", hint_tasks: "交给助理持续跟着的事: 它到点自己再看一遍, 进展都在这里; 点卡片进它的对话, 能看它每一次做了什么",
+    tk_fab: "新任务: 去助理里说要跟什么", tk_empty: "还没有任务。点右下角 +, 在助理里说一句要持续跟的事(盯一个价格、追一件事的进展、每天整理一份东西…), 它会建成任务。",
+    tk_pause: "暂停", tk_resume: "继续", tk_run: "现在跟进", tk_done: "完成", tk_del: "删除", tk_del_confirm: "删除这个任务和它的对话? (挪进 ~/.ds4/assistant/trash/, 盘上还能找回)",
     pl_tag: "计划", pl_wait: "等你确认", pl_active: "进行中 {0}/{1}", pl_paused: "已暂停 {0}/{1}", pl_done: "已完成 {0}/{1}", pl_abandoned: "已放弃", pl_q: "要你拿主意:", pl_start: "开始", pl_discard: "放弃",
     pl_hint: "按开始之前助理只查不动: 不写文件、不跑程序、不发通知。有要改的直接在下面回它。", pl_discard_confirm: "放弃这个计划? 对话还在, 计划不会再跟进。", pl_next: "下一步: {0}", tk_proposed: "等你确认计划",
     tk_runs: "跟进 {0} 次", tk_next: "下次 {0}", tk_running: "进行中", tk_queued: "排队中", tk_waiting: "等你批准", tk_paused: "已暂停", tk_done_s: "已完成", tk_err: "上次出错", tk_note: "助理的话: {0}", tk_created: "创建于 {0}",
-    rm_title: "定时提醒", rm_sub: "助理用 notify 工具安排的: 到点推到设备(页面开着就在页面里弹)。不想要的删掉。", rm_empty: "没有待发的提醒", rm_del: "删除", rm_open: "打开", rm_at: "{0} · 来自对话",
     au_setup_t: "首次使用: 设置用户名和密码", au_setup_sub: "以后打开工作台都要用它登录。只以单向哈希存在运行工作台的那台机器上({0}); 忘了就删掉这个文件, 刷新页面重新设置。",
     au_login_t: "登录", au_login_sub: "登录后这个浏览器 30 天内免登, 常用会自动续期。", au_broken_t: "登录文件读不懂",
     au_user: "用户名", au_pass: "密码", au_pass2: "再输一次密码", au_rule: "用户名 3–32 位, 只用字母、数字和 _ . -; 密码 8–64 位, 字母、数字、符号里至少占两类, 不能和用户名一样。",
@@ -1088,11 +1168,13 @@ const I18N = {
     a_new: "+ 新对话", a_chats: "对话", a_nosess: "还没有对话", a_untitled: "新对话", a_del: "删除", a_del_confirm: "删除这个对话? (挪进 ~/.ds4/assistant/trash/, 盘上还能找回)",
     a_need: "等你批准", a_running: "执行中…", a_thinking: "思考中…", a_args: "参数", a_result: "结果 · {0} 字节", a_reason: "要做: {0}", a_target: "范围: {0}",
     a_once: "仅这次", a_session: "本会话都允许", a_always: "总是允许", a_deny: "拒绝", a_once_only: "这类操作只能逐次批准",
+    pay_tag: "付款 · {0}", pay_amt: "屏幕上的金额: {0}", pay_noamt: "屏幕上没有金额字样", pay_secure: "这是 {0} 的安全窗口(登录/密码/支付页), 系统禁止截屏, 看不到这一页的画面; 拿不准就拒绝",
+    pay_noshot: "现场截图没拿到", pay_unseen: "模型没看过这个屏幕(它上一眼是 {0} 秒前的另一页)", pay_unseen0: "模型没看过这个屏幕", pay_once: "付钱的这一步每次都要你批, 不会记住", pay_once_page: "批一次管这一页(密码/确认页)上后面的操作, 离开这页就失效; 密码模型打不了, 在云手机页签里你自己输", pay_before: "进这一页之前的最后一屏({0} 秒前): 看清给谁、多少钱", pay_loading: "截图加载中…",
     dec_auto: "自动放行", dec_once: "你批准了", dec_session: "本会话已允许", dec_always: "永久允许", dec_denied: "你拒绝了", dec_blocked: "规则拦下", dec_invalid: "参数不对", dec_cancelled: "已取消",
     a_end_stopped: "已停止", a_end_error: "出错了", a_usage: "提示 {0} · 生成 {1} token", s_running: "进行中", s_waiting_approval: "等你批准", s_waiting_device: "等设备回答", s_queued: "排队中…", ph_busy: "助理正在干活, 点停止可打断",
     dec_device: "设备答复了", dev_doing: "这台设备正在做…", dev_other: "在等发消息的那台设备回答; 它不在了就用这台:", dev_mine: "用这台设备回答", dev_tap_read_clipboard: "需要你点一下才能读剪贴板:", dev_tap_pick_file: "请选一个文件:", dev_tap_pick_photo: "请选一张照片:",
     dev_btn_read_clipboard: "读取剪贴板", dev_btn_pick_file: "选择文件", dev_btn_pick_photo: "选择照片", dev_tap_locate: "需要你点一下才能定位:", dev_btn_locate: "定位", dev_no_api: "这个浏览器不支持", dev_http: "位置、剪贴板、分享、麦克风这些能力浏览器只在 https(或本机地址)下开放; 现在是 http 打开的, 助理拿不到位置、读不了剪贴板、分享不了文件, 也没有语音输入",
-    dl_download: "下载", dl_share: "分享", dl_preview: "预览", file_fail: "取文件失败: {0}", share_fail: "分享没成: {0}", share_type_blocked: "这个浏览器不让分享 .{0} 文件, 点文件卡上的「下载」, 再从文件夹里发", copied_answer: "回答已复制到剪贴板", attach_fail: "附件没传上: {0}", attach_title: "附件",
+    dl_download: "下载", dl_share: "分享", dl_preview: "预览", dl_open: "打开",file_fail: "取文件失败: {0}", share_fail: "分享没成: {0}", share_type_blocked: "这个浏览器不让分享 .{0} 文件, 点文件卡上的「下载」, 再从文件夹里发", copied_answer: "回答已复制到剪贴板", attach_fail: "附件没传上: {0}", attach_title: "附件",
     mic_title: "语音输入", kb_title: "切换到文字输入", mic_hold: "按住 说话", mic_release: "松开 发送", mic_cancel_zone: "松开 取消", mic_recog: "识别中…",
     ov_hint: "松开发送, 上滑取消", ov_cancel: "松开手指, 取消发送", ov_left: "还能说 {0} 秒", mic_short: "说话时间太短",
     mic_denied: "麦克风权限被拒了, 去浏览器设置里打开", mic_fail: "语音识别没成: {0}", mic_empty: "没听到话",
@@ -1236,14 +1318,12 @@ const I18N = {
     pl_after: "Will switch after this answer finishes", pl_fail: "Switch failed: {0}", pl_on: "Attached: {0}", pl_newer: " (newer one available: {0}; toggle off and on to use it)", pl_can: "Available: {0}", pl_tip: "Attach / detach the post-train file you trained",
     pl_switching: "Switching…", pl_err: "Sidecar switch failed: {0}",
     tab_mem: "Memory", tab_act: "Activity", hint_chat: "A personal assistant living on this machine: memory is plain text you can edit, every action runs in a sandbox, anything outside asks you first", hint_mem: "What the assistant remembers and the rules you give it (new conversations pick up changes)", hint_act: "Sandbox, allowed folders, standing approvals, every tool call",
-    tab_tasks: "Tasks", hint_tasks: "Things you hand to the assistant in one sentence and it keeps following: it comes back on its own, progress shows here",
-    tk_new: "New task", tk_new_sub: "One sentence for something to keep following (watch a price, track how something is going, tidy something up every day…). The assistant does a first pass right away, decides itself when to look again, and closes the task when it is done.", tk_ph: "e.g. Watch the DGX Spark price and tell me when it drops below $3,000", tk_add: "Create",
-    tk_list: "Tasks", tk_list_sub: "Every task has its own conversation; Open shows what it did each time.", tk_empty: "No tasks yet.",
-    tk_open: "Open", tk_pause: "Pause", tk_resume: "Resume", tk_run: "Follow up now", tk_done: "Done", tk_del: "Delete", tk_del_confirm: "Delete this task and its conversation? (moved to ~/.ds4/assistant/trash/, still recoverable on disk)",
+    tab_tasks: "Tasks", hint_tasks: "Things the assistant keeps following: it comes back on its own, progress shows here; tap a card to open its conversation and see what it did each time",
+    tk_fab: "New task: tell the assistant what to follow", tk_empty: "No tasks yet. Tap + at the bottom right and tell the assistant something to keep following (watch a price, track how something is going, tidy something up every day…); it turns that into a task.",
+    tk_pause: "Pause", tk_resume: "Resume", tk_run: "Follow up now", tk_done: "Done", tk_del: "Delete", tk_del_confirm: "Delete this task and its conversation? (moved to ~/.ds4/assistant/trash/, still recoverable on disk)",
     pl_tag: "Plan", pl_wait: "Waiting for you", pl_active: "In progress {0}/{1}", pl_paused: "Paused {0}/{1}", pl_done: "Done {0}/{1}", pl_abandoned: "Discarded", pl_q: "Decisions for you:", pl_start: "Start", pl_discard: "Discard",
     pl_hint: "Until you press Start the assistant only looks things up: no files written, no programs run, no notifications. Reply below to change anything.", pl_discard_confirm: "Discard this plan? The conversation stays; the plan is no longer followed.", pl_next: "next: {0}", tk_proposed: "Plan waiting for you",
     tk_runs: "{0} follow-ups", tk_next: "next {0}", tk_running: "Running", tk_queued: "Queued", tk_waiting: "Waiting for you", tk_paused: "Paused", tk_done_s: "Done", tk_err: "Last run failed", tk_note: "Assistant's note: {0}", tk_created: "created {0}",
-    rm_title: "Scheduled reminders", rm_sub: "Scheduled by the assistant with the notify tool: pushed to your devices at the time (shown in the page if it is open). Delete the ones you do not want.", rm_empty: "No pending reminders", rm_del: "Delete", rm_open: "Open", rm_at: "{0} · from a conversation",
     au_setup_t: "First run: set a username and password", au_setup_sub: "You'll sign in with these every time. Only a one-way hash is stored, on the machine running the studio ({0}); if you forget, delete that file and reload to set them again.",
     au_login_t: "Sign in", au_login_sub: "This browser stays signed in for 30 days, renewed while you keep using it.", au_broken_t: "Login file unreadable",
     au_user: "Username", au_pass: "Password", au_pass2: "Repeat password", au_rule: "Username: 3–32 characters, letters, digits and _ . - only. Password: 8–64 bytes, at least two of letters / digits / symbols, not the same as the username.",
@@ -1255,11 +1335,13 @@ const I18N = {
     a_new: "+ New chat", a_chats: "Chats", a_nosess: "No conversations yet", a_untitled: "New chat", a_del: "Delete", a_del_confirm: "Delete this conversation? (moved to ~/.ds4/assistant/trash/, still recoverable on disk)",
     a_need: "Needs your approval", a_running: "Running…", a_thinking: "Thinking…", a_args: "Arguments", a_result: "Result · {0} bytes", a_reason: "Wants to: {0}", a_target: "Scope: {0}",
     a_once: "Allow once", a_session: "Allow for this chat", a_always: "Always allow", a_deny: "Deny", a_once_only: "This kind of action can only be approved one at a time",
+    pay_tag: "Payment · {0}", pay_amt: "Amount on screen: {0}", pay_noamt: "No amount on screen", pay_secure: "This is a secure window of {0} (login, password or payment page); the system forbids screenshots, so nothing can be shown here. Deny if unsure",
+    pay_noshot: "Could not take a screenshot", pay_unseen: "The model has not seen this screen (its last look was {0} s ago, on another page)", pay_unseen0: "The model has not seen this screen", pay_once: "The step that pays is approved every time and never remembered", pay_once_page: "One approval covers the rest of this page (password / confirm page) and ends when it closes; the model cannot type passwords, type it yourself in the Phone tab", pay_before: "The last screen before this page ({0} s ago): check who gets how much", pay_loading: "Loading screenshot…",
     dec_auto: "Auto-allowed", dec_once: "You allowed it", dec_session: "Allowed for this chat", dec_always: "Always allowed", dec_denied: "You denied it", dec_blocked: "Blocked by rules", dec_invalid: "Invalid arguments", dec_cancelled: "Cancelled",
     a_end_stopped: "Stopped", a_end_error: "Error", a_usage: "prompt {0} · generated {1} tokens", s_running: "Running", s_waiting_approval: "Waiting for you", s_waiting_device: "Waiting for your device", s_queued: "Queued…", ph_busy: "The assistant is working; press Stop to interrupt",
     dec_device: "Answered by your device", dev_doing: "This device is doing it…", dev_other: "Waiting for the device that sent the message; if it's gone, use this one:", dev_mine: "Answer from this device", dev_tap_read_clipboard: "Tap to let it read the clipboard:", dev_tap_pick_file: "Pick a file:", dev_tap_pick_photo: "Pick a photo:",
     dev_btn_read_clipboard: "Read clipboard", dev_btn_pick_file: "Choose file", dev_btn_pick_photo: "Choose photo", dev_tap_locate: "Tap to share your position:", dev_btn_locate: "Locate", dev_no_api: "Not supported by this browser", dev_http: "Browsers only expose location, clipboard, sharing and the microphone over https (or this machine's own address); this page was opened over http, so the assistant can't get your location, read the clipboard, share files, or take voice input",
-    dl_download: "Download", dl_share: "Share", dl_preview: "Preview", file_fail: "Could not fetch the file: {0}", share_fail: "Share failed: {0}", share_type_blocked: "This browser won't share .{0} files; use Download on the file card and send it from your files", copied_answer: "Answer copied to the clipboard", attach_fail: "Upload failed: {0}", attach_title: "Attach",
+    dl_download: "Download", dl_share: "Share", dl_preview: "Preview", dl_open: "Open",file_fail: "Could not fetch the file: {0}", share_fail: "Share failed: {0}", share_type_blocked: "This browser won't share .{0} files; use Download on the file card and send it from your files", copied_answer: "Answer copied to the clipboard", attach_fail: "Upload failed: {0}", attach_title: "Attach",
     mic_title: "Voice input", kb_title: "Switch to keyboard", mic_hold: "Hold to talk", mic_release: "Release to send", mic_cancel_zone: "Release to cancel", mic_recog: "Recognizing…",
     ov_hint: "Release to send, slide up to cancel", ov_cancel: "Release to cancel", ov_left: "{0} s left", mic_short: "Too short",
     mic_denied: "Microphone access was denied; allow it in the browser settings", mic_fail: "Speech recognition failed: {0}", mic_empty: "Didn't hear anything",
@@ -1409,7 +1491,8 @@ if (window.visualViewport) {
   const fit = () => {
     raf = 0;
     /* 乘 scale: 双指放大 2 倍时可视区读数减半, 不乘的话整页高度跟着缩成半屏 */
-    const h = vv.height * vv.scale, kb = Math.max(0, root.clientHeight - h);
+    /* 整页转着(锁竖屏)时键盘在页面的侧边, 按 --kb 抬底边只会抬错方向, 不抬 */
+    const h = vv.height * vv.scale, kb = root.dataset.rot ? 0 : Math.max(0, root.clientHeight - h);
     root.style.setProperty("--app-h", h + "px"); root.style.setProperty("--kb", kb + "px");
     root.toggleAttribute("data-kb", kb > 120);   /* 120: 低于这个是地址栏伸缩之类的小抖动, 不是键盘 */
     if (!isApp()) return;
@@ -1929,15 +2012,16 @@ function toolEl(it) {
   head.appendChild(node("span", "tst " + (ap && !ap.answered ? "need" : it.done ? (it.ok ? "ok" : "bad") : ""), stTxt));
   w.appendChild(head);
   if (dv && (!it.done || !dv.wait)) w.appendChild(deviceBox(it));
-  if (ap && !ap.answered) {   /* 审批卡: 参数原文不缩写(缩写就是让人盲签); 只能"仅这次"的(bash / 污点态 / 敏感目录)不给本会话与总是 */
+  if (ap && !ap.answered) {   /* 审批卡: 参数原文不缩写(缩写就是让人盲签); 只能"仅这次"的(bash / 污点态 / 敏感目录 / 交易)不给本会话与总是 */
     const box = node("div", "appr");
+    if (ap.pay) payBox(it, ap.pay, box);
     box.appendChild(node("div", "why", t("a_reason", ap.reason)));
     if (ap.target) box.appendChild(node("div", "muted", t("a_target", ap.target)));
     box.appendChild(node("pre", "box", prettyArgs(it)));
     const btns = node("div", "abtns");
     const add = (dec, cls, label) => { const b = node("button", cls, label); b.onclick = () => answer(it, dec); btns.appendChild(b); };
     add("once", "primary", t("a_once"));
-    if (!ap.once_only) { add("session", "", t("a_session")); add("always", "", t("a_always")); } else btns.appendChild(node("span", "muted", t("a_once_only")));
+    if (!ap.once_only) { add("session", "", t("a_session")); add("always", "", t("a_always")); } else btns.appendChild(node("span", "muted", t(ap.cls === "pay" ? (ap.pay && ap.pay.secure ? "pay_once_page" : "pay_once") : "a_once_only")));
     add("deny", "danger", t("a_deny"));
     box.appendChild(btns); w.appendChild(box);
   }
@@ -1948,6 +2032,27 @@ function toolEl(it) {
   head.onclick = () => { it.open = !it.open; body.style.display = it.open ? "" : "none"; };
   w.appendChild(body);
   return w;
+}
+/* 交易卡的上半截: 前台 app、此刻的手机屏幕(守门现场截的, 不是模型上一帧) + 模型要点的位置、屏幕上的金额原样。
+   安全窗口(密码/支付页)截不到图: 放进它之前的最后一屏(填好金额、写着收款人的那页), 批的时候看得到给谁、多少钱。
+   截图按会话文件接口取一次存在条目上(it.payImg[路径]): 流式时卡片会被整张重建, 不能每次重建都再取。720×1280 是云手机的固定屏幕(ds4-phone 布局) */
+function payShot(it, path, at, box) {
+  const im = it.payImg || (it.payImg = {});
+  if (!im[path]) { im[path] = "…"; fileBlob(path).then(f => { im[path] = URL.createObjectURL(f); it.dirty = true; renderChat(); }).catch(() => { im[path] = "x"; it.dirty = true; renderChat(); }); }
+  if (!im[path].startsWith("blob:")) { box.appendChild(node("div", "muted", t(im[path] === "x" ? "pay_noshot" : "pay_loading"))); return; }
+  const wrap = node("div", "payshot"), img = document.createElement("img"); img.src = im[path]; wrap.appendChild(img);
+  if (at) { const d = node("span", "dot"); d.style.left = (at[0] / 720 * 100) + "%"; d.style.top = (at[1] / 1280 * 100) + "%"; wrap.appendChild(d); }
+  box.appendChild(wrap);
+}
+function payBox(it, p, box) {
+  box.appendChild(node("div", "paytag", t("pay_tag", (p.app || "").split("/")[0] || "?")));
+  if (p.screen) payShot(it, p.screen, p.at, box);
+  else if (p.secure) {
+    box.appendChild(node("div", "muted", t("pay_secure", p.app || "")));
+    if (p.before && p.before.screen) { box.appendChild(node("div", "payunseen", t("pay_before", p.before.age_s))); payShot(it, p.before.screen, null, box); }
+  } else box.appendChild(node("div", "muted", t("pay_noshot")));
+  box.appendChild(node("div", "payamt", (p.amounts || []).length ? t("pay_amt", p.amounts.join("  ")) : t("pay_noamt")));
+  if (p.unseen) box.appendChild(node("div", "payunseen", p.frame_age_s >= 0 ? t("pay_unseen", p.frame_age_s) : t("pay_unseen0")));
 }
 const PLAN_MARK = { todo: "☐", doing: "◐", done: "☑", skipped: "⊘" };
 function planProgress(p) { const s = p.steps || []; return [s.filter(x => x.state === "done" || x.state === "skipped").length, s.length]; }
@@ -2005,7 +2110,7 @@ function itemEl(it, i) {
   const w = node("div", "item");
   if (it.kind === "plan") { w.appendChild(planEl(it)); return w; }
   if (it.kind === "tool") { w.appendChild(toolEl(it)); const d = deliverEl(it); if (d) w.appendChild(d); return w; }
-  if (it.kind === "files") { for (const p of it.paths) w.appendChild(fileCard(p)); return w; }
+  if (it.kind === "files") { for (const p of it.paths) w.appendChild(fileCard(p, it)); return w; }
   const u = it.usage, s = [it.reason === "done" ? "" : t("a_end_" + it.reason), u ? t("a_usage", u.prompt, u.completion) : ""].filter(Boolean).join(" · "); if (s) w.appendChild(node("div", "stats aend", s));
   return w;
 }
@@ -2330,7 +2435,7 @@ holdBtn.addEventListener("pointerdown", async e => {
   if (e.button !== 0 || press || holdBtn.disabled || !asrInfo) return;
   e.preventDefault();
   try { holdBtn.setPointerCapture(e.pointerId); } catch (_) {}   /* 手指滑出长条也继续收 move/up, 上滑取消靠它 */
-  const p = press = { id: e.pointerId, t0: performance.now(), y0: holdBtn.getBoundingClientRect().top, cancel: false, ended: false, chunks: [], rate: 0, stream: null, src: null, node: null, timer: null, tick: null };
+  const p = press = { id: e.pointerId, t0: performance.now(), y0: pageRect(holdBtn).top, cancel: false, ended: false, chunks: [], rate: 0, stream: null, src: null, node: null, timer: null, tick: null };
   micAudio().catch(() => {});
   micCtx.resume().catch(() => {});   /* iOS: resume 必须在手势的同步段里调, 否则 context 一直 suspended、一个样本都不来 */
   p.tick = setInterval(() => micOvShow(p), 250);
@@ -2356,7 +2461,7 @@ holdBtn.addEventListener("pointerdown", async e => {
 });
 holdBtn.addEventListener("pointermove", e => {
   const p = press; if (!p || e.pointerId !== p.id) return;
-  const c = e.clientY < p.y0 - MIC_CANCEL_PX;
+  const c = toPage(e.clientX, e.clientY).y < p.y0 - MIC_CANCEL_PX;   /* "上滑"按页面的上: 手机横放整页转着时屏幕的上是页面的侧边 */
   if (c !== p.cancel) { p.cancel = c; micOvShow(p); renderRightBtn(); }
 });
 holdBtn.addEventListener("pointerup", e => { const p = press; if (p && e.pointerId === p.id) micEnd(p, p.cancel ? "cancel" : "release"); });
@@ -2517,17 +2622,49 @@ async function fileBlob(path) {
   const ext = (path.split(".").pop() || "").toLowerCase(), name = path.split("/").pop();
   return new File([await r.blob()], name, { type: FILE_TYPES[ext] || "application/octet-stream" });
 }
-function deliverEl(it) { const p = deliverPath(it); return p ? fileCard(p) : null; }
-/* 一个工作区文件一张卡: 文件名 · 下载 · 预览(文本原样 / 图片缩略); share 调用和终稿里写出的路径(files 事件)共用 */
-function fileCard(p) {
+function deliverEl(it) { const p = deliverPath(it); return p ? fileCard(p, it) : null; }
+/* 一个工作区文件一张卡: 文件名 · 下载 · 预览(文本原样 / 图片缩略); share 调用和终稿里写出的路径(files 事件)共用。
+   预览开没开、取回来的内容, 记在条目上(it.pv[路径]), 不看卡里有没有 <img>: 以前点一下先查卡里有没有图、再去取文件,
+   取文件那段时间再点, 两次都判成"没开", 图一张张往下叠; 流式时条目被整张重建(dirty), 取回来的图贴到了已经换掉的旧卡上,
+   看着就是"点了没反应"(10-16 用户实撞)。现在开关只认 s.open, 内容只取一次, 重建出来的新卡按状态重画。 */
+function fileCard(p, it) {
   const w = node("div", "deliver"); w.appendChild(node("span", "fname", p));
   const btn = (label, fn) => { const b = node("button", "", label); b.onclick = () => fn().catch(e => toast(t("file_fail", e.message || e), true)); w.appendChild(b); };
   btn(t("dl_download"), async () => { const f = await fileBlob(p); const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 60000); });
-  if (/\.(md|txt|csv|json|html)$/i.test(p)) btn(t("dl_preview"), async () => { let pre = w.querySelector("pre"); if (pre) { pre.remove(); return; } const f = await fileBlob(p); pre = node("pre", "box", await f.text()); w.appendChild(pre); });
-  if (/\.(png|jpe?g|gif|webp)$/i.test(p)) btn(t("dl_preview"), async () => {
-    let im = w.querySelector("img"); if (im) { URL.revokeObjectURL(im.src); im.remove(); return; }
-    im = document.createElement("img"); im.src = URL.createObjectURL(await fileBlob(p)); im.style.cssText = "width:100%;max-height:360px;object-fit:contain;border-radius:8px"; w.appendChild(im);
-  });
+  const kind = /\.(png|jpe?g|gif|webp)$/i.test(p) ? "img" : /\.html?$/i.test(p) ? "page" : /\.(md|txt|csv|json)$/i.test(p) ? "text" : "";
+  if (!kind) return w;
+  if (!it.pv) it.pv = {};
+  const s = it.pv[p] || (it.pv[p] = { open: false, data: null, loading: false });
+  const b = node("button", "pvbtn", t("dl_preview")); w.appendChild(b);
+  /* 网页(docs/assistant_page.md): 不走 /api/assistant/file(同源, 那里 html 永远是纯文本), 先 POST preview 要一个 /p/<口令>/ 地址,
+     服务端响应头 CSP sandbox 把它放进不透明源; iframe 再带同样的 sandbox 属性(双保险)。口令 60 分钟过期, 所以每次展开都重新要, 不缓存。
+     "打开"是真的 <a target=_blank>(iPhone 装成 App 后 window.open 是白页); 新标签页里同一个响应头照样锁着。 */
+  const paint = () => {
+    b.classList.toggle("on", s.open);
+    w.querySelectorAll(".pvbody").forEach(x => x.remove());
+    if (!s.open) return;
+    let el; if (s.data == null) el = node("div", "pvbody pvload", t("pv_loading"));   /* 还在取: 先展开占位, 不让人以为没点上 */
+    else if (kind === "img") { el = document.createElement("img"); el.src = s.data; el.className = "pvbody pvimg"; }
+    else if (kind === "page") {
+      const a = node("a", "pvbody pvopen", t("dl_open")); a.href = s.data; a.target = "_blank"; a.rel = "noopener noreferrer"; w.appendChild(a);
+      el = document.createElement("iframe"); el.className = "pvbody pvframe"; el.setAttribute("sandbox", "allow-scripts allow-modals"); el.referrerPolicy = "no-referrer"; el.src = s.data;
+    } else el = node("pre", "box pvbody", s.data);
+    w.appendChild(el);
+  };
+  s.paint = paint;   /* 取文件回来时画到最新那张卡上 */
+  b.onclick = async () => {
+    s.open = !s.open; if (kind === "page" && s.open) s.data = null;
+    paint();   /* 按钮先变实心、占位先展开: 网慢时也立刻看得出点上了 */
+    if (!s.open || s.data != null || s.loading) return;
+    s.loading = true;
+    try {
+      if (kind === "page") { const r = await aFetch("preview", { path: p }); if (r.error) throw new Error(r.error); s.data = r.url; }
+      else { const f = await fileBlob(p); s.data = kind === "img" ? URL.createObjectURL(f) : await f.text(); }
+    }
+    catch (e) { s.open = false; toast(t("file_fail", e.message || e), true); }
+    s.loading = false; s.paint();
+  };
+  paint();
   return w;   /* 分享按钮不在这里: share 这个动作本身在上面的设备卡上(deviceBox), 点了开系统分享面板 */
 }
 function devNote() { const n = $("dev-note"); n.textContent = t("dev_http"); n.classList.toggle("on", isApp() && !secure); }
@@ -2554,7 +2691,6 @@ const whenOf = ts => { const d = new Date(ts * 1000), n = new Date(); return d.t
 async function loadTasks() {
   const r = await aFetch("tasks"); if (r.error) { toast(t("fail", r.error), true); return; }
   tasks = r.tasks || []; renderTasks();
-  loadReminders();
 }
 
 /* ---------------- 通知(10-14 用户: "使用 pwa 推送; 在当前页面肯定不通知") ----------------
@@ -2564,24 +2700,6 @@ async function loadTasks() {
    通知点开: service worker 把 url 递过来(message), 或新开窗口带 ?session=, 两条路都走 gotoNotice。 */
 let pushSub = null, presenceT = 0;
 const pushSupported = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window && window.isSecureContext;
-let reminders = [];
-async function loadReminders() {
-  const r = await aFetch("reminders"); if (r.error) return;
-  reminders = r.reminders || []; renderReminders();
-}
-function renderReminders() {
-  const box = $("rm-list"); box.replaceChildren();
-  if (!reminders.length) { box.appendChild(node("div", "muted", t("rm_empty"))); return; }
-  reminders.forEach(x => {
-    const row = node("div", "row"), tx = node("div", "tx");
-    tx.appendChild(node("b", null, x.title || "")); tx.appendChild(node("small", null, x.text || "")); tx.appendChild(node("small", null, t("rm_at", whenOf(x.at))));
-    row.appendChild(tx);
-    const ops = node("div", "ops"), o = node("button", "ghost", t("rm_open")), d = node("button", "ghost", t("rm_del"));
-    o.onclick = () => selectSession(x.session);
-    d.onclick = async () => { const r = await aFetch("reminders", { op: "delete", id: x.id }); if (r.error) { toast(t("fail", r.error), true); return; } reminders = r.reminders || []; renderReminders(); };
-    ops.appendChild(o); ops.appendChild(d); row.appendChild(ops); box.appendChild(row);
-  });
-}
 function gotoNotice(url) {   /* 通知里的 url: /?session=<id>#chat → 不刷新, 直接进那个对话 */
   try { const u = new URL(url, location.origin), s = u.searchParams.get("session"); if (s && /^[0-9a-f]{12}$/.test(s)) { selectSession(s); return; } if (u.hash) location.hash = u.hash; } catch (_) {}
 }
@@ -2618,7 +2736,7 @@ function renderTasks() {
   if (!tasks.length) box.appendChild(node("div", "muted", t("tk_empty")));
   tasks.forEach(x => {
     const row = node("div", "row" + (x.state === "done" ? " done" : "")), [dot, st] = taskStatus(x);
-    row.appendChild(node("span", "sdot " + dot, ""));
+    if (dot) row.appendChild(node("span", "sdot " + dot, ""));   /* 空闲没颜色: 不画, 否则透明点 + 间距在卡左边空出一块 */
     const tx = node("div", "tx"); tx.appendChild(node("b", null, x.text));
     const meta = [st, t("tk_runs", x.runs)]; if (x.end === "error" && x.run_state === "idle") meta.push(t("tk_err")); meta.push(t("tk_created", whenOf(x.created)));
     tx.appendChild(node("small", null, meta.join(" · ")));
@@ -2634,8 +2752,8 @@ function renderTasks() {
       const r = await aFetch("tasks", { op: o, id: x.id }); if (r.error) { toast(t("fail", r.error), true); return; }
       tasks = r.tasks || []; renderTasks();
     };
-    const btn = (k, fn) => { const b = node("button", "ghost", t(k)); b.onclick = fn; ops.appendChild(b); };
-    btn("tk_open", () => selectSession(x.session));
+    row.onclick = () => selectSession(x.session);   /* 点卡 = 进它的对话(10-16 用户: 比单独一个"打开"按钮顺手) */
+    const btn = (k, fn) => { const b = node("button", "ghost", t(k)); b.onclick = e => { e.stopPropagation(); fn(); }; ops.appendChild(b); };   /* 不拦冒泡: 点"暂停"也会顺带进了对话 */
     if (x.state === "active") { if (x.run_state === "idle") btn("tk_run", () => op("run")); btn("tk_pause", () => op("pause")); btn("tk_done", () => op("done")); }
     if (x.state === "paused") btn("tk_resume", () => op("resume"));
     if (x.state === "proposed") { btn("pl_start", () => op("start")); btn("pl_discard", () => op("done", "pl_discard_confirm", "pl_discard")); }
@@ -2644,14 +2762,7 @@ function renderTasks() {
   });
   const open = tasks.filter(x => x.state !== "done").length; text("nav-tasks", open ? String(open) : ""); $("tab-tasks").textContent = open ? String(open) : "";   /* 不走 text(): 它把空写成"–", 角标的 :empty 就藏不掉了 */
 }
-$("tk-add").onclick = async () => {
-  const txt = $("tk-text").value.trim(); if (!txt) { $("tk-text").focus(); return; }
-  $("tk-add").disabled = true;
-  const r = await aFetch("tasks", { op: "add", text: txt }); $("tk-add").disabled = false;
-  if (r.error) { toast(t("fail", r.error), true); return; }
-  $("tk-text").value = ""; tasks = r.tasks || []; renderTasks();
-};
-$("tk-text").onkeydown = e => { if (e.key === "Enter" && !imeEnter(e)) { e.preventDefault(); $("tk-add").click(); } };
+$("tk-fab").onclick = () => selectSession(null);   /* 新任务 = 助理里一段新对话: 模型判断该持续跟就调 plan_propose 建成任务, 页面不猜意图 */
 
 /* ---------------- 记忆 ----------------
    四个纯文本文件(~/.ds4/assistant/memory/ 下 profile.md 关于你 / habits.md 怎么做事 / env.md 设备与账号 / rules.md 规矩), 这里就是它们的编辑框;
@@ -3267,12 +3378,12 @@ function pickMenu(btn, sel) {
   });
   if (!box.children.length) return;
   pickSel = sel; $("pick").classList.add("on");
-  const r = btn.getBoundingClientRect();
+  const r = pageRect(btn);   /* 页面坐标: 手机横放整页转着时屏幕坐标是横的(见 <head> 锁竖屏) */
   box.style.minWidth = Math.max(168, r.width) + "px";   /* 至少和框一样宽, 像是从框里展开的 */
   const h = box.offsetHeight;
-  box.style.left = Math.max(8, Math.min(r.left, innerWidth - box.offsetWidth - 8)) + "px";
+  box.style.left = Math.max(8, Math.min(r.left, pageW() - box.offsetWidth - 8)) + "px";
   /* 下面放得下就往下(电脑上的习惯), 放不下往上: 聊天框在屏幕底, 侧车菜单自然朝上 */
-  box.style.top = (r.bottom + 6 + h <= innerHeight - 8 ? r.bottom + 6 : Math.max(8, r.top - h - 6)) + "px";
+  box.style.top = (r.bottom + 6 + h <= pageH() - 8 ? r.bottom + 6 : Math.max(8, r.top - h - 6)) + "px";
   const on = box.querySelector(".pi.on"); pickAct = on ? [...box.children].indexOf(on) : -1;
   if (on) on.scrollIntoView({ block: "nearest" });
 }
@@ -3526,10 +3637,12 @@ async function loadPhone() {
 function phLayout() {
   const scr = $("ph-screen"), wrap = $("ph-body");
   let w;
-  if (document.fullscreenElement === scr || document.documentElement.dataset.immersive) w = Math.min(document.documentElement.clientWidth, innerHeight * 9 / 16);   /* clientWidth 不含滚动条 */
+  /* 页面宽高用 pageW/pageH: 手机横放整页转着时 innerWidth/innerHeight 是横的(见 <head> 锁竖屏); 真全屏不转, 两者相同 */
+  if (document.fullscreenElement === scr) w = Math.min(document.documentElement.clientWidth, innerHeight * 9 / 16);   /* clientWidth 不含滚动条 */
+  else if (document.documentElement.dataset.immersive) w = Math.min(document.documentElement.dataset.rot ? pageW() : document.documentElement.clientWidth, pageH() * 9 / 16);
   else if (isApp()) {   /* 手机上: 画面吃满顶栏到底栏之间的整个高度(10-13 用户: "手机端还不是全屏"), 宽按 9:16 算, 比容器还宽就按容器宽 */
-    const tb = document.querySelector(".tabbar"), tbh = tb && getComputedStyle(tb).display !== "none" ? tb.getBoundingClientRect().height : 0;
-    const top = wrap.getBoundingClientRect().top, avail = innerHeight - top - tbh - 8;
+    const tb = document.querySelector(".tabbar"), tbh = tb && getComputedStyle(tb).display !== "none" ? pageRect(tb).height : 0;
+    const top = pageRect(wrap).top, avail = pageH() - top - tbh - 8;
     w = Math.max(100, Math.min(wrap.clientWidth - 2, avail * 9 / 16));
   } else w = Math.max(160, Math.min(wrap.clientWidth - 2, (innerHeight - 150) * 9 / 16));
   scr.style.width = Math.round(w) + "px"; scr.style.height = Math.round(w * 16 / 9) + "px";
@@ -3600,7 +3713,8 @@ function phPollStart() {   /* 退路: 每秒一张 PNG */
 /* ---- 输入: 指针按下/抬起 → tap / swipe ---- */
 {
   const scr = $("ph-screen"); let down = null;
-  const pos = e => { const r = scr.getBoundingClientRect(); return { x: Math.round((e.clientX - r.left) * 720 / r.width), y: Math.round((e.clientY - r.top) * 1280 / r.height), t: performance.now() }; };
+  /* 页面坐标(pageRect/toPage): 手机横放整页转着时直接用屏幕坐标, 点左边会落到云手机的上边 */
+  const pos = e => { const r = pageRect(scr), p = toPage(e.clientX, e.clientY); return { x: Math.round((p.x - r.left) * 720 / r.width), y: Math.round((p.y - r.top) * 1280 / r.height), t: performance.now() }; };
   scr.onpointerdown = e => { down = pos(e); scr.setPointerCapture(e.pointerId); e.preventDefault(); };
   scr.onpointerup = async e => {
     if (!down) return; const up = pos(e), d = down; down = null;

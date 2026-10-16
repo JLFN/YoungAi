@@ -219,3 +219,19 @@ void asst_notify_run_end(const char *sid, const char *end, const char *last_text
         asst_push_send(title, body[0] ? body : (zh ? "回答好了" : "the answer is ready"), url);
     }
 }
+
+/* 弹了审批卡(asst_run.c wait_answer): 运行线程挂起, 一次只跑一个运行 ⇒ 整条队列都停在这。人多半已经离开页面, 推一条叫回来, 点开落在这个会话。
+ * 标题说清楚批的是什么: 交易类给"付款 + 屏幕上的金额 + 前台的包名"(包名不翻成中文名: 页面不维护那张表, 用户认得自己装的 app); 别的给工具名 + 目标。正文 = 守门原因原文 */
+void asst_notify_approval(const char *sid, const char *tool, const asst_gres *g) {
+    char *st = session_title(sid); const bool zh = asst_lang_is_zh(st); free(st);
+    char title[300], url[ASST_ID_LEN + 32]; session_url(sid, url, sizeof url);
+    if (!strcmp(g->cls, "pay")) {
+        char *app = NULL, *am = NULL, *a0 = NULL; asst_jstr(g->extra, "app", &app); asst_jraw(g->extra, "amounts", &am);
+        if (am) asst_jarr_at(am, 0, &a0);
+        char amount[48] = ""; if (a0) { const char *p = a0; char *v = NULL; if (json_string(&p, &v)) snprintf(amount, sizeof amount, " %s", v); free(v); }
+        char pkg[96] = ""; if (app) { const char *sl = strchr(app, '/'); snprintf(pkg, sizeof pkg, "%.*s", (int)(sl ? sl - app : (long)strlen(app)), app); }
+        snprintf(title, sizeof title, zh ? "需要你批准: 付款%s%s%s" : "Needs your approval: payment%s%s%s", amount, pkg[0] ? " · " : "", pkg);
+        free(app); free(am); free(a0);
+    } else snprintf(title, sizeof title, zh ? "需要你批准: %s %s" : "Needs your approval: %s %s", tool, g->target);
+    asst_push_send(title, g->reason, url);
+}

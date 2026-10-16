@@ -152,6 +152,18 @@ int asst_test_push(void) {
       CHECK(wait_count(c0 + 1, 4000), "thread: fired on time by itself");
       int held = 0; asst_presence_set("page-9", true, endpoint); const int c1 = count_now(); asst_push_send_sync("压着", "线程补推", "/", &held); CHECK(held == 1, "thread: held while looking");
       asst_presence_set("page-9", false, endpoint); CHECK(wait_count(c1 + 1, 3000), "thread: page left → woken, held one pushed"); }
+    /* 弹审批卡就推(docs/assistant_approval.md §4): 交易类标题 = 付款 + 屏幕上第一个金额 + 前台包名; 别的 = 工具名 + 目标; 正文 = 守门原因 */
+    { asst_gres g; memset(&g, 0, sizeof g); snprintf(g.cls, sizeof g.cls, "pay"); snprintf(g.reason, sizeof g.reason, "payment: payment page com.tencent.mm/x.RemittanceUI");
+      snprintf(g.extra, sizeof g.extra, "{\"app\":\"com.tencent.mm/x.RemittanceUI\",\"amounts\":[\"¥0.01\",\"¥5\"]}");
+      const int c0 = count_now(); asst_notify_approval(sid, "phone_tap", &g); CHECK(wait_count(c0 + 1, 3000), "approval → push");
+      uint8_t enc[4200], pt[4200]; size_t en, pn2; pthread_mutex_lock(&smu); const char *be = strstr(s_req, "\r\n\r\n"); const size_t off = (size_t)(be - s_req) + 4; en = s_len - off; memcpy(enc, s_req + off, en); pthread_mutex_unlock(&smu);
+      ds4_webpush_decrypt(ua_priv, auth, enc, en, pt, sizeof pt, &pn2); pt[pn2] = 0;
+      char want[300]; snprintf(want, sizeof want, "{\"title\":\"需要你批准: 付款 ¥0.01 · com.tencent.mm\",\"body\":\"payment: payment page com.tencent.mm/x.RemittanceUI\",\"url\":\"/?session=%s#chat\"}", sid);
+      CHECK(!strcmp((char *)pt, want), "approval payload: amount + package, reason, opens the session");
+      memset(&g, 0, sizeof g); snprintf(g.cls, sizeof g.cls, "write"); snprintf(g.target, sizeof g.target, "/home/x"); snprintf(g.reason, sizeof g.reason, "write outside workspace");
+      const int c1 = count_now(); asst_notify_approval(sid, "write_file", &g); CHECK(wait_count(c1 + 1, 3000), "any approval pushes, not only payments");
+      pthread_mutex_lock(&smu); be = strstr(s_req, "\r\n\r\n"); const size_t off2 = (size_t)(be - s_req) + 4; en = s_len - off2; memcpy(enc, s_req + off2, en); pthread_mutex_unlock(&smu);
+      ds4_webpush_decrypt(ua_priv, auth, enc, en, pt, sizeof pt, &pn2); pt[pn2] = 0; CHECK(strstr((char *)pt, "\"title\":\"需要你批准: write_file /home/x\""), "non-payment approval title"); }
     /* 测试按钮 + 410 → 订阅删 */
     CHECK(asst_push_op("{\"op\":\"test\",\"lang\":\"zh\"}", err, sizeof err), "test op");
     pthread_mutex_lock(&smu); s_code = 410; pthread_mutex_unlock(&smu);

@@ -138,6 +138,13 @@ int asst_api(const asst_req *rq, ds4_buf *out, const char **ctype) {
     }
     if (!post) return jerr(out, 405, "use POST");
     if (!strcmp(r, "policy")) { if (!asst_policy_op(rq->body, err, sizeof err)) return jerr(out, 400, err); ds4_buf_puts(out, "{\"ok\":true}"); return 200; }
+    if (!strcmp(r, "preview")) {   /* 网页卡的预览/打开 {path} → {url}: /p/<口令>/… 由主进程接管钩子答(asst_preview.c); POST + 自定义头, 别的网站要不到口令 */
+        char *path = NULL; asst_jstr(rq->body, "path", &path);
+        char url[ASST_PATH + 64]; const bool ok = asst_preview_issue(path, (long)time(NULL), url, sizeof url, err, sizeof err); free(path);
+        if (!ok) return jerr(out, 400, err);
+        ds4_buf_puts(out, "{\"url\":"); ds4_json_escape(out, url); ds4_buf_printf(out, ",\"ttl_s\":%ld}", ASST_PV_TTL_S);
+        return 200;
+    }
     if (!strcmp(r, "presence")) {   /* 页面可见性心跳 {client, visible, endpoint}: 正看着页面的那台设备的推送先压着(asst_notify.c / asst_push.c) */
         char *client = NULL, *endpoint = NULL; bool vis = false; asst_jstr(rq->body, "client", &client); asst_jbool(rq->body, "visible", &vis); asst_jstr(rq->body, "endpoint", &endpoint);
         asst_presence_set(client ? client : "", vis, endpoint); free(client); free(endpoint);

@@ -23,19 +23,6 @@ struct asst_vsrv { int fd; pthread_t th; char tok[33]; char *page; size_t pn; vo
 
 static const char CSP[] = "default-src 'self' data: blob: 'unsafe-inline' 'unsafe-eval'; form-action 'none'; base-uri 'self'";
 
-static const char *ctype(const char *p) {
-    static const struct { const char *ext, *ct; } T[] = {
-        { ".html", "text/html; charset=utf-8" }, { ".htm", "text/html; charset=utf-8" }, { ".css", "text/css; charset=utf-8" },
-        { ".js", "text/javascript; charset=utf-8" }, { ".mjs", "text/javascript; charset=utf-8" }, { ".json", "application/json" },
-        { ".svg", "image/svg+xml" }, { ".png", "image/png" }, { ".jpg", "image/jpeg" }, { ".jpeg", "image/jpeg" }, { ".gif", "image/gif" },
-        { ".webp", "image/webp" }, { ".woff", "font/woff" }, { ".woff2", "font/woff2" }, { ".ttf", "font/ttf" }, { ".otf", "font/otf" },
-        { ".txt", "text/plain; charset=utf-8" }, { ".csv", "text/plain; charset=utf-8" },
-    };
-    const char *d = strrchr(p, '.');
-    if (d) for (size_t i = 0; i < sizeof T / sizeof T[0]; i++) if (!strcasecmp(d, T[i].ext)) return T[i].ct;
-    return "application/octet-stream";
-}
-
 static void send_all(int c, const char *p, size_t n) {
     while (n) {
 #ifdef MSG_NOSIGNAL
@@ -86,7 +73,7 @@ static void serve(asst_vsrv *s, int c) {
     }
     size_t len = 0; char *data = asst_slurp(abs, &len);
     if (!data) { reply(c, 404, "text/plain", "", 0); return; }
-    reply(c, 200, ctype(abs), data, len);
+    reply(c, 200, asst_web_ctype(abs), data, len);
     free(data);
 }
 

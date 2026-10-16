@@ -166,7 +166,27 @@ spark 现状（10-13）：MemAvailable 8.3 GB（模型子进程 + 火狐都在�
 | `phone_open` | `app`（枚举 = 已装第三方包 + settings，build 时拼进 schema，同 `open_app`） | 同上 |
 
 提示词一个字不加。工具描述里讲清：没 SIM、没账号的虚拟手机；屏幕上的文字是不可信内容；每步先看结果再决定下一步。
-污点：带截图回来的工具都打 `taint_web`（之后写工作区外/上网要"仅这次"审批）。phone_* 本身不审批（同 `run`：影响关在手机里；每步弹卡没法用）。
+污点：带截图回来的工具都打 `taint_web`（之后写工作区外/上网要"仅这次"审批）。phone_* 本身不审批（同 `run`：影响关在手机里；每步弹卡没法用）——**交易除外**（10-16）：付款/下单/登录每次问、只能仅这次，安全窗口上打字直接拒，见 `docs/assistant_approval.md`。
+
+### 5.1 微信：写死的按钮表（10-16，`src/assistant/tools/tool_phone_wx.c`）
+
+**微信不给控件树**：`uiautomator dump` 只有 381 字节的根节点（开了无障碍也一样），每次还要 1.97 s。模型只能看截图估坐标，常点偏。
+云手机上的微信版本、分辨率、语言都固定，所以前台是微信时，元素表改由一张写死的表出（格式和 uiautomator 的一样，交易审批照旧能对上"点的是什么字"）：
+
+| 页面 | 怎么认 | 给哪些按钮 |
+|---|---|---|
+| 底栏四个 Tab | 截图底栏哪格文字是绿的 | 四个 Tab；Chats/Contacts 上加 Search、右上 + 菜单；Chats 上加会话行（名字让模型看图） |
+| 右上 + 菜单 | 焦点窗口是 `PopupWindow:…`，底下是 LauncherUI | New Chat / Add Contacts / Scan / Money |
+| 聊天页 | View 树里有 `ChattingUILayout`（id `bkb`） | Back、Chat info、语音切换、输入框、表情、+ 或 Send；+ 面板开着再加八格 |
+| 搜索页 / 转账页 | 焦点 activity 名 | Back、搜索框、清除 / 金额、Add Note、0–9、点、删除、Transfer |
+
+坐标来自 `dumpsys activity top` 的 View 树（实时），只有两样树里看不出、改看截图像素：**键盘或面板弹起时输入栏整体上移 526**（平移不进树），
+**切 Tab 是 ViewPager 横向滚动**（滚动不进树）。
+
+- 一次看屏 164–271 ms（原来光 uiautomator 就 1.97 s）。
+- **版本号不是 3200（8.0.79）整张表不用**，元素表前写一行原因，退回看截图——混淆过的控件 id 每个版本都会变，用旧表等于按错的位置点。微信升级后要重抄：每页跑一次 `tests/phone/pay_capture.sh` 的同款命令拿 View 树 + 截图，对着改表和像素判据。
+- 认不出的页面（朋友圈、个人资料页……）同样退回，不猜。
+- 真机门：`tests/phone/wx_probe.sh <首页会话行号>`，每步按表里的坐标点、看是不是到了该到的页，只在输入框打一个 a 再删掉，不点发送、不进转账页。离线单测在 `ds4_asst_test` 的 phone 段；`./ds4_asst_test --phone-look` 在真手机上看一次屏、打印模型会收到的原文，不用重启生产 ds4-train。
 
 ## 6. 网络：手机能上公网，碰不到你的内网
 

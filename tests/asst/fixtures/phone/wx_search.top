@@ -1,0 +1,50 @@
+    versionCode=3200 minSdk=24 targetSdk=34
+popups=0
+  ACTIVITY com.tencent.mm/.plugin.fts.ui.FTSMainUI a8d38ab pid=1010202
+    View Hierarchy:
+      DecorView@ee9fb9b[FTSMainUI]
+        com.tencent.mm.ui.widget.SwipeBackLayout{e84899 VFE...... ........ 0,0-720,1280 #7f0a67a6 app:id/nsv}
+          com.tencent.mm.ui.statusbar.DrawStatusBarFrameLayout{f90c98c V.ED..... ........ 0,0-720,1280}
+            android.widget.LinearLayout{c56a8d5 V.E...... ........ 0,48-720,1184}
+              android.widget.FrameLayout{5c177db V.E...... ........ 0,0-720,1136}
+                androidx.appcompat.widget.ActionBarOverlayLayout{446f278 V.E...... ........ 0,0-720,1136 #7f0a18be app:id/crd}
+                  androidx.appcompat.widget.ContentFrameLayout{81672b5 V.E...... ........ 0,0-720,1136 #1020002 android:id/content}
+                    android.widget.LinearLayout{b0912da V.E...... ........ 0,0-720,1136}
+                      android.widget.LinearLayout{19fe73f V.E...... ........ 0,0-720,137 #7f0a3e1e app:id/ux2}
+                        android.widget.LinearLayout{36bd555 V.E...... ........ 0,0-720,123 #7f0a3e1d app:id/ux1}
+                          com.tencent.mm.plugin.fts.ui.widget.e0{f262c53 V.E...... ........ 0,0-720,123}
+                            androidx.constraintlayout.widget.ConstraintLayout{e5fd51 VFE...... ........ 0,18-720,105 #7f0a5d3c app:id/mdd}
+                              android.widget.FrameLayout{335b85b VFE...C.. ........ 0,0-80,87 #7f0a0cc4 app:id/b5i}
+                                com.tencent.mm.ui.widget.imageview.WeImageView{2c1b9b6 V.ED..... ........ 29,22-51,65}
+                              androidx.constraintlayout.widget.ConstraintLayout{d6d68f8 VFE...C.. ........ 72,0-691,86 #7f0a5d5b app:id/vzb}
+                                com.tencent.mm.ui.widget.imageview.WeImageView{88ac93f VFED..C.. ........ 14,22-57,65 #7f0a5d69 app:id/mec}
+                                com.tencent.mm.ui.tools.ActionBarSearchView$ActionBarEditText{56171d1 VFED..CL. .F...... 64,24-547,61 #7f0a1c5b app:id/d98 aid=1073741824}
+                                com.tencent.mm.ui.widget.imageview.WeImageButton{3d15436 VFED..C.. ........ 561,25-597,61 #7f0a65a2 app:id/nhn}
+                        android.widget.LinearLayout{4a7eb6a V.E...... ........ 0,123-720,123 #7f0a3e20 app:id/ux4}
+                          android.widget.LinearLayout{f8d7f37 V.E...... ......ID 72,0-72,0 #7f0a3e1f app:id/ux3}
+                          android.widget.LinearLayout{78c1ca4 V.E...... ......ID 72,0-720,0 #7f0a02bc app:id/scc}
+                      com.tencent.mm.ui.FrostedContentView{344d80c V.E...... ........ 0,137-720,1136 #7f0a49f3 app:id/jlt}
+                        com.tencent.mm.ui.widget.pulldown.MMWeUIBounceView{23a5a0d V.E...... ........ 0,0-720,999 #7f0a4a0a app:id/v9m}
+                          androidx.core.widget.NestedScrollView{cc05f10 VFED..... ........ 0,0-720,999}
+                            android.widget.LinearLayout{10bbba7 V.E...... ......ID 0,0-720,0}
+                          android.widget.FrameLayout{13f8a09 V.E...... ........ 0,0-720,999}
+                            android.widget.RelativeLayout{f55f854 V.E...... ........ 0,0-720,999 #7f0a3456 app:id/ujl}
+                              android.widget.FrameLayout{e3c83fd V.E...... ........ 0,0-720,999 #7f0a743b app:id/pi0}
+                                androidx.constraintlayout.widget.ConstraintLayout{2a978f2 V.E...... ........ 0,0-720,999}
+                                  androidx.recyclerview.widget.RecyclerView{12b40e VFED..... ........ 0,0-720,999 #7f0a3482 app:id/ujy}
+                                    android.view.View{9a9e11 V.ED..... ........ 0,0-720,374}
+                                  android.widget.LinearLayout{ba71e2f V.E...... ......ID 360,999-360,999 #7f0a347d app:id/ujt}
+                        android.widget.LinearLayout{d567dc2 V.E...... ........ 0,999-720,999}
+                        android.widget.FrameLayout{d812dd8 V.E...... ........ 0,0-720,999}
+                          q93.u3{707fdec V.E...... ........ 0,293-720,999}
+                            androidx.constraintlayout.widget.ConstraintLayout{e4d35b5 V.E...... ........ 0,0-720,706 #7f0a3453 app:id/ujj}
+                              android.view.View{8b45c3c VFED..C.. ........ 0,158-720,706 #7f0a0742 app:id/sim}
+                              android.view.View{b4dbdc5 V.ED..... ........ 0,0-720,158 #7f0a6c3a app:id/og0}
+                              androidx.constraintlayout.widget.ConstraintLayout{b4a031a V.E...... ........ 102,72-618,158}
+                                com.tencent.mm.ui.widget.RoundCornerLinearLayout{f04dc97 V.ED..... ........ 0,0-516,86 #7f0a657d app:id/w_q}
+                                  com.tencent.mm.ui.widget.imageview.WeImageView{b916e4b V.ED..... ........ 58,25-94,61 #7f0a49a5 app:id/v94}
+                                  android.widget.TextView{5890028 V.ED..... ........ 101,22-458,64 #7f0a0c0a app:id/sqi}
+                        android.widget.FrameLayout{e30d7d3 V.E...... ........ 0,0-720,999}
+                          android.widget.LinearLayout{4121e84 VFE...C.. ........ 282,893-438,999}
+                            android.widget.TextView{f1b666d V.ED..... ........ 0,29-156,63 #7f0a3454 app:id/ujk}
+        android.view.View{85bb75e V.ED..... ........ 0,1184-720,1280 #1020030 android:id/navigationBarBackground}

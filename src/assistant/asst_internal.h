@@ -112,7 +112,8 @@ typedef struct {
     char reason[256];          /* 拒绝/要问的原因, 原样给模型与页面 */
     char path[ASST_PATH];      /* 解析好的绝对路径(文件类; 网页类是 URL) */
     char target[ASST_PATH];    /* 审批作用域的目标: 目录 / 域名 */
-    char cls[8];               /* read / write / exec / web / mem: 审批表按类记 */
+    char cls[8];               /* read / write / exec / web / mem / pay: 审批表按类记(pay 不进审批表, 见 sbx_pay.c) */
+    char extra[2048];          /* 审批卡附加 JSON(交易类: 前台页面/截图/落点/金额/命中原因); 空 = 没有 */
 } asst_gres;
 bool asst_path_resolve(const char *in, char *out, size_t n);   /* ~ / 相对(工作区)/ .. 都解开, 存在的前缀 realpath */
 bool asst_under(const char *path, const char *root);
@@ -124,6 +125,28 @@ char *asst_policy_json(void);          /* policy.json 原文(没有给缺省) */
 bool asst_policy_op(const char *body, char *err, size_t errn);   /* 页面改 policy / 撤销永久授权 */
 void asst_approvals_json(ds4_buf *b);
 bool asst_secret_like(const char *s);  /* 卡号(15~19 位且过 Luhn)/ 私钥头 / password= / 本机口令原文 */
+
+/* ---------------- 交易审批(sbx_pay.c, 2026-10-16, 方案稿 docs/assistant_approval.md): 云手机上会动手的动作前判"这是不是付款/下单/登录" ---------------- */
+typedef struct { char focus[192], hash[32]; bool secure, ime_shown; int ime_top; } asst_phone_win;   /* 前台: 焦点窗口(包/类全名)、窗口编号(mCurrentFocus 里的; 没焦点窗口时空)、FLAG_SECURE、软键盘 */
+typedef struct {
+    bool ok;                   /* 读到了手机此刻的前台窗口(没读到 → 守门拒, 不放行) */
+    bool deny;                 /* 安全窗口上打字: 直接拒(密码不经模型) */
+    bool hit;                  /* 交易: 问用户, 只能"仅这次" */
+    bool secure, unseen;       /* 焦点窗口禁截屏 / 模型上一帧不是这块屏 */
+    char why[256], app[192], text[96], amounts[160], shot[64];   /* 原因 / 前台页面 / 命中的字 / 金额 JSON 数组 / 现场截图(工作区相对) */
+    char win[32];              /* 焦点窗口编号("这一页已批"按它认) */
+    char prev_shot[64], prev_app[192]; long prev_age;   /* 安全窗口截不到图时: 进它之前的最后一屏 / 那一屏的页面 / 几秒前 */
+    int x, y; long age;        /* 落点(没有 = -1) / 模型上一帧是几秒前(没有 = -1) */
+} asst_paysig;
+const char *asst_phone_win_cmd(void);   /* 读前台的那条 dumpsys(守门与 phone_tap 判键盘共用) */
+bool asst_phone_win_parse(const char *win, asst_phone_win *w);   /* 那条命令的输出 → 前台; 没有焦点窗口 false */
+bool asst_phone_win_now(asst_phone_win *w, int max_age_ms, char *err, size_t errn);   /* 读手机; max_age_ms > 0 时这么新的上一次结果直接用(守门刚读过, 省一次往返) */
+bool asst_pay_relevant(const char *tool, const char *args);   /* phone_tap / phone_swipe / phone_type / phone_key enter */
+bool asst_pay_judge(const char *tool, const char *args, const char *win, const char *fxml, const char *ffocus, long fage, asst_paysig *s);   /* 纯函数: 喂 dumpsys 文本 + 上一帧(单测用真机夹具) */
+void asst_pay_check(const char *tool, const char *args, asst_paysig *s);   /* 守门用: 读手机 + 判; 命中且能截屏时现场截一张进 .phone/ */
+void asst_pay_extra(const asst_paysig *s, char *out, size_t n);           /* → 审批卡附加 JSON {app, secure, screen, at, hit, amounts, frame_age_s, unseen, win, before} */
+void asst_pay_approved(const char *sid, const char *extra);               /* 用户在交易卡上点了"仅这次": 安全窗口那张记下"这一页已批" */
+bool asst_pay_window_ok(const char *sid, const char *win);                /* 这个会话在这个窗口上已经批过 */
 
 /* ---------------- 官方产出工具(tool_office.c, 方案稿 docs/assistant_office.md): write_document / write_xlsx, 在沙盒子进程里跑 src/office 的写出器 ---------------- */
 bool asst_office_tool(const char *name);
@@ -199,6 +222,7 @@ int asst_notify_tick(long now, long *next);    /* 到点的提醒发出去; 返�
 void asst_notify_start(void);                  /* ds4-train 起时: 开通知线程(到点提醒 + 补推压着的) */
 void asst_notify_wake(void);                   /* 叫醒通知线程: 新排了提醒 / 页面报走了 */
 void asst_notify_run_end(const char *sid, const char *end, const char *last_text, double secs);   /* 运行收尾: 任务做完 / 跑了很久 → 推一条 */
+void asst_notify_approval(const char *sid, const char *tool, const asst_gres *g);   /* 弹了审批卡: 推"需要你批准: …"(正看着页面的设备照在场规则压着) */
 bool asst_time_parse(const char *s, time_t *out);   /* 本机时区 "2026-10-20 07:30[:15]"(空格或 T); 解析不了 false */
 void asst_presence_set(const char *client, bool visible, const char *endpoint);   /* 页面报"我在看/我走了"; endpoint = 它所在浏览器的推送订阅(没订阅给 NULL/"") */
 bool asst_presence_watching(const char *sub, long now);    /* 这台设备(订阅 id)有页面正开着在看(ASST_PRESENCE_S 内报过 visible) */
@@ -282,6 +306,13 @@ bool asst_phone_build_open(const asst_tctx *c, ds4_buf *b);   /* phone_open 的 
 char *asst_phone_tool_exec(const char *sid, const char *tool, const char *args, int *ok);
 char *asst_phone_ui_text(const char *xml);   /* uiautomator 的 XML → 给模型看的元素表(单测用) */
 char *asst_phone_ui_json(const char *xml);   /* → REST 的 {elements:[…]} */
+int asst_phone_hit(const char *xml, int x, int y, char *text, size_t n);   /* 包含 (x,y) 的最小带字元素的文字(text, 没有用 content-desc); 落在没字的地方 0 */
+char *asst_phone_texts(const char *xml);     /* 全部元素的文字, 一行一个(malloc) */
+void asst_phone_last_shot(char *rel, size_t rn, char *focus, size_t fn, long *t);   /* 模型最后一次截成功的图(工作区相对)、那时的页面、时刻; 没有 rel 空 */
+void asst_phone_frame(char **xml, char *focus, size_t fn, long *t);   /* 模型上一次看到的那一帧(look() 存): 控件树副本(malloc, 没有 NULL)、那时的焦点窗口、时刻(没有 0) */
+/* tool_phone_wx.c: 微信写死的按钮表(微信不给 uiautomator 控件树) */
+const char *asst_phone_wx_cmd(void);   /* 一条 shell: 版本号 + 弹出窗口数 + 微信的 View 树 */
+char *asst_phone_wx_xml(const char *dump, const char *focus, const uint8_t *rgb, int w, int h, char *note, size_t nn);   /* → uiautomator 格式 XML(malloc); rgb = 截图(可 NULL); 版本不对/认不出这页 NULL, note 说原因 */
 
 /* ---------------- 视频(tool_video.c + tool_video_srv.c, 方案稿 docs/assistant_video.md) ---------------- */
 char *asst_video_exec(const char *args, const asst_gres *g, const char *trash, int *ok);   /* 已过守门(g->path = .mp4 绝对路径) */
@@ -345,6 +376,15 @@ bool asst_qget(const char *query, const char *key, char *out, size_t n);   /* �
 int asst_file_get(const char *path, ds4_buf *out, const char **ctype);     /* 200 + 文件体; 工作区外 403; 没有 404 */
 char *asst_file_mentioned(const char *answer);   /* 终稿里写出的、工作区里真有的文件 → JSON 数组(工作区相对路径); 一个没有 → NULL。运行结束发 files 事件, 页面出交付卡 */
 char *asst_file_save(const char *name, const char *data, size_t n);        /* 存进 workspace/inbox/<净化过的名字>, 返回给模型看的一句话 */
+
+/* ---------------- 网页预览(asst_preview.c, 方案稿 docs/assistant_page.md): GET /p/<口令>/<路径>, CSP sandbox 不透明源 + 封出网 ---------------- */
+#define ASST_PV_MAX 64                 /* 口令表上限: 满了挤最老的 */
+#define ASST_PV_TTL_S 3600L            /* 口令 60 分钟过期; 页面每次打开预览重新要 */
+const char *asst_web_ctype(const char *path);   /* 按扩展名的网页资源类型(预览路与 make_video 渲染源共用) */
+bool asst_preview_path(const char *path);       /* "/p/" 前缀 */
+bool asst_preview_issue(const char *path, long now, char *url, size_t un, char *err, size_t errn);   /* 工作区里的 .html → "/p/<口令>/<文件名>" */
+int asst_preview_get(const char *method, const char *path, const char *host, long now, ds4_buf *hdr, ds4_buf *body);   /* 纯判定 + 取字节; hdr 收 200 时的类型与安全头(单测直接调) */
+void asst_preview_serve(int fd, const char *method, const char *path, const char *host);   /* 主进程接管钩子: 写完整响应并关 fd */
 
 /* ---------------- 模型客户端(model_llm.c): 127.0.0.1:<模型端口> 的流式 chat/completions ---------------- */
 #define ASST_MAX_CALLS 16

@@ -7,6 +7,7 @@
  *   ④ 污点: 上过网之后写工作区外 → 只能"仅这次"; 读过工作区外的私有文件之后再上网 → 只能"仅这次"(网址/搜索词就是外送通道);
  *   ⑤ 你在 policy 里给的目录 → 放行(写要该目录 write=true);
  *   ⑥ 永久授权 / 本会话授权 → 放行; 都没有 → 问你。
+ *   云手机: 危险模式开着就放行, 除了钱真正出去的那一步(安全窗口 / 确认支付类按钮, sbx_pay.c): 问、只能仅这次、存不进授权表; 安全窗口批一次管这一页。
  *   run: 沙盒里跑, 不审批(10-12 用户定; 安全靠沙盒: 没网络、只能写工作区); 命令里像密文的直接拒。网页: 本机/内网地址与非 http(s) 直接拒。
  * 守门只决定"问不问"; 真正能碰什么由 asst_guard_spec 给出的沙盒规则决定, 两层互不信任。
  * 最后一道(10-15, 计划模式 docs/assistant_plan.md §3.3): 这段对话是等用户按"开始"的计划时, 会动东西的(写/run/通知/手机/交出去的设备动作)一律拒、不弹卡 ——
@@ -94,7 +95,7 @@ static void guard_decide(const char *sid, const char *tool, const char *args, as
 void asst_guard(const char *sid, const char *tool, const char *args, asst_gres *r) {
     guard_decide(sid, tool, args, r);
     if (r->dec == ASST_DENY) return;
-    const bool acts = !strcmp(r->cls, "write") || !strcmp(r->cls, "exec") || !strcmp(r->cls, "notify") || !strcmp(r->cls, "phone") || asst_device_tool(tool) == 2;
+    const bool acts = !strcmp(r->cls, "write") || !strcmp(r->cls, "exec") || !strcmp(r->cls, "notify") || !strcmp(r->cls, "phone") || !strcmp(r->cls, "pay") || asst_device_tool(tool) == 2;
     if (acts && asst_plan_waiting(sid)) { r->once_only = false; set(r, ASST_DENY, "the plan is waiting for the user's decision; until they press Start on the plan card only looking things up is allowed"); }
 }
 
@@ -113,8 +114,17 @@ static void guard_decide(const char *sid, const char *tool, const char *args, as
     if (asst_device_tool(tool)) { snprintf(r->cls, sizeof r->cls, "dev"); set(r, ASST_ALLOW, "device"); return; }   /* 在用户自己的设备上、由用户的浏览器执行(剪贴板读取 iOS 还要用户点一下): 放行, 不进沙盒 */
     if (asst_phone_tool(tool)) {   /* 云手机: 开关是用户在设置里拨的, 每一步再弹卡就没法用; 执行时再核一次开关 —— 运行中途被关掉, 模型手里的旧工具表不算数 */
         snprintf(r->cls, sizeof r->cls, "phone"); snprintf(r->target, sizeof r->target, "phone");
-        if (!asst_phone_on()) set(r, ASST_DENY, "danger mode is off: the virtual phone is not running (the user can turn it on in Settings)");
-        else set(r, ASST_ALLOW, "virtual phone (danger mode on)");
+        if (!asst_phone_on()) { set(r, ASST_DENY, "danger mode is off: the virtual phone is not running (the user can turn it on in Settings)"); return; }
+        /* 交易(10-16 用户: "付款场景必须要审批" → "最后打款的那个行为再审批", sbx_pay.c): 只问付出去的那一步、只能仅这次、存不进授权表、policy 关不掉;
+         * 安全窗口上批过一次, 同一窗口后续操作放行; 安全窗口上打字直接拒; 读不到前台 = 拒 */
+        asst_paysig ps; asst_pay_check(tool, args, &ps);
+        if (!ps.ok || ps.deny) set(r, ASST_DENY, ps.why);
+        else if (ps.hit && ps.secure && asst_pay_window_ok(sid, ps.win)) { snprintf(r->cls, sizeof r->cls, "pay"); set(r, ASST_ALLOW, "payment page the user already approved (same window)"); }
+        else if (ps.hit) {
+            snprintf(r->cls, sizeof r->cls, "pay"); r->once_only = true; r->warn = true;
+            asst_pay_extra(&ps, r->extra, sizeof r->extra);
+            char why[sizeof r->reason]; snprintf(why, sizeof why, "payment: %s", ps.why); set(r, ASST_ASK, why);
+        } else set(r, ASST_ALLOW, "virtual phone (danger mode on)");
         return;
     }
     if (!strcmp(tool, "read_file") || !strcmp(tool, "list_dir") || !strcmp(tool, "search_files") || !strcmp(tool, "view_image")) { guard_file(sid, false, tool, args, r); return; }
@@ -149,7 +159,7 @@ static void guard_decide(const char *sid, const char *tool, const char *args, as
 }
 
 void asst_guard_mark(const char *sid, const char *cls, const char *path) {
-    if (!strcmp(cls, "web") || !strcmp(cls, "phone")) { if (!meta_flag(sid, "taint_web")) asst_meta_set(sid, "taint_web", "true"); }   /* 手机屏幕上的字和网页一样是别人写的 */
+    if (!strcmp(cls, "web") || !strcmp(cls, "phone") || !strcmp(cls, "pay")) { if (!meta_flag(sid, "taint_web")) asst_meta_set(sid, "taint_web", "true"); }   /* 手机屏幕上的字和网页一样是别人写的 */
     else if ((!strcmp(cls, "read") || !strcmp(cls, "exec")) && path && !asst_under(path, asst_ws) && !(asst_skills[0] && asst_under(path, asst_skills))) { if (!meta_flag(sid, "taint_priv")) asst_meta_set(sid, "taint_priv", "true"); }   /* 技能是用户装的, 读它不算读私有文件 */
 }
 

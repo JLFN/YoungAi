@@ -6,7 +6,7 @@
   "start_url": "/#chat",
   "scope": "/",
   "display": "standalone",
-  "orientation": "any",
+  "orientation": "portrait-primary",
   "background_color": "#0a0f1a",
   "theme_color": "#0a0f1a",
   "lang": "zh-CN",

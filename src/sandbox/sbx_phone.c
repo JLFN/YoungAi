@@ -187,7 +187,9 @@ bool asst_phone_screencap(ds4_buf *png, char *err, size_t errn) {
         if (png->len >= 8 && !memcmp(png->ptr, "\x89PNG", 4)) return true;
         usleep(300000);
     }
-    snprintf(err, errn, "screencap returned no PNG (%zu bytes): the phone is likely out of memory (check Settings → danger mode memory)", png->len);
+    /* 两种原因都会这样, 分不出来就都说: 10-16 门 0 实撞微信密码页(FLAG_SECURE)回 0 字节, 旧文案只说"内存不够"把人往错的方向引。
+     * 只写事实不写"去哪看": 这句也原样进模型的工具结果, 以前带着 "check Settings → danger mode memory", 模型去手机自己的设置里搜 danger/memory 搜了半小时(10-16 真模型门实撞) */
+    snprintf(err, errn, "screencap returned no PNG (%zu bytes): the screen forbids capture (login/payment pages do) or the phone is short of memory; neither can be changed from inside the phone", png->len);
     return false;
 }
 
@@ -228,7 +230,7 @@ const char *asst_phone_apps(void) { return g_apps; }
 
 /* 一次只开一个 app(10-15 用户定: "内存精细控制, 一次只能打开一个 app"): 第三方包里除了要留的那个, 凡有进程的一律 am force-stop。
  * 为什么是 force-stop 不是 kill: force-stop 把包置成 stopped 态, 后台广播/推送拉不起它, 只有再被打开才活; kill 了它自己又回来。
- * keep = 包名: 开 app 之前先清场(内存先腾出来再起新的); keep = NULL: 留前台那个(dumpsys window 的 mFocusedApp), 接在点/滑/按键/打字的同一条 shell 后面跑, 一个来回。
+ * keep = 包名: 开 app 之前先清场(内存先腾出来再起新的); keep = NULL: 留前台那个(dumpsys window displays 的 mFocusedApp), 接在点/滑/按键/打字的同一条 shell 后面跑, 一个来回。
  * 刚起的 app 放过 ASST_PHONE_APP_GRACE_S 秒(只在 keep = NULL 时): 页面点桌面图标 → input tap 12 ms 就回来, 新 app 还没拿到焦点, 不放过就把它当"后台"停掉(焦点还在桌面)。
  *   显式 open 没有这条: 目标明确, 别的不论年龄一律停(10-15 探针实撞: 刚开 A 又 open B, A 因"年轻"没被停, 两个一起活着)。
  *   年龄 = /proc/uptime − /proc/<主进程 pid>/stat 第 22 字段(启动时的 jiffies, 100 Hz); 主进程没了只剩 :子进程 = 残骸, 直接停。
@@ -238,7 +240,9 @@ const char *asst_phone_apps(void) { return g_apps; }
 void asst_phone_one_app_sh(ds4_buf *b, const char *keep) {
     ds4_buf_puts(b, "fg=");
     if (keep) ds4_buf_puts(b, keep);
-    else ds4_buf_puts(b, "$(dumpsys window 2>/dev/null | sed -nE 's/.*mFocusedApp=.* u0 ([A-Za-z0-9._]+)\\/.*/\\1/p' | head -1)");
+    /* 只读 displays 段(当前状态): 整个 dumpsys window 开头的 "LAST ANR" 段里有上次卡死时的 mFocusedApp, head -1 会取到它 ——
+     * 10-16 实撞: 饿了么风控页 ANR 过一次之后, 每点一下微信, 前台都被认成饿了么, 微信自己被 force-stop, 模型 25 分钟在桌面和应用抽屉里打转 */
+    else ds4_buf_puts(b, "$(dumpsys window displays 2>/dev/null | sed -nE 's/.*mFocusedApp=.* u0 ([A-Za-z0-9._]+)\\/.*/\\1/p' | head -1)");
     ds4_buf_printf(b, "; up=$(cut -d. -f1 /proc/uptime); for p in $(pm list packages -3 2>/dev/null | sed s/package://); do [ \"$p\" = \"$fg\" ] && continue; "
                       "m=$(pidof \"$p\" 2>/dev/null | cut -d' ' -f1); if [ -n \"$m\" ]; then st=$(cut -d' ' -f22 /proc/$m/stat 2>/dev/null); [ -n \"$st\" ] && [ $((up - st/100)) -lt %d ] && continue; "
                       "elif ! ps -A -o NAME 2>/dev/null | grep -q \"^$p:\"; then continue; fi; am force-stop \"$p\" >/dev/null 2>&1 && echo \"stopped $p\"; done; true", keep ? 0 : ASST_PHONE_APP_GRACE_S);

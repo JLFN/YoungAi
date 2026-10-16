@@ -243,7 +243,22 @@ static int tts_mode(int n, char **lines, bool sandboxed) {
     return rc == ASST_SBX_OK ? 0 : 1;
 }
 
+/* ./ds4_asst_test --phone-look: 在真手机上调一次 phone_screen(只看不点), 打印模型会收到的原文和耗时。
+ * 改了元素表(如微信写死的按钮表)后不用重启生产 ds4-train 就能对着真屏验; 截图照常落助理工作区的 .phone/ */
+static int phone_look_mode(void) {
+    char err[512] = "";
+    if (!asst_init(NULL, err, sizeof err)) { printf("init: %s\n", err); return 1; }
+    if (!asst_phone_on()) { printf("phone not ready (danger mode off or phone not started)\n"); return 1; }
+    struct timespec a, b; clock_gettime(CLOCK_MONOTONIC, &a);
+    int ok = 0; char *r = asst_phone_tool_exec("", "phone_screen", "{}", &ok);
+    clock_gettime(CLOCK_MONOTONIC, &b);
+    printf("%s(ok=%d, %ld ms)\n", r ? r : "(null)\n", ok, (long)((b.tv_sec - a.tv_sec) * 1000 + (b.tv_nsec - a.tv_nsec) / 1000000));
+    free(r);
+    return ok ? 0 : 1;
+}
+
 int main(int argc, char **argv) {
+    if (argc > 1 && !strcmp(argv[1], "--phone-look")) return phone_look_mode();
     if (argc > 2 && !strcmp(argv[1], "--tts")) return tts_mode(argc - 2, argv + 2, false);
     if (argc > 2 && !strcmp(argv[1], "--tts-sbx")) return tts_mode(argc - 2, argv + 2, true);
     if (argc > 2 && !strcmp(argv[1], "--check-args")) return check_args_mode(argc - 2, argv + 2);
@@ -269,11 +284,13 @@ int main(int argc, char **argv) {
     g_fail += asst_test_logic(base);
     { extern int asst_test_memory(void); g_fail += asst_test_memory(); }   /* 记忆三类 + 交付卡(10-15): 在 logic 之后, 助理根目录与工作区已建好 */
     { extern int asst_test_image(void); g_fail += asst_test_image(); }     /* 改图工具(10-15): 合成图 recolor/crop/draw, 分割模型在就走它 */
+    { extern int asst_test_preview(void); g_fail += asst_test_preview(); } /* 网页预览(10-16): 口令子树 / 越界 404 / CSP sandbox 头 */
     { extern int asst_test_video(const char *base); g_fail += asst_test_video(base); }   /* 要火狐; 没有就 SKIP。在 logic 之后: 它建好了助理根目录 */
     { extern int studio_auth_test(const char *base); g_fail += studio_auth_test(base); }
     { extern int studio_net_test(const char *base); g_fail += studio_net_test(base); }
     { extern int studio_models_test(const char *base); g_fail += studio_models_test(base); }
     { extern int asst_test_phone(void); g_fail += asst_test_phone(); }   /* 云手机离线: NAL 切分 / 控件树解析 / 开关关着无 phone_* */
+    { extern int asst_test_pay(void); g_fail += asst_test_pay(); }       /* 交易审批: 真机 dumpsys 夹具解析 / 三条信号 / 交易词边界 / 授权表不认 pay */
     { extern int asst_test_task(void); g_fail += asst_test_task(); }     /* 任务: 建/工具/收尾/到期/页面操作(在 logic 之后: 助理根目录已建好) */
     { extern int asst_test_push(void); g_fail += asst_test_push(); }     /* 推送: 假推送服务收 POST 当浏览器解开; notify 工具; 定时提醒; 收尾规则 */
     { extern int asst_test_plan(void); g_fail += asst_test_plan(); }     /* 计划: 提计划/只许看/开始/步骤/下次时间/放弃(放最后: 它会暂停前面留下的到期任务) */
