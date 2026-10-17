@@ -13,7 +13,9 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"; cd "$ROOT" || exit 1
 JS="${1:?jsonl}"; QS="${2:?问题文件}"; PORT="${3:-8000}"; EP="${4:-3}"; EXTRA="${5:-}"
 U="http://127.0.0.1:$PORT"
 LOG="/tmp/studio_probe_$(date +%m%d%H%M).log"
-C() { curl -s --noproxy '*' --max-time 900 "$@"; }
+# 10-12 起主进程有登录门: 本机脚本带 Authorization: Bearer <~/.ds4/assistant/token>(studio_auth.c 认这个), 没有这个文件就按老样子裸打
+TOK=$(cat ~/.ds4/assistant/token 2>/dev/null || true)
+C() { curl -s --noproxy '*' --max-time 900 ${TOK:+-H "Authorization: Bearer $TOK"} "$@"; }
 say() { echo "[$(date +%H:%M:%S)] $*" | tee -a "$LOG"; }
 # 逐题问(温度 0, 上限 200 token 只为探针快; 页面本身不传这两项), 回答原样记
 ask() {
