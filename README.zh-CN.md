@@ -1,3 +1,7 @@
+> **v0.3.0-rc 已发布：<https://github.com/fodelf/YoungAi/releases/tag/v0.3.0-rc>**<br>
+> 这是基于 DeepSeek-V4.1-Flash 的最后一个 RC 版本。下载对应平台的包（DGX Spark 用 `linux-aarch64`，Apple Silicon 用 `darwin-arm64`），
+> 解压后运行目录里的 `ds4-train`，浏览器打开 `http://<主机>:8000/`，再到"模型"页下载模型。
+
 <p align="center">
   <img src="web/logo.jpg" width="96" alt="YoungAi logo">
 </p>

@@ -21,6 +21,10 @@ tags:
 pipeline_tag: text-generation
 ---
 
+> **v0.3.0-rc is out: <https://github.com/fodelf/YoungAi/releases/tag/v0.3.0-rc>**<br>
+> This is the last RC built on DeepSeek-V4.1-Flash. Download the package for your machine (`linux-aarch64` for DGX Spark,
+> `darwin-arm64` for Apple Silicon), unpack it, run the `ds4-train` inside, open `http://<host>:8000/`, and download the model from the *Models* page.
+
 <p align="center">
   <img src="web/logo.jpg" width="96" alt="YoungAi logo">
 </p>
