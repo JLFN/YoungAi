@@ -62,7 +62,7 @@ int asst_test_push(void) {
     { char bad[1024]; snprintf(bad, sizeof bad, "{\"op\":\"subscribe\",\"sub\":{\"endpoint\":\"%s\",\"keys\":{\"p256dh\":\"BAAA\",\"auth\":\"%s\"}}}", endpoint, a64); CHECK(!asst_push_op(bad, err, sizeof err) && strstr(err, "p256dh"), "bad p256dh refused"); }
     /* 发一条 → 假服务收到 → 当浏览器解开 */
     CHECK(asst_push_send_sync("标题 T", "正文 hello\n第二行", "/?session=x#chat", NULL) == 1 && wait_count(1, 2000), "send_sync delivered to 1 device");
-    CHECK(hdr("Content-Encoding: aes128gcm") && hdr("TTL: 86400") && hdr("Urgency: normal") && hdr("Content-Type: application/octet-stream"), "push request headers");
+    CHECK(hdr("Content-Encoding: aes128gcm") && hdr("TTL: 86400") && hdr("Urgency: high") && hdr("Content-Type: application/octet-stream"), "push request headers");
     {
         const char *az = hdr("Authorization: vapid t="); CHECK(az != NULL, "Authorization: vapid");
         if (az) {

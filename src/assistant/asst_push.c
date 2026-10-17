@@ -178,9 +178,11 @@ static bool send_one(const sub_t *s, const uint8_t *payload, size_t pn, char *st
     if (!asst_write_file(tmp, (const char *)body, bn, 0600)) { snprintf(status, sn, "cannot write body"); return false; }
     char authz[1400], ttl[32], data[ASST_PATH + 72]; snprintf(authz, sizeof authz, "Authorization: vapid t=%s, k=%s", jwt, g_pub64); snprintf(ttl, sizeof ttl, "TTL: %d", ASST_PUSH_TTL); snprintf(data, sizeof data, "@%s", tmp);
     char tmo[16], px[256]; snprintf(tmo, sizeof tmo, "%d", ASST_PUSH_CURL_S); proxy_get(px, sizeof px);
-    /* 没填代理时 -x "" = curl 明说不用代理(也不吃进程环境里的 http_proxy); 本机地址(单测的假推送服务)一律不走代理 */
+    /* 没填代理时 -x "" = curl 明说不用代理(也不吃进程环境里的 http_proxy); 本机地址(单测的假推送服务)一律不走代理。
+       Urgency: high(10-17): 我们推的全是到点提醒/任务做完, 有时效; normal 时手机休眠(Doze)FCM 会攒着等下个维护窗口才送, 提醒就不准时。
+       这个头只管推送服务送得多急, 不管手机上弹不弹横幅(横幅是安卓通知类别等级, 网页推送改不了, 见 docs/assistant.md)。 */
     const char *argv[] = { "curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "-m", tmo, "-x", px, "--noproxy", "127.0.0.1,localhost", "-X", "POST",
-                           "-H", "Content-Type: application/octet-stream", "-H", "Content-Encoding: aes128gcm", "-H", ttl, "-H", "Urgency: normal", "-H", authz,
+                           "-H", "Content-Type: application/octet-stream", "-H", "Content-Encoding: aes128gcm", "-H", ttl, "-H", "Urgency: high", "-H", authz,
                            "--data-binary", data, s->endpoint, NULL };
     char out[64] = ""; const int rc = run_curl(argv, out, sizeof out);
     unlink(tmp);

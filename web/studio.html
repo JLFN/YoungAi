@@ -2714,7 +2714,31 @@ function presenceBeat() {   /* 2.5 s 一轮的 poll 带着调, 20 s 才真发一
 }
 document.addEventListener("visibilitychange", () => { presenceT = 0; if (document.visibilityState === "hidden") presence(false); else presenceBeat(); });
 window.addEventListener("pagehide", () => presence(false));
-if (pushSupported()) navigator.serviceWorker.ready.then(r => r.pushManager.getSubscription()).then(s => { pushSub = s; presenceT = 0; presenceBeat(); }).catch(() => {});   /* 不进任务页也要知道自己是哪台设备 */
+/* 订阅自愈(10-17): 推送服务答 404/410 时服务端当场删订阅(asst_push.c), 浏览器手里那份却还在, 而页面上没有开关了 ——
+   这台设备就此永远收不到(10-17 实撞: FCM 答 410 后 push/subs 空了, "两分钟后提醒"没响)。
+   所以页面一打开: 权限早给过(granted) 且服务端名单里没有自己(id = sha256(endpoint) 前 16 位十六进制, 同 asst_push.c sub_id),
+   就丢掉旧订阅重订一份交回去。不弹权限框、不加界面: 没给过权限的设备照旧不订。 */
+const b64uToU8 = s => { const b = atob(s.replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from(b, c => c.charCodeAt(0)); };
+const deviceLabel = () => (isIOS() ? "iPhone" : /Android/i.test(navigator.userAgent) ? "Android" : /Mac/.test(navigator.platform) ? "Mac" : "PC") + (document.documentElement.dataset.standalone === "1" ? " App" : " " + (lang === "zh" ? "浏览器" : "browser"));
+const subIdOf = async ep => Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(ep))).slice(0, 8), x => x.toString(16).padStart(2, "0")).join("");
+async function pushHeal() {
+  const reg = await navigator.serviceWorker.ready;
+  let sub = await reg.pushManager.getSubscription();
+  if (Notification.permission === "granted") {
+    const r = await aFetch("push");
+    if (!r.error && r.key) {
+      const known = sub && (r.devices || []).map(d => d.id).includes(await subIdOf(sub.endpoint));
+      if (!known) {
+        if (sub) await sub.unsubscribe().catch(() => {});   /* 推送服务已经判它死了, 原样交回去还是 410 */
+        sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64uToU8(r.key) });
+        const s = await aFetch("push", { op: "subscribe", sub: sub.toJSON(), label: deviceLabel(), origin: location.origin });
+        if (s.error) toast(t("fail", s.error), true);
+      }
+    }
+  }
+  pushSub = sub; presenceT = 0; presenceBeat();   /* 不进任务页也要知道自己是哪台设备 */
+}
+if (pushSupported()) pushHeal().catch(e => toast(t("fail", e.message || String(e)), true));
 if ("serviceWorker" in navigator) navigator.serviceWorker.addEventListener("message", e => { if (e.data && e.data.notice) gotoNotice(e.data.notice); });
 (function openFromNotice() {   /* 通知点开时新开的窗口: /?session=<id>#chat */
   const q = new URLSearchParams(location.search), s = q.get("session");
