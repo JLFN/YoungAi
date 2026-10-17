@@ -203,16 +203,15 @@ bool asst_phone_install(const void *apk, size_t n, char *pkg, size_t pn, char *e
     if (!ok) { ds4_buf_free(&out); return false; }
     if (!out.ptr || !strstr(out.ptr, "Success")) { snprintf(err, errn, "install: %.200s", out.ptr && out.len ? out.ptr : "(no output)"); ds4_buf_free(&out); return false; }
     ds4_buf_free(&out);
-    /* 刚装的包名: pm 不回包名; /data/app/~~xxx==/<包名>-yyy==/ 按时间最新的那个目录名里带着 */
+    /* 刚装的包名: pm 不回包名。用 dumpsys 里每个包的 lastUpdateTime 挑最新的那个(覆盖安装同样命中)。
+     * ★不能看 /data/app★: adbd 跑在 shell 用户, 那个目录 Permission denied → 旧写法回空包名(10-17 装 12306 实撞;
+     * 10-14 之前能用只因为手动 `adbprobe root` 过, 手机一重起就没了)。grep 只留两种行后它们严格交替, sed N 两行配对。 */
     char e2[256];
     asst_phone_apps_refresh();
-    char *newest = asst_phone_shell("ls -t /data/app 2>/dev/null | head -1", 15000, e2, sizeof e2);
-    if (newest && newest[0]) {   /* /data/app/~~xxx==/<pkg>-yyy==/ : 目录名里带包名 */
-        char cmd2[256]; snprintf(cmd2, sizeof cmd2, "ls -t /data/app/%.100s 2>/dev/null | head -1", newest);
-        char *d = asst_phone_shell(cmd2, 15000, e2, sizeof e2);
-        if (d) { char *dash = strchr(d, '-'); if (dash) *dash = 0; snprintf(pkg, pn, "%s", d); free(d); }
-    }
-    free(newest);
+    char *d = asst_phone_shell("dumpsys package packages | grep -E '^  Package \\[|lastUpdateTime=' | "
+                               "sed -n 'N;s/^  Package \\[\\(.*\\)\\].*\\n *lastUpdateTime=\\(.*\\)$/\\2 \\1/p' | sort | tail -1 | sed 's/.* //'",
+                               15000, e2, sizeof e2);
+    if (d) { d[strcspn(d, "\r\n")] = 0; snprintf(pkg, pn, "%s", d); free(d); }
     return true;
 }
 
