@@ -268,6 +268,10 @@ docs/assistant_phone.md 本稿; README.md / README.zh-CN.md 免责声明; fable5
 **关 1 · 跑起来**（门：装完 `am start`，60 s 内 `logcat -b events` 的 `am_crash`/`am_anr` 为 0，截图有首页）
 - 装：页面"安装 APK"（上限 512 MB 够）。
 - 若 SIGILL 且 strace 到 `/dev/ashmem` ENOENT：走 ashmem 模块。软绕法全无：CUSE 不支持 mmap（ashmem 的核心就是 mmap）；lockdown 禁未签名模块；MokManager 必须现场按键。**要么接显示器按一次 Enroll MOK（模块 10-14 已编出、已入队），要么不弄。**
+  已撞的同病 app（都是 mPaaS/U4 内核 `libwebviewuc.so` 里 `CheckPlatformHandlePermissionsCorrespondToMode` 假 → `hlt`）：饿了么/淘宝闪购（10-14）、**铁路 12306 5.9.4.5（10-17，进 MainActivity ≈3 s 必死，CrashSDK 自己接信号所以 `am_crash` 为 0，只看 events 会以为没崩）**。这类 app 的崩溃日志在 `/data/data/<包>/app_crash/`，要 adbd `root:` 才读得到。
+  **10-17 已解（spark）**：MOK 注册 + 签名装模块一条龙脚本 `scripts/phone_ashmem_mok_spark.sh`（机器跟前跑，Mac 远程版 `_mac.sh`），模块开机自动加载。
+  ★装了模块还不够★：`androidboot.use_memfd=true` 会让 redroid 把 `sys.use_memfd` 设 1，系统 libcutils 全部发 memfd，UC 内核拿到 memfd 后按 ashmem 的办法验权限照样自杀（实测进程 fd 表里 ashmem 为 0）。所以 `phone_mnt.c` 现在只在宿主没有 `/dev/ashmem` 时才传这个参数。过门读数：12306 首页 60 s 不死，主进程 ashmem 映射 37 个；微信/抖音回归各 25 s 死亡 0。
+  MOK 注册的四个坑都写在脚本注释里：`--list-new` 要 sudo；蓝屏要选第二项 Enroll MOK 而不是 Continue boot；`--test-key` 以 root 跑会误答 not enrolled（按证书指纹比 `--list-enrolled`）；`--list-enrolled` 退出码非零，别在 pipefail 下接 grep。
 - 若抖音自己判"设备异常/环境风险"：如实报，不改 `ro.*`（10-13 口径）。
 
 **关 2 · 看得顺**（门：`dumpsys gfxinfo` 掉帧比 + cgroup `cpu.stat` 的 `nr_throttled`，各看 60 s 刷视频）

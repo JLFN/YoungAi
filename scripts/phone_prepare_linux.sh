@@ -65,7 +65,10 @@ if [ -f "$KO" ]; then
     #   sudo update-secureboot-policy --enroll-key  # 设一次性密码 → 重启 → 蓝屏 Enroll MOK → Continue → Yes → 输那个密码 → 重启
     if mokutil --sb-state 2>/dev/null | grep -q enabled; then
         MOK=/var/lib/shim-signed/mok
-        if [ -f "$MOK/MOK.priv" ] && mokutil --test-key "$MOK/MOK.der" 2>/dev/null | grep -q "already enrolled"; then
+        # 注册与否按证书指纹查固件里的 MokListRT: `mokutil --test-key` 以 root 跑时查的是内核钥匙环, 对已注册的钥匙也答 "not enrolled"(10-17 实撞, finish 白跑两趟)
+        FP=$(openssl x509 -inform DER -in "$MOK/MOK.der" -noout -fingerprint -sha1 2>/dev/null | cut -d= -f2 | tr 'A-F' 'a-f')
+        ENROLLED=$(mokutil --list-enrolled 2>/dev/null | tr 'A-F' 'a-f')   # 存变量再比: mokutil 退出码非零 + 本脚本的 pipefail 会让 grep 管道误判
+        if [ -f "$MOK/MOK.priv" ] && [ -n "$FP" ] && [[ $ENROLLED == *"$FP"* ]]; then
             kmodsign sha512 "$MOK/MOK.priv" "$MOK/MOK.der" "$KO" || { echo "kmodsign 失败"; exit 1; }
             echo "ashmem: 已用 $MOK/MOK.der 签名"
         else

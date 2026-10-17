@@ -81,7 +81,8 @@ void ph_child_boot(int log_fd, const char *dns) {
     } else dprintf(g_log, "[boot] 宿主没有 /dev/dma_heap/system: Codec2 起不来, 录屏流不可用\n");
     /* ashmem: 老 Chromium 分支的 WebView(淘宝闪购/饿了么的 UC 内核)只认 /dev/ashmem 的 ioctl, 没有就 CHECK 失败 SIGILL(10-14 实撞);
      * 主线 5.18 删了它, 宿主要装仓内 src/sandbox/phone/ashmem 的树外模块(phone_prepare_linux.sh ⑤), 这里照宿主的 rdev 镜像一份。没有就只记日志 */
-    if (!stat("/dev/ashmem", &hs) && S_ISCHR(hs.st_mode)) { snprintf(p, sizeof p, "%s/ashmem", d); node(p, 0666, major(hs.st_rdev), minor(hs.st_rdev)); }
+    const bool have_ashmem = !stat("/dev/ashmem", &hs) && S_ISCHR(hs.st_mode);
+    if (have_ashmem) { snprintf(p, sizeof p, "%s/ashmem", d); node(p, 0666, major(hs.st_rdev), minor(hs.st_rdev)); }
     else dprintf(g_log, "[boot] 宿主没有 /dev/ashmem: 带老 WebView 内核的 app 会崩(sudo scripts/phone_prepare_linux.sh 装 ashmem 模块)\n");
     /* 我们的 rc 叠加(phone_rc.c): 每次开机重写, 免得 rootfs 里留一份旧的 */
     snprintf(p, sizeof p, "%s/vendor/etc/init/zz_ds4.rc", R);
@@ -120,9 +121,13 @@ void ph_child_boot(int log_fd, const char *dns) {
     snprintf(dpi, sizeof dpi, "androidboot.redroid_dpi=%d", PH_DPI);
     snprintf(fps, sizeof fps, "androidboot.redroid_fps=%d", PH_FPS);
     snprintf(dns1, sizeof dns1, "androidboot.redroid_net_dns1=%s", dns);
-    /* 前两项照镜像的 Entrypoint(gguf/phone/image.json); use_memfd: 宿主内核没有 ashmem(5.18 起删), 不开这个 init 起不来 */
-    char *const argv[] = { "/init", "qemu=1", "androidboot.hardware=redroid", "androidboot.use_memfd=true", "androidboot.redroid_gpu_mode=guest",
-                           w, h, dpi, fps, "androidboot.redroid_net_ndns=1", dns1, NULL };
+    /* 前两项照镜像的 Entrypoint(gguf/phone/image.json)。
+     * use_memfd 只在宿主没有 ashmem 时传(redroid 维护者给这个开关的用法就是"内核 5.18 起没 ashmem 的替代", redroid-doc #171/#189):
+     * 传了, 系统 libcutils 把所有共享内存改成 memfd, 装了 ashmem 模块也没人用 —— 10-17 实撞: 宿主与手机里 /dev/ashmem 都在, 12306 的 UC 内核
+     * 从起到死 fd 表里 ashmem 为 0、memfd 19 个, 照样在同一处 CHECK 自杀; 它拿到 memfd 后按 ashmem 的办法验权限, 对不上就 hlt。
+     * 不传而宿主又没 ashmem 的话 init 起不来, 所以这里按 have_ashmem 二选一。 */
+    char *const argv[] = { "/init", "qemu=1", "androidboot.hardware=redroid", "androidboot.redroid_gpu_mode=guest", w, h, dpi, fps, "androidboot.redroid_net_ndns=1", dns1,
+                           have_ashmem ? NULL : "androidboot.use_memfd=true", NULL };   /* 放末位: 有 ashmem 时这一格就是终止符 */
     char *const envp[] = { "PATH=/system/bin:/system/xbin:/vendor/bin", NULL };
     execve("/init", argv, envp);
     DIE("execve /init");
