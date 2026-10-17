@@ -3313,6 +3313,12 @@ async function sendPlug(z, p) {
     if (r.ok) { if (busy()) toast(t("pl_after")); } else toast(t("pl_fail", r.error), true);
   } catch (e) { toast(t("not_sent", e), true); }
   plugBusy = false; await loadModels(true);
+  /* 服务空闲时切换不到 1 s 就完, 2.5 s 一次的常规轮询让开关多灰 2~3 s: 排队期间 300 ms 问一次, 切完立刻复位。
+     正在出回答时切换要等它答完(可能几分钟), 那就交给常规轮询, 别空转 */
+  for (let i = 0; i < 60 && mdata && mdata.switch && mdata.switch.pending && !busy(); i++) {
+    await new Promise(r => setTimeout(r, 300));
+    await loadModels(true);
+  }
 }
 function plugOptions() {
   const d = mdata; if (!d || !d.loaded) return [];
