@@ -96,11 +96,16 @@ int ds4_engine_draft_train(ds4_engine *e, const char *spec);
  * 跟着采样面走, 单请求路与并发请求态读的是同一份, 不分路。只在采样路生效(温 0 本来就是 argmax); NULL = 不问。
  * 规则与实现见 core_v41_sample.c v41_sample_pick。 */
 typedef int (*ds4_greedy_fn)(void *ud, const int32_t *ahead, uint32_t n);
+/* force_fn: 调用方指定下一位(2026-10-17, 思考段死环强制收口)。问法与 greedy_fn 同(已收到的 + ahead[0..n) 之后), 返回 ≥ 0 = 这一位就取它,
+ * 不看 logits; < 0 = 照常(先 greedy_fn 再采样)。只在"前面的草稿全被接受"的行上问, 强制的那位就是这一轮的落点(与草稿不同则后面的行作废)。
+ * 引擎自己不判任何事 —— 什么时候强制、强制成什么, 全在调用方(服务端 server_think_loop.c); NULL = 不问。 */
+typedef int32_t (*ds4_force_fn)(void *ud, const int32_t *ahead, uint32_t n);
 typedef struct {
     float temperature, top_p, min_p; int top_k; uint64_t seed;
     float freq_penalty, presence_penalty;
     float dry_multiplier, dry_base; int dry_allowed_length;
     ds4_greedy_fn greedy_fn; void *greedy_ud;
+    ds4_force_fn force_fn; void *force_ud;
 } ds4_decode_sampling;
 void ds4_engine_set_decode_sampling(const ds4_decode_sampling *sp);
 /* 服务接入(2026-09-19, src/server/server_generate_v41.c): 预填每跑完一块回调一次("prefill_chunk", 已预填 token 数, 提示总数),

@@ -307,7 +307,7 @@ void ds4_chat_append_message(ds4_engine *e, ds4_tokens *tokens, const char *role
 void ds4_chat_append_assistant_prefix(ds4_engine *e, ds4_tokens *tokens, ds4_think_mode think_mode);
 
 char *ds4_token_text(ds4_engine *e, int token, size_t *len);
-int ds4_token_eos(ds4_engine *e);
+int ds4_token_eos(ds4_engine *e); int ds4_token_think_end(ds4_engine *e);   /* 后者 = </think>: 服务端死环检测器强制收口用(server_think_loop.c) */
 int ds4_token_user(ds4_engine *e);
 int ds4_token_assistant(ds4_engine *e);
 

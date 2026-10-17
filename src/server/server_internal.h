@@ -288,6 +288,11 @@ bool continue_after_invalid_dsml(server *s, const request *r, const thinking_sta
 bool should_remember_thinking_checkpoint(const request *r, const thinking_state *thinking, const char *finish);
 void log_tool_calls_summary(const char *ctx, const tool_calls *calls, bool responses_protocol);
 void server_progress_cb(void *ud, const char *event, int current, int total);
+/* 思考段逐 token 死环检测(server_think_loop.c, 2026-10-17): 判据与门槛的依据写在那个文件头 */
+enum { THINK_LOOP_MAXP = 256, THINK_LOOP_MIN_RUN = 256 };
+typedef struct { int32_t ring[THINK_LOOP_MAXP]; uint32_t run[THINK_LOOP_MAXP + 1]; uint32_t n; } think_loop;
+void think_loop_push(think_loop *d, int32_t tok);
+bool think_loop_hit(const think_loop *d, int *period, int *span);   /* true = 已成死环; period/span 可为 NULL */
 /* V4.1 服务生成路(server_generate_v41.c): 没有会话, token 从引擎回调来; generate_job 入口按模型分流 */
 void generate_job_v41(server *s, job *j);
 /* 一条 V4.1 请求的生成期状态(2026-09-30 从 server_generate_v41.c 搬到头文件: 并发调度器 server_sched_v41.c 也要用)。
@@ -325,6 +330,9 @@ typedef struct {
     int32_t *ids; int n_ids, cap_ids;   /* 引擎真吐的 token id(含 EOS): 收尾写进 --trace, 真实请求才能逐位重放对拍(bug.md §5.4 E0) */
     ds4_decode_sampling sp;   /* 本请求的采样面(请求没带的落到 ds4.h 的官方默认); 单 worker 路覆写全局, 并发路按请求传给引擎 */
     int spec_rounds, spec_offered, spec_accepted;   /* 投机账(调用方在 v41_gen_end 前从引擎取): 监控页的草稿接受率; rounds=0 = 没投机 */
+    think_loop loop;          /* 思考段死环检测(server_think_loop.c): 只喂思考段里真吐的 token */
+    bool think_loop_on;       /* 提示以思考开场才开; 非思考请求不进检测 */
+    int think_end, loop_period, loop_span;   /* </think> 的 id; 强制收口时记下的周期/段长, v41_emit 收到那个 token 时落日志 */
 } v41_gen;
 /* 每多少个 token 探一次对端: 一次 poll 约 1 µs, 一步解码 40 ms ⇒ 开销在噪声里; 最坏多算 16 个 token。 */
 enum { V41_ALIVE_CHECK_TOKENS = 16 };
@@ -332,6 +340,7 @@ bool v41_gen_begin(server *s, job *j, v41_gen *g);   /* false = 请求不合法,
 int v41_emit(int token, void *ud);                    /* 引擎逐 token 回调; 非 0 = 停 */
 int v41_progress_cb(void *ud, const char *event, int current, int total);   /* 预填块间: 心跳 + 探客户端; 非 0 = 中止 */
 int v41_syntax_greedy(void *ud, const int32_t *ahead, uint32_t n);   /* 引擎取 token 前问: 下一位是工具语法 ⇒ 取 argmax(ds4_greedy_fn) */
+int32_t v41_think_loop_force(void *ud, const int32_t *ahead, uint32_t n);   /* 引擎取 token 前问: 思考段已成死环 ⇒ 返回 </think>(ds4_force_fn) */
 void v41_gen_end(v41_gen *g, int rc);                 /* rc = 引擎返回码(非 0 且没出过 token = 预填失败) */
 /* V4.1 并发调度器(server_sched_v41.c, batch.md §3.2): --batch N ≥ 2 时 worker 线程整个交给它 */
 void v41_sched_run(server *s);

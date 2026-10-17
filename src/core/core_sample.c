@@ -89,6 +89,10 @@ int ds4_token_eos(ds4_engine *e) {
     return e->vocab.eos_id;
 }
 
+int ds4_token_think_end(ds4_engine *e) {
+    return e->vocab.think_end_id;
+}
+
 int ds4_token_user(ds4_engine *e) {
     return e->vocab.user_id;
 }

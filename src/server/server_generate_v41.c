@@ -148,6 +148,14 @@ int v41_emit(int token, void *ud) {
     mon_token(s, j->mon, g->completion);
     trace_piece(s, g->trace_id, piece, piece_len);
     ds4_buf_append(&g->text, piece, piece_len);
+    if (g->think_loop_on && g->thinking.inside && token != g->think_end) think_loop_push(&g->loop, token);
+    if (token == g->think_end && g->loop_period) {
+        server_log(DS4_LOG_WARNING, "ds4-server: %s ctx=%s 思考段逐 token 复读(周期 %d, 段长 %d)已成死环, 第 %d 个生成 token 处强制收口",
+                   v41_kind(g), g->ctx_span, g->loop_period, g->loop_span, g->completion);
+        trace_event(s, g->trace_id, "think loop: token-exact repeat period %d over %d tokens, forced </think> at generated token %d",
+                    g->loop_period, g->loop_span, g->completion);
+        g->loop_period = 0;
+    }
     thinking_state_feed(&g->thinking, piece, piece_len);
     if (j->req.kind == REQ_CHAT && j->req.has_tools) dsml_decode_tracker_update(&g->dsml_tracker, g->text.ptr, g->text.len);
 
@@ -375,6 +383,8 @@ bool v41_gen_begin(server *s, job *j, v41_gen *g) {
     g->thinking = thinking_state_from_prompt(&j->req);
     g->thinking_gates_tool_markers = ds4_think_mode_enabled(j->req.think_mode);
     g->tool_scan_waiting_for_think_close = g->thinking_gates_tool_markers && g->thinking.inside;
+    g->think_end = ds4_token_think_end(s->engine);
+    g->think_loop_on = g->thinking_gates_tool_markers && g->thinking.inside && g->think_end >= 0;
     dsml_decode_tracker_init(&g->dsml_tracker);
     g->next_tool_progress = 128; g->next_decode_log = 50; g->next_alive_check = V41_ALIVE_CHECK_TOKENS;
     snprintf(g->id, sizeof(g->id), "%s-%llu", j->req.kind == REQ_CHAT ? "chatcmpl" : "cmpl", (unsigned long long)++s->seq);
@@ -393,6 +403,7 @@ bool v41_gen_begin(server *s, job *j, v41_gen *g) {
         .dry_base = j->req.dry_set ? (j->req.dry_base > 1.f ? j->req.dry_base : 1.75f) : s->dry_base,
         .dry_allowed_length = j->req.dry_set ? (j->req.dry_allowed_length > 0 ? j->req.dry_allowed_length : 2) : s->dry_allowed_length,
         .greedy_fn = v41_syntax_greedy, .greedy_ud = g,
+        .force_fn = v41_think_loop_force, .force_ud = g,
     };
     const ds4_decode_sampling *sp = &g->sp;
     if (sp->temperature > 0.f || sp->dry_multiplier > 0.f || sp->freq_penalty != 0.f || sp->presence_penalty != 0.f)

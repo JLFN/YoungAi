@@ -22,12 +22,14 @@
  * 槽 [3] 是采样核顺手写的原始 argmax(cuda_v41_sample.inc.cu 头注释); argmax 路(温 0)本来就是 [0], 不问。 */
 void v41_sample_pick(const ds4_v41_state *st, const int32_t *slot, const int32_t *batch, uint32_t n, int32_t *want) {
     const ds4_decode_sampling *sp = st->psamp ? st->psamp : &g_decode_sampling;
-    bool ask = st->dev_sample && sp->greedy_fn;
+    bool ask = st->dev_sample && sp->greedy_fn, live = sp->force_fn != NULL;   /* live: 第 i 行之前的草稿全被接受, 这一行会落地 */
     for (uint32_t i = 0; i < n; i++) {
         const int32_t *s = slot + 4u * i;
-        if (ask && sp->greedy_fn(sp->greedy_ud, batch ? batch + 1 : NULL, i)) want[i] = s[3];
+        const int32_t f = live ? sp->force_fn(sp->force_ud, batch ? batch + 1 : NULL, i) : -1;
+        if (f >= 0) want[i] = f;
+        else if (ask && sp->greedy_fn(sp->greedy_ud, batch ? batch + 1 : NULL, i)) want[i] = s[3];
         else want[i] = (st->dev_sample && batch && i + 1u < n) ? (s[1] ? batch[i + 1u] : s[2]) : s[0];
-        if (ask && !(batch && i + 1u < n && want[i] == batch[i + 1u])) ask = false;
+        if (!(batch && i + 1u < n && want[i] == batch[i + 1u])) ask = live = false;
     }
 }
 
@@ -68,6 +70,8 @@ bool v41_next_token(ds4_v41_state *st, ds4_gpu_tensor *am, uint32_t row, float *
     if (h && h->n && (sp->dry_multiplier > 0.f || sp->freq_penalty != 0.f || sp->presence_penalty != 0.f))
         ds4_decode_penalize(rowbuf, DS4_N_VOCAB, h->tok, h->n, h->brk, sp->freq_penalty, sp->presence_penalty,
                             sp->dry_multiplier, sp->dry_base, sp->dry_allowed_length);
+    const int32_t f = sp->force_fn ? sp->force_fn(sp->force_ud, NULL, 0) : -1;   /* 调用方指定这一位(v41_sample_pick 同一条规则) */
+    if (f >= 0) { *out = f; if (h && h->n < h->cap) h->tok[h->n++] = f; return true; }
     /* 惩罚路同一条工具语法位规则(v41_sample_pick): 温 0 时采样器给罚后的 argmax */
     const float temp = (sp->greedy_fn && sp->greedy_fn(sp->greedy_ud, NULL, 0)) ? 0.f : sp->temperature;
     *out = (int32_t)ds4_sample_logits(rowbuf, (int)DS4_N_VOCAB, temp, sp->top_k, sp->top_p, sp->min_p, rng);
