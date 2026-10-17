@@ -10,6 +10,10 @@
 #     hf-mirror (both time out) but pulls 27.7 MB/s from ModelScope, while the
 #     Macs manage 0.19 MB/s (hf-mirror) / 0.28 MB/s (ModelScope). Spark = the
 #     muscle, ~100x the Macs; a Mac lane is worth roughly one small shard.
+#   2026-10-17 (V4.1-Flash-1017 run, 510 GB): spark->hf-mirror 0.16 MB/s per
+#     connection (64-way 29 MB/s), Macs ~3 MB/s total, ModelScope 37 MB/s per
+#     connection / 87 MB/s 4-way AND honours Range on the 101 GB engram shards
+#     (206). Spark alone with DL_BASE=modelscope + POOL_LANES=4; no Mac lanes.
 # That reversal is why fetch_list falls back to the ModelScope copy of the same
 # repo and why DL_BASE exists — see fetch_list.
 #
@@ -176,15 +180,31 @@ mac_shard() { # size name  -> 0 when the shard is verified on spark
     return 0
 }
 
+# API 报的 size 只对 LFS 大文件(权重分片)可信; README/encoding.py 这类小文件拿到的是
+# git blob 大小, 跟源站实际吐出的字节常对不上(实测 hf-mirror 上 README.md api=1622
+# 实际=12944)。拿它当完成判据, 小文件永远"没下完", 每轮重下且永不转正。
+# 1 MiB 以上按 LFS 逐字节卡, 以下只要求非空(与 download_base_model.sh 同一规则)。
+size_trusted() { [ "$1" -ge 1048576 ] 2>/dev/null; }
+small_done() { # size have -> 0 when this file counts as complete
+    if size_trusted "$1"; then [ "$2" = "$1" ]; else [ "$2" -gt 0 ] 2>/dev/null; fi
+}
+
 spark_shard() { # size name (runs on spark; straight into final dir)
     size=$1; name=$2
     url="${DL_BASE:-$ENDPOINT/$REPO/resolve/main}/$name"
+    # 小文件(config/tokenizer/README)一律从 HF 侧拿, 不走 DL_BASE: ModelScope 会改写
+    # README、多放 configuration.json, 字节跟 HF 清单对不上; 而权重分片两边 sha256 一致。
+    case "$name" in *.safetensors) ;; *) url="$ENDPOINT/$REPO/resolve/main/$name" ;; esac
     out="$HOME/$RDEST/$name"
     mkdir -p "$(dirname "$out")"
     echo "get   spark $name ($(human "$size"))"
-    curl_dl "$url" "$out.part" || true
+    curl_dl "$url" "$out.part"
+    rc=$?
+    # curl 33 = 源站不认 Range, -C - 续传永远失败: .part 一旦非空, 每一轮都原地报 33,
+    # 一个字节也推不进去(ModelScope 的大文件端点历史上就这样)。只能丢掉已下字节重拉。
+    [ "$rc" = 33 ] && rm -f "$out.part"
     have=$(lsize "$out.part")
-    if [ "$have" != "$size" ]; then
+    if ! small_done "$size" "$have"; then
         if [ "$have" -gt "$size" ] 2>/dev/null; then rm -f "$out.part"; fi
         echo "retry spark $name incomplete ($(human "$have"))"; return 1
     fi
@@ -243,7 +263,7 @@ run_worker() {
             while IFS="$TAB" read -r size name <&3; do
                 [ -n "$name" ] || continue
                 case "$name" in *.safetensors) continue ;; esac
-                [ "$(rsize "$name")" = "$size" ] && continue
+                small_done "$size" "$(rsize "$name")" && continue
                 spark_shard "$size" "$name" || true
             done 3< "$LIST"
         fi
