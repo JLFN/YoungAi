@@ -76,7 +76,7 @@ static void v41_null_views(ds4_v41_state *st) { st->tok = st->pos = st->xn = st-
 /* 三文件部署的插件(②反修 ③后训练)按状态挂: 显式要了的挂不上就停车, 不许静默裸跑 */
 static bool v41_state_plugins(ds4_v41_state *st) {
     /* 没挂任何目录 = 裸底座。路由偏置的设备表是进程级的, 同一进程里上一个状态可能挂过 —— 先全卸(没挂过是 no-op)。 */
-    if (!g_ds4_v41_amp_dir && !g_ds4_v41_pt_dir) { v41_rb_clear_all(); return true; }
+    if (!g_ds4_v41_amp_dir && !g_ds4_v41_pt_dir) { v41_plugins_clear_all(); return true; }
     /* ③ 是解在 ①+② 那个态上的, 单挂 = 把修正打在另一个基线上: 放行但打一行明白话(每个进程一次, 服务端有多个状态) */
     static int pt_alone_noted;
     if (g_ds4_v41_pt_dir && !g_ds4_v41_amp_dir && !pt_alone_noted++)
@@ -99,12 +99,14 @@ int ds4_engine_v41_switch_plugins(const char *amp_dir, const char *pt_dir, char 
     const char *old_amp = g_ds4_v41_amp_dir, *old_pt = g_ds4_v41_pt_dir;
     char *na = (amp_dir && amp_dir[0]) ? strdup(amp_dir) : NULL, *np = (pt_dir && pt_dir[0]) ? strdup(pt_dir) : NULL;
     g_ds4_v41_amp_dir = na; g_ds4_v41_pt_dir = np;
+    v41_amp_cache_drop();   /* 切换 = 从盘重读(目录同名内容换了也认): 缓存只在两次切换之间复用 */
     ds4_v41_state st;
     if (!v41_state_alloc(&st, 16, 16, 2)) {   /* 失败时它自己已经 free 过 */
         g_ds4_v41_amp_dir = old_amp; g_ds4_v41_pt_dir = old_pt;
         free(na); free(np);
+        v41_amp_cache_drop();   /* 半装的那套不留: 下一个状态创建时按老目录整套重装 */
         snprintf(err, errn, "新侧车/后训练件挂不上(原因在服务日志), 已保持原来的");
-        return -1;   /* 进程级表此刻可能是半装的: 下一个状态创建时会按老目录整套重装, 不用在这里补 */
+        return -1;
     }
     v41_state_free(&st);
     free(own_amp); free(own_pt);

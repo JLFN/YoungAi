@@ -136,7 +136,8 @@ typedef struct {
     void *ejob;                 /* engram 取行后台任务(core_v41_engram.c 私有): 前向一开始发, 到 engram 层再收 */
     ds4_gpu_tensor *ampA[DS4_MAX_LAYER], *ampB[DS4_MAX_LAYER];   /* 反修放大器 A[K][D] / B[K][D](f32, 设备常驻), 无=NULL */
     uint32_t ampK[DS4_MAX_LAYER];
-    ds4_gpu_tensor *ampT;       /* [cap][Kmax] 中间 T = x·B */
+    uint8_t amp_shared;         /* 1 = ampA/ampB 是进程级插件缓存的张量(core_v41_amp.c), 释放时只减引用不 free; 0 = 自己的(草稿态的塔件) */
+    ds4_gpu_tensor *ampT;       /* [cap][Kmax] 中间 T = x·B(每个状态自己的, 按 cap 开) */
     int stop_early;             /* 反修钩子说"取完了": 本次前向跳过余下层与出口(core_v41_forward.c), 调用方不读 logits */
     const char *dump_prefix;    /* 非 NULL: 每层 MoE 入/出 落 <prefix>.x_Lnn.bin / .y_Lnn.bin(对拍夹具, 单块 n≤64 才开) */
     int no_engram;              /* 对拍夹具: 跳过 engram 层(与 Python --no-engram 同口径) */
@@ -292,7 +293,8 @@ extern int g_ds4_v41_hook_layer;   /* 钩子只在这一层回调(-1=每层); �
 bool v41_attention_kv_only(ds4_engine *e, ds4_v41_state *st, uint32_t il);   /* CED 分界层: 只写全局 KV */
 extern const ds4_model *g_ds4_v41_model;   /* 引擎打开时指向 e->model(core_engine_open.c): 路由偏置侧车要按层找 exp_probs_b 张量(core_v41_amp.c) */
 bool v41_amp_load(ds4_v41_state *st, const char *dir, const char *pt_dir);   /* core_v41_amp.c: ②反修目录 + ③后训练目录 */
-void v41_rb_clear_all(void);   /* 全卸路由偏置侧车(设备表是进程级的); 裸底座状态开张前调 */
+void v41_plugins_clear_all(void);   /* 全卸路由偏置 + 增益覆盖(设备表是进程级的)并丢插件缓存; 裸底座状态开张前调 */
+void v41_amp_cache_drop(void);      /* 丢进程级插件缓存(没有状态在用时才真丢): 切换插件前调, 下一个状态从盘重读 */
 void v41_amp_free(ds4_v41_state *st);
 int v41_amp_hook(ds4_v41_state *st, uint32_t il);        /* 钩子回调(挂了才动): 同步 → x/y/sel/rw 下主机 → 回调; 0 继续 / 1 提前结束(置 stop_early) / <0 失败 */
 bool v41_amp_apply(ds4_v41_state *st, uint32_t il);      /* y += x·(B·A) → bf16(挂了该层才动) */

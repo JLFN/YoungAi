@@ -119,7 +119,46 @@ static int v41_rb_load(const char *dir) {
     if (n) fprintf(stderr, "ds4: [反修·路由] %d 层挂上路由偏置侧车 (盘上 %.3f MB)\n", n, mb);
     return n;
 }
-void v41_rb_clear_all(void) { (void)v41_rb_load(NULL); }
+/* ★进程级插件缓存★(2026-10-17, 用户"切换体验速度"): 同一组 (②目录, ③目录, β) 只读一次盘、只上传一次。
+ * 以前每个状态(每条请求态 + 批态 + 切换的试探态)都从盘重读 ②+③(146 MB: ② gr fp4 在 CPU 解码 + ③ amp f32 105 MB)、
+ * 重算 ② 的 40 MB 指纹、重传设备 —— 17 token 的请求从 prompt start 到 done 0.42 s, 这段是大头; 切换插件要装三遍。
+ * 现在: 放大器 A/B 设备张量住这里, 状态只拿指针(amp_shared=1, 释放时只减引用); gr/rb 进程级表装过就不动。
+ * 盘上内容变没变只以切换为准: ds4_engine_v41_switch_plugins 先 v41_amp_cache_drop 再装 —— 页面开关关再开 = 重读盘。
+ * 出错会怎样: 漏标 amp_shared 就会把共享张量当自己的 free, 下一个状态读到释放掉的显存(不报错, 出胡话)。 */
+static struct {
+    int valid; char amp[2056], pt[2056]; float scale;
+    ds4_gpu_tensor *A[DS4_MAX_LAYER], *B[DS4_MAX_LAYER]; uint32_t K[DS4_MAX_LAYER];
+    uint32_t n_arm, kmax;
+    int refs;   /* 正拿着这些指针的状态数; >0 时不能丢 */
+} g_pc;
+
+static bool pc_same(const char *dir, const char *pt) {
+    return g_pc.valid && !strcmp(g_pc.amp, dir ? dir : "") && !strcmp(g_pc.pt, pt ? pt : "") && g_pc.scale == g_ds4_v41_amp_scale;
+}
+void v41_amp_cache_drop(void) {
+    if (!g_pc.valid) return;
+    if (g_pc.refs) { fprintf(stderr, "ds4: ★插件缓存还有 %d 个状态在用, 不能丢(切换插件时不许有活着的状态)★\n", g_pc.refs); return; }
+    for (uint32_t il = 0; il < DS4_MAX_LAYER; il++) {
+        if (g_pc.A[il]) ds4_gpu_tensor_free(g_pc.A[il]);
+        if (g_pc.B[il]) ds4_gpu_tensor_free(g_pc.B[il]);
+    }
+    memset(&g_pc, 0, sizeof g_pc);
+}
+/* 状态拿缓存的指针; ampT 是每个状态自己的(按 cap 开) */
+static bool pc_attach(ds4_v41_state *st) {
+    for (uint32_t il = 0; il < DS4_MAX_LAYER; il++) { st->ampA[il] = g_pc.A[il]; st->ampB[il] = g_pc.B[il]; st->ampK[il] = g_pc.K[il]; }
+    st->amp_shared = 1; g_pc.refs++;
+    if (!g_pc.n_arm) return true;
+    st->ampT = ds4_gpu_tensor_alloc((uint64_t)st->cap_tok * g_pc.kmax * 4);
+    return st->ampT != NULL;
+}
+
+/* 裸底座: 两张进程级表全卸 + 缓存丢掉。★gr 也要卸★: 以前只卸 rb, 从"挂 ②③"切到"不挂"时上一套的增益覆盖还留在设备上, 裸底座不裸 */
+void v41_plugins_clear_all(void) {
+    (void)v41_rb_load(NULL);
+    for (uint32_t il = 0; il < DS4_N_LAYER; il++) (void)ds4_gpu_v41_set_gr_override(il, NULL, 0, 0);
+    v41_amp_cache_drop();
+}
 
 /* 三文件部署(2026-09-13): ②反修目录与③后训练目录的增益表【逐元素相乘】后一次上设备 ——
  *     g_eff = 载荷 g_r × s₂ × s₃
@@ -142,7 +181,8 @@ static int v41_gr_load(const char *amp_dir, const char *pt_dir) {
             if (r < 0) { rc = -1; break; }
             got += r;
         }
-        if (rc < 0 || !got) continue;
+        if (rc < 0) continue;
+        if (!got) { (void)ds4_gpu_v41_set_gr_override(il, NULL, 0, 0); continue; }   /* 这层没文件 = 裸; 上一套插件在这层的表不能留 */
         if (!ds4_gpu_v41_set_gr_override(il, acc, (uint32_t)DS4_N_EXPERT, (uint32_t)DS4_N_EMBD)) {
             fprintf(stderr, "ds4: L%02u 增益覆盖上传失败\n", il); rc = -1; break;
         }
@@ -221,6 +261,9 @@ static int amp_read_layer(const char *dir, uint32_t il, float **A, float **B, fl
 }
 
 bool v41_amp_load(ds4_v41_state *st, const char *dir, const char *pt_dir) {
+    if (pc_same(dir, pt_dir)) return pc_attach(st);   /* 装过同一组: 不读盘不上传 */
+    v41_amp_cache_drop();
+    if (g_pc.valid) return false;   /* 有状态还拿着另一组插件(上面已喊): 不许两套表混在一个进程里 */
     uint32_t n_arm = 0, kmin = 0, kmax = 0; double mb = 0.0;
     const char *tyname = "";
     if (pt_dir && pt_dir[0] && !v41_pt_base_ok(pt_dir, dir)) return false;
@@ -236,37 +279,36 @@ bool v41_amp_load(ds4_v41_state *st, const char *dir, const char *pt_dir) {
         float *A2 = NULL, *B2 = NULL, *A3 = NULL, *B3 = NULL;
         const int k2 = amp_read_layer(dir, il, &A2, &B2, g_ds4_v41_amp_scale, &mb, &tyname);
         const int k3 = k2 < 0 ? 0 : amp_read_layer(pt_dir, il, &A3, &B3, 1.0f, &mb, &tyname);
-        if (k2 < 0 || k3 < 0) { free(A2); free(B2); return false; }
+        if (k2 < 0 || k3 < 0) { free(A2); free(B2); g_pc.valid = 1; v41_amp_cache_drop(); return false; }   /* 前几层已上传的随缓存放掉 */
         const uint32_t K = (uint32_t)k2 + (uint32_t)k3, D = DS4_N_EMBD;
         if (!K) continue;
-        if (K > 8192u) { fprintf(stderr, "ds4: L%02u 放大器 ②(K %d)+③(K %d) 拼接超 8192\n", il, k2, k3); free(A2); free(B2); free(A3); free(B3); return false; }
+        if (K > 8192u) { fprintf(stderr, "ds4: L%02u 放大器 ②(K %d)+③(K %d) 拼接超 8192\n", il, k2, k3); free(A2); free(B2); free(A3); free(B3); g_pc.valid = 1; v41_amp_cache_drop(); return false; }
         const uint64_t nel = (uint64_t)K * D, o3 = (uint64_t)k2 * D * 4u;
         bool ok = true;
-        st->ampA[il] = ds4_gpu_tensor_alloc(nel * 4); st->ampB[il] = ds4_gpu_tensor_alloc(nel * 4);
-        if (!st->ampA[il] || !st->ampB[il]) ok = false;
-        if (ok && k2 > 0 && (!ds4_gpu_tensor_write(st->ampA[il], 0, A2, o3) || !ds4_gpu_tensor_write(st->ampB[il], 0, B2, o3))) ok = false;
-        if (ok && k3 > 0 && (!ds4_gpu_tensor_write(st->ampA[il], o3, A3, (uint64_t)k3 * D * 4u) ||
-                             !ds4_gpu_tensor_write(st->ampB[il], o3, B3, (uint64_t)k3 * D * 4u))) ok = false;
+        g_pc.A[il] = ds4_gpu_tensor_alloc(nel * 4); g_pc.B[il] = ds4_gpu_tensor_alloc(nel * 4);
+        if (!g_pc.A[il] || !g_pc.B[il]) ok = false;
+        if (ok && k2 > 0 && (!ds4_gpu_tensor_write(g_pc.A[il], 0, A2, o3) || !ds4_gpu_tensor_write(g_pc.B[il], 0, B2, o3))) ok = false;
+        if (ok && k3 > 0 && (!ds4_gpu_tensor_write(g_pc.A[il], o3, A3, (uint64_t)k3 * D * 4u) ||
+                             !ds4_gpu_tensor_write(g_pc.B[il], o3, B3, (uint64_t)k3 * D * 4u))) ok = false;
         free(A2); free(B2); free(A3); free(B3);
-        if (!ok) { fprintf(stderr, "ds4: L%02u 放大器上传失败\n", il); return false; }
-        st->ampK[il] = K;
+        if (!ok) { fprintf(stderr, "ds4: L%02u 放大器上传失败\n", il); g_pc.valid = 1; v41_amp_cache_drop(); return false; }   /* 半装的张量随缓存一起放 */
+        g_pc.K[il] = K;
         if (!n_arm || K < kmin) kmin = K;
         if (K > kmax) kmax = K;
         n_arm++;
     }
-    if (!n_arm) {
-        /* 只有增益覆盖/路由偏置、没有低秩放大器也是合法的一种插件(权重侧反修与后训练的产物都长这样) */
-        if (n_gr > 0 || n_rb > 0) return true;
+    /* 只有增益覆盖/路由偏置、没有低秩放大器也是合法的一种插件(权重侧反修与后训练的产物都长这样) */
+    if (!n_arm && n_gr <= 0 && n_rb <= 0) {
         fprintf(stderr, "ds4: 目录里既没有 amp_Lnn.bin 也没有 gr_Lnn.bin / rb_Lnn.bin(反修 %s / 后训练 %s)\n",
                 dir && dir[0] ? dir : "(无)", pt_dir && pt_dir[0] ? pt_dir : "(无)");
         return false;
     }
-    st->ampT = ds4_gpu_tensor_alloc((uint64_t)st->cap_tok * kmax * 4);
-    if (!st->ampT) return false;
-    fprintf(stderr, "ds4: [反修] 挂上 %u 层放大器 (K %u~%u, %s 盘上合计 %.1f MB, 步长 β=%.4g) ← ② %s%s%s\n",
-            n_arm, kmin, kmax, tyname, mb, (double)g_ds4_v41_amp_scale, dir && dir[0] ? dir : "(无)",
-            pt_dir && pt_dir[0] ? " + ③ " : "", pt_dir && pt_dir[0] ? pt_dir : "");
-    return true;
+    g_pc.valid = 1; g_pc.scale = g_ds4_v41_amp_scale; g_pc.n_arm = n_arm; g_pc.kmax = kmax;
+    snprintf(g_pc.amp, sizeof g_pc.amp, "%s", dir ? dir : ""); snprintf(g_pc.pt, sizeof g_pc.pt, "%s", pt_dir ? pt_dir : "");
+    if (n_arm) fprintf(stderr, "ds4: [反修] 挂上 %u 层放大器 (K %u~%u, %s 盘上合计 %.1f MB, 步长 β=%.4g) ← ② %s%s%s\n",
+                       n_arm, kmin, kmax, tyname, mb, (double)g_ds4_v41_amp_scale, dir && dir[0] ? dir : "(无)",
+                       pt_dir && pt_dir[0] ? " + ③ " : "", pt_dir && pt_dir[0] ? pt_dir : "");
+    return pc_attach(st);
 }
 
 /* 反修取料钩子: 放大器应用前把这一层的 MoE 入/出与路由交给解算方(主机内存)。先 flush+synchronize —— y 刚由 GPU 写完,
@@ -312,10 +354,13 @@ int v41_amp_hook(ds4_v41_state *st, uint32_t il) {
 
 void v41_amp_free(ds4_v41_state *st) {
     for (uint32_t il = 0; il < DS4_MAX_LAYER; il++) {
-        if (st->ampA[il]) ds4_gpu_tensor_free(st->ampA[il]);
-        if (st->ampB[il]) ds4_gpu_tensor_free(st->ampB[il]);
+        if (!st->amp_shared) {   /* 自己的(草稿态塔件, core_v41_draft_amp.c); 共享的归缓存, 下面只减引用 */
+            if (st->ampA[il]) ds4_gpu_tensor_free(st->ampA[il]);
+            if (st->ampB[il]) ds4_gpu_tensor_free(st->ampB[il]);
+        }
         st->ampA[il] = st->ampB[il] = NULL; st->ampK[il] = 0;
     }
+    if (st->amp_shared) { st->amp_shared = 0; if (g_pc.refs > 0) g_pc.refs--; }
     if (st->ampT) { ds4_gpu_tensor_free(st->ampT); st->ampT = NULL; }
 }
 
