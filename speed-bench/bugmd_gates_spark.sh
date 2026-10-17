@@ -17,7 +17,7 @@
 # 出错会怎样: 二进制不在 = 直接退; 看门狗 available < 8 GB 杀 ds4(与 v41_engine_parity_spark.sh 同一条线)。
 set -uo pipefail
 ROOT="$HOME/ds4-main"; cd "$ROOT" || exit 1
-STAGE="${1:?prep|ced|fast|parity|full|nograph|statecmp|stopgate|scoreids|engref}"
+STAGE="${1:?prep|ced|fast|parity|full|nograph|statecmp|stopgate|scoreids|engref|dryreplay}"
 MODEL="$ROOT/gguf/v41/DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative.gguf"
 AMP="$ROOT/gguf/v41/DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative-grrb-vqfin41_vqhalf_a_n8192-engine"
 OUT=/tmp/bugmd; mkdir -p "$OUT"
@@ -219,6 +219,28 @@ scoreids)
   python3 "$TOOLS" eos-scan  "$OUT/$tag.bin" "$IDS" "$NP" 1      | tee "$OUT/$tag.eos"
   python3 "$TOOLS" eos-scan  "$OUT/$tag.bin" "$IDS" "$NP" 128822 | tee "$OUT/$tag.thinkend"
   python3 "$TOOLS" faith     "$OUT/$tag.bin" "$IDS" "$NP" "$ENTRY" | tee "$OUT/$tag.faith" ;;
+dryreplay)
+  # ★从入环位接着续写, 看 DRY 能不能把思考段死环拆开、让模型自己吐 </think>★(2026-10-17, 饿了么 r316: 环内 p(top-1)=1.000,
+  # min_p 不是原因 ⇒ 只剩改 logits 的手段)。基线与 DRY 同 seed 各跑一趟, 采样参数照产品(温 1 / top_p 1 / min_p 0.02, 投机默认开)。
+  # 提示 = 原请求提示 + 生成段前 ENTRY 个 token(按 id 喂); DRY 只看本趟生成段, 所以入环前的思考不在它的历史里 ——
+  # 环周期几十 token, 一圈之后它就有料可罚, 不影响判读。判读: 续写里出现 128822 = 收口了, 出现在第几位; 没有 = 到上限没收口(只能说到上限)。
+  # 出错会怎样: ENTRY 给错(比真入环位晚很多)= 从环中间起跑, 基线必然复读, 结论偏向 DRY; 早很多 = 两边都可能根本不进环, 什么也判不了。
+  IDS="${2:?完整 ids}"; NP="${3:?提示 token 数}"; ENTRY="${4:?入环位(生成段序号)}"; NGEN="${5:-1536}"; AMPDIR="${6:-$AMP}"
+  DRY=(${7:-0.8 1.75 2}); SEEDS=(${8:-1 2})
+  [ -s "$IDS" ] || { LOG "★没有 $IDS★"; exit 1; }
+  tag=$(basename "$IDS" .ids)_dry; PRE="$OUT/$tag.prefix.ids"
+  head -n $((NP + ENTRY)) "$IDS" > "$PRE"
+  LOG "== dryreplay $tag: 续写起点 = 提示 $NP + 生成 $ENTRY = $(wc -l < "$PRE") token, 每趟上限 $NGEN, DRY ${DRY[*]}, seed ${SEEDS[*]}"
+  for seed in "${SEEDS[@]}"; do for arm in base dry; do
+    t="${tag}_${arm}_s$seed"; extra=()
+    [ "$arm" = dry ] && extra=(--dry-multiplier "${DRY[0]}" --dry-base "${DRY[1]}" --dry-allowed-length "${DRY[2]}")
+    ./ds4 --cuda -m "$MODEL" --zchain "$AMPDIR" --temp 1 --top-p 1 --min-p 0.02 --seed "$seed" "${extra[@]}" \
+          --gen-ids "$PRE" -n "$NGEN" --emit-trace > "$OUT/$t.out" 2> "$OUT/$t.err"
+    rc=$?; grep -a '^\[emit\] ' "$OUT/$t.err" | awk '{print $3}' > "$OUT/$t.gen.ids"
+    n=$(wc -l < "$OUT/$t.gen.ids"); te=$(grep -n -x 128822 "$OUT/$t.gen.ids" | head -1 | cut -d: -f1)
+    LOG "$t: rc=$rc 续写 $n token; </think> $([ -n "$te" ] && echo "在第 $te 位" || echo "没出"); 末 id $(tail -1 "$OUT/$t.gen.ids")(EOS=1)"
+    tail -c 500 "$OUT/$t.out" | tr '\n' '|' | sed 's/^/    尾巴: /'; echo
+  done; done ;;
 engref)
   # ★引擎 vs 参考实现, 同一份量化权重, 逐位对拍★(2026-09-30): 学生 = 裸引擎 --score-ids 全 logits(anchor_metrics 的 <S><V><f32> 格式);
   # 参考 = v41_judge.sh file: 档产的落盘学生(官方 model.py 读同一份量化权重)。同权重只差实现 ⇒ KLD / same-top 按位置分桶掉下来 = 引擎在
@@ -233,5 +255,5 @@ engref)
   LOG "== anchor_metrics: 参考 $(basename "$REFBIN") vs 引擎裸"
   ./gguf-tools/bench/anchor_metrics --ref-raw "$REFBIN" --ids "$IDS" --student "$STU" --row-out "$OUT/$TAG.engref.rows" | tee "$OUT/$TAG.engref.metrics"
   python3 "$TOOLS" rows "$OUT/$TAG.engref.rows" "$IDS" "$NP" "$ENTRY" | tee "$OUT/$TAG.engref.buckets" ;;
-*) echo "用法: $0 prep|ced|fast|parity|full <提示文件> [上限]|nograph <提示文件> [上限]|statecmp <ids> [N]|stopgate <提示ids> [上限]|scoreids <完整ids> <提示数> [K] [入环位] [反修目录|none]|engref <ids> <参考.bin> [标签] [提示数] [入环绝对位]"; exit 2;;
+*) echo "用法: $0 prep|ced|fast|parity|full <提示文件> [上限]|nograph <提示文件> [上限]|statecmp <ids> [N]|stopgate <提示ids> [上限]|scoreids <完整ids> <提示数> [K] [入环位] [反修目录|none]|engref <ids> <参考.bin> [标签] [提示数] [入环绝对位]|dryreplay <完整ids> <提示数> <入环位> [上限 1536] [反修目录] ["DRY 三参"] ["seed 表"]"; exit 2;;
 esac

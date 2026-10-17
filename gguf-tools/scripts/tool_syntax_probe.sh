@@ -1,15 +1,16 @@
 #!/bin/bash
 # tool_syntax_probe.sh — 同一个请求打 N 次(非流式, 默认采样), 数: 成功出 tool_calls 几次、正文里漏出裸 <parameter 几次、
 #   正文开头是英文几次、非思考模式下冒出 </think>(服务端切进 reasoning_content)几次(2026-10-11)。
-#   用法: tool_syntax_probe.sh <请求体 json> [次数 5] [模型端口 8001]
+#   用法: tool_syntax_probe.sh <请求体 json> [次数 5] [模型端口 8001] [每次超时秒 180]
+#   超时(2026-10-17): 重放长任务的原请求(饿了么那条思考 1 万 token 才进环)180 s 不够; curl 超时断开后服务端探到挂断会停生成。
 #   背景: V4.1 的参数开标签应为 "<｜DSML｜ parameter", 模型有时写成裸 "<parameter"(闭标签却是 DSML 的), 解析失败整段退回正文、finish=stop。
 #   每次原样记: finish_reason、tool_calls 个数、正文里以 <parameter 开头的行数; 日志 /tmp/tool_syntax_<MMDDHHMM>.log。
 set -uo pipefail
-BODY="${1:?请求体 json}"; N="${2:-5}"; PORT="${3:-8001}"
+BODY="${1:?请求体 json}"; N="${2:-5}"; PORT="${3:-8001}"; TMO="${4:-180}"
 LOG="/tmp/tool_syntax_$(date +%m%d%H%M).log"
 ok=0; bare=0; en=0; th=0
 for i in $(seq 1 "$N"); do
-    r=$(curl -s --noproxy '*' --max-time 180 -H 'Content-Type: application/json' --data-binary @"$BODY" "http://127.0.0.1:$PORT/v1/chat/completions")
+    r=$(curl -s --noproxy '*' --max-time "$TMO" -H 'Content-Type: application/json' --data-binary @"$BODY" "http://127.0.0.1:$PORT/v1/chat/completions")
     f=$(printf '%s' "$r" | jq -r '.choices[0].finish_reason // "ERR"')
     nc=$(printf '%s' "$r" | jq -r '[.choices[0].message.tool_calls[]?] | length')
     nb=$(printf '%s' "$r" | jq -r '.choices[0].message.content // ""' | grep -c '^<parameter')

@@ -16,6 +16,10 @@
   faith <topk.bin> <ids> <n_prompt> [入环位=0]
                                           采样序列上判"采样器忠不忠"(Σp(top-1) vs 真吐==top-1 次数, 每 4096 位一桶)与
                                           "模型想不想收口"(</think>·EOS 的 Σp 对观测抽到次数); 采样路没有逐字节门, 这是它的门。
+  minp <topk.bin> <ids> <n_prompt> [入环位=0] [min_p=0.02] [tok=128822]
+                                          同一份 top-K 按产品 min_p 门重算: 偏离 top-1 与出口 tok 的期望次数, 原始对截断后;
+                                          分清"环是截断造的吸收态"还是"模型自己锁死"。
+  cyclescan <最短段长> <trace...>         按 token 精确周期找死环(P ≤ 256, 段长 ≥ max(3P, 最短段长)), 扫全部历史请求数误报/漏报。
 """
 import struct
 import sys
@@ -373,10 +377,105 @@ def cmd_tokprobe(anchor_path, ids_path, tok="1", n_prompt="0"):
         print("  几何均值 p(tok) = %.4f; 中位 %.4f; tok 是 argmax 的位置 %d/%d" % (gm, sorted(ps)[len(ps) // 2], sum(1 for h in hits if h[3] == tok), len(hits)))
 
 
+def cmd_minp(topk_path, ids_path, n_prompt, entry="0", min_p="0.02", tok="128822"):
+    """采样截断是不是把出口切掉了(2026-10-16, 助理思考段 4.6 万 token 逐 id 复读、`</think>` 一次不出):
+    faith 的 ② 只给 p(</think>) 的原始总和, 而产品采样在抽之前先按 min_p 砍(p < min_p·p(top-1) 的词不参与)。
+    这里把同一份 top-K 按产品门再算一遍, 入环前/入环后分开报:
+      偏离 = 不抽 top-1 的概率: 原始 Σ(1−p1) 对 截断后 Σ(1−p1/保留质量), 对观测"真吐≠top-1"次数;
+      出口 = tok 的概率: 原始 Σp 对 截断后 Σp/保留质量(被砍的位记 0), 以及 exp(−Σ) = 一次都抽不到的概率。
+    原始大、截断后≈0 ⇒ 环是截断造的吸收态; 两个都≈0 ⇒ 模型自己锁死, 改采样没用。
+    tok 不在 top-K 的位: 只知道 p ≤ top-K 最小 p, 按上界计入原始 Σ, 上界若也低于门就确定被砍。
+    门在 top-K 里不一定够得着(K 个都 ≥ 门): 保留质量只算 K 内, 是下界, 计数报"门在 K 外"位数。"""
+    import math
+    ids = [int(x) for x in open(ids_path).read().split()]
+    n_prompt, entry, min_p, tok = int(n_prompt), int(entry), float(min_p), int(tok)
+    f = open(topk_path, "rb")
+    magic, K, S, V = struct.unpack("<4I", f.read(16))
+    assert magic == 0x44475445, "不是 ETGD 文件"
+    row = struct.Struct("<Iiff" + "%di" % K + "%df" % K)
+    g0 = n_prompt - 1
+    seg = {k: dict(n=0, dev_raw=0.0, dev_cut=0.0, dev_obs=0, out_raw=0.0, out_cut=0.0, in_k=0, kept=0, cut_sure=0, gate_out=0, obs=0, best=[])
+           for k in ("入环前", "入环后")}
+    while True:
+        buf = f.read(row.size)
+        if len(buf) < row.size: break
+        v = row.unpack(buf); i = v[0]
+        if i < g0 or i + 1 >= len(ids): continue
+        tid, pr = v[4:4 + K], v[4 + K:4 + 2 * K]
+        p1 = max(pr); gate = min_p * p1
+        s = seg["入环后" if i - g0 >= entry else "入环前"]
+        kept = sum(p for p in pr if p >= gate)
+        s["n"] += 1; s["gate_out"] += min(pr) >= gate
+        s["dev_raw"] += 1.0 - p1; s["dev_cut"] += 1.0 - p1 / kept
+        s["dev_obs"] += tid[pr.index(p1)] != ids[i + 1]; s["obs"] += ids[i + 1] == tok
+        pt = next((pr[q] for q in range(K) if tid[q] == tok), None)
+        if pt is None:
+            ub = min(pr); s["out_raw"] += ub; s["cut_sure"] += ub < gate
+            continue
+        s["in_k"] += 1; s["out_raw"] += pt
+        if pt >= gate:
+            s["kept"] += 1; s["out_cut"] += pt / kept
+        s["best"].append((pt, i - g0, p1, pt >= gate))
+    print("ETGD K=%d; 生成 %d 位, 入环位 %d, min_p %.3f, 出口 tok %d" % (K, len(ids) - n_prompt, entry, min_p, tok))
+    for name, s in seg.items():
+        if not s["n"]: continue
+        print("== %s %d 位(门在 top-K 外 %d 位, 这些位保留质量是下界)" % (name, s["n"], s["gate_out"]))
+        print("   偏离 top-1: 原始期望 %.1f 次 | min_p 后期望 %.1f 次 | 观测 %d 次" % (s["dev_raw"], s["dev_cut"], s["dev_obs"]))
+        print("   出口 %d: 进 top-K %d 位, 其中过门 %d 位; K 外且上界也低于门(确定被砍) %d 位" % (tok, s["in_k"], s["kept"], s["cut_sure"]))
+        print("   出口 Σp: 原始 %.4f(K 外按上界) → 一次不出概率 exp(−Σ)=%.3g | min_p 后 %.4f → exp(−Σ)=%.3g | 观测 %d 次" % (
+            s["out_raw"], math.exp(-s["out_raw"]), s["out_cut"], math.exp(-s["out_cut"]), s["obs"]))
+        for pt, gpos, p1, ok in sorted(s["best"], reverse=True)[:8]:
+            print("     生成第 %6d 位 p(出口)=%.5f p(top-1)=%.3f 门 %.5f %s" % (gpos, pt, p1, min_p * p1, "过门" if ok else "★被砍★"))
+
+
+def cmd_cyclescan(min_run="256", *traces):
+    """思考段死环检测器的离线误报/漏报账(2026-10-17): 判据 = 生成段里出现"周期 P ≤ 256、逐 token 与 P 位前相同"的连续段,
+    段长(含第一圈) ≥ max(3P, min_run) 就算触发。为什么按 token 精确周期: 饿了么 r316 进环后 p(top-1)=1.000、逐 id 周期 43,
+    这时再想下去不产生任何新 token —— 截断不丢信息; 措辞会变的环(鹈鹕/r331)这个判据故意不抓, 那种跟正常的反复推敲分不开。
+    逐行流式读 trace(2.9 GB 的那份不整份进内存); 每个请求报: 最长周期段(P, 段长, 起点), 在思考段里还是正文里, finish。
+    思考段 = 提示以 <think> 收尾时, 生成段到第一个 </think>(128822) 为止(没有就是整段)。"""
+    import numpy as np
+    min_run = int(min_run)
+    rows = []
+    for path in traces:
+        req = finish = None; pend = None
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if line.startswith("===== request "):
+                    req = line.strip("= \n"); finish = None
+                elif line.startswith("finish: "):
+                    finish = line.split(None, 1)[1].strip()
+                elif line.startswith("prompt: ") and req:
+                    pend = line.split()[-1]
+                elif line.startswith("generated: ") and req and pend is not None:
+                    g = np.array(line.split()[1:], dtype=np.int64); think_open = pend; pend = None
+                    n = len(g)
+                    if n < 8: continue
+                    close = np.flatnonzero(g == 128822); close = int(close[0]) if len(close) else -1
+                    best = (0, 0, 0)   # 段长, P, 起点
+                    for P in range(1, min(256, n // 3) + 1):
+                        eq = np.concatenate(([0], (g[P:] == g[:-P]).astype(np.int8), [0]))
+                        d = np.diff(eq); st = np.flatnonzero(d == 1); en = np.flatnonzero(d == -1)
+                        if not len(st): continue
+                        k = int(np.argmax(en - st)); L = int(en[k] - st[k]) + P
+                        if L > best[0]: best = (L, P, int(st[k]))
+                    L, P, s0 = best
+                    rows.append((path.split("/")[-1], req, n, think_open, close, L, P, s0, finish,
+                                 L >= max(3 * P, min_run)))
+    trig = [r for r in rows if r[9]]
+    print("扫 %d 个请求, 门槛 段长 ≥ max(3P, %d): 触发 %d 个" % (len(rows), min_run, len(trig)))
+    print("trace | 请求 | 生成数 | 提示末 id | 首个 </think> 位 | 最长周期段 段长/P/起点 | 段在 | finish")
+    for r in sorted(rows, key=lambda r: -r[5])[:40]:
+        where = "思考" if (r[4] < 0 or r[7] < r[4]) and r[3] == "128821" else "正文"
+        print("%s %s | %6d | %s | %6d | %6d / %3d / %6d | %s | %s%s" % (r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], where, r[8],
+              "  ★触发★" if r[9] else ""))
+
+
 if __name__ == "__main__":
     cmds = {"extract": cmd_extract, "cut": cmd_cut, "cmp-emit": cmd_cmp_emit, "cmp-topk": cmd_cmp_topk,
             "eos-scan": cmd_eos_scan, "rows": cmd_rows, "loopstat": cmd_loopstat, "faith": cmd_faith,
-            "anchor-faith": cmd_anchor_faith, "tokprobe": cmd_tokprobe}
+            "anchor-faith": cmd_anchor_faith, "tokprobe": cmd_tokprobe, "minp": cmd_minp,
+            "cyclescan": cmd_cyclescan}
     if len(sys.argv) < 2 or sys.argv[1] not in cmds:
         sys.exit(__doc__ + "  rows <rows.txt> <ids> <n_prompt> <入口位置> [tokenizer.json] [窗口=12]   --row-out 的分桶命中率 + 入口逐行解码\n")
     cmds[sys.argv[1]](*sys.argv[2:])
