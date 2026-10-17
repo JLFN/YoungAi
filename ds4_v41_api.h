@@ -117,6 +117,9 @@ int ds4_engine_v41_ctx(void);
  * last_reused = 上一趟 generate 从检查点接上的 token 数(0 = 整段预填), 服务端拿它报 usage 的 cached_tokens 与监控页。 */
 void ds4_engine_v41_set_kv_reuse(int on);
 int ds4_engine_v41_last_reused(void);
+/* 切换插件作废掉的那个检查点的提示 token(malloc 的, 调用方 free; 没有 / 带图片 = NULL, n=0)。服务端切完空闲时拿它用新插件重新预填
+ * 一遍(ds4_engine_v41_generate_argmax n_predict=0 就只预填 + 存检查点), 用户切完再发消息直接接上。取一次就清。 */
+int32_t *ds4_engine_v41_kv_stale_prompt(uint32_t *n);
 /* 上一趟 generate 逐步的 logits 指纹(只有主机惩罚路记; 见 core_v41_sample.c), 返回步数; 服务端 --trace 时写进 trace 给精确门比 */
 int ds4_engine_v41_logit_sums(const double **out);
 

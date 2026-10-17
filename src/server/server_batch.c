@@ -32,6 +32,13 @@ job *dequeue(server *s) {
     return j;
 }
 
+bool queue_pending(server *s) {   /* 只看不取: 切换插件后的预热预填在块间问"有没有人在等", 有就让路(server_plugins.c) */
+    pthread_mutex_lock(&s->mu);
+    const bool p = s->head != NULL || s->stopping;
+    pthread_mutex_unlock(&s->mu);
+    return p;
+}
+
 job *dequeue_try(server *s) {   /* 不阻塞: V4.1 并发调度器在道没满时看一眼队列(server_sched_v41.c) */
     pthread_mutex_lock(&s->mu);
     job *j = dequeue_locked(s);

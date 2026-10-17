@@ -57,8 +57,27 @@ void server_plugins_init(server *s, const char *gguf) {
     tr_live.gguf = g_gguf; tr_live.request = plugins_request; tr_live.status = plugins_status;
 }
 
+/* 切完预热(2026-10-17, 用户"切换体验速度"): 切换作废了 KV 检查点(KV 是带着放大器算的), 以前用户切完再发消息要整段重预填
+ * (7,240 token 的工具会话实测首条 7.1 s)。切换只在没请求跑时发生, worker 这会儿空着 —— 顺手用新插件把刚作废的那条提示预填一遍存成
+ * 新检查点, 下一条消息直接接上。有新请求进队就在块边界让路(最多多算一块 ≈1.8 s, 那条请求自己会存检查点); 预热的 KV 与冷启动逐字节同
+ * (kv_reuse_gate.sh 那道门), 引擎输出一个字不变。 */
+static int rewarm_progress(void *ud, const char *event, int cur, int tot) { (void)event; (void)cur; (void)tot; return queue_pending((server *)ud) ? 1 : 0; }
+static int rewarm_emit(int tok, void *ud) { (void)tok; (void)ud; return 1; }
+static void plugins_rewarm(server *s) {
+    uint32_t n = 0;
+    int32_t *tok = ds4_engine_v41_kv_stale_prompt(&n);
+    if (!tok) return;
+    if (queue_pending(s)) { free(tok); return; }   /* 已经有人在等: 不抢 */
+    const double t0 = now_sec();
+    server_log(DS4_LOG_DEFAULT, "ds4-server: 切换后预热: 用新插件重新预填上一条会话的 %u token 提示(有请求进队就让路)", n);
+    ds4_engine_v41_set_progress(rewarm_progress, s);
+    const int rc = ds4_engine_v41_generate_argmax(s->engine, tok, (int)n, NULL, 0, rewarm_emit, NULL);
+    ds4_engine_v41_set_progress(NULL, NULL);
+    server_log(DS4_LOG_DEFAULT, "ds4-server: 切换后预热%s %.1fs", rc == 0 ? "完成, 检查点已就位" : "没做完(让路给新请求或预填失败)", now_sec() - t0);
+    free(tok);
+}
+
 void server_plugins_apply(server *s, job *j) {
-    (void)s;
     struct server_plugin_switch *sw = j->sw;
     char err[256] = "";
     const int rc = ds4_engine_v41_switch_plugins(sw->amp, sw->pt, err, sizeof err);
@@ -71,8 +90,9 @@ void server_plugins_apply(server *s, job *j) {
     } else server_log(DS4_LOG_DEFAULT, "ds4-server: 插件切换没成: %s", err);
     pthread_mutex_lock(&g_mu);
     if (rc == 0) { snprintf(g_amp, sizeof g_amp, "%s", sw->amp); snprintf(g_pt, sizeof g_pt, "%s", sw->pt); }
-    g_pending = 0; snprintf(g_err, sizeof g_err, "%s", rc == 0 ? "" : err);
+    g_pending = 0; snprintf(g_err, sizeof g_err, "%s", rc == 0 ? "" : err);   /* 先报"切完"再预热: 页面开关立刻复位, 预热是后台的事 */
     pthread_mutex_unlock(&g_mu);
     pthread_mutex_destroy(&j->mu); pthread_cond_destroy(&j->cv);
     free(sw); free(j);
+    if (rc == 0 && s->batch_max < 2) plugins_rewarm(s);   /* 检查点只有单 worker 路有(core_v41_kvreuse.c); 并发调度器没这回事 */
 }

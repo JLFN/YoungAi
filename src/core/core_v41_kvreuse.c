@@ -40,7 +40,20 @@ static struct {
     uint64_t bytes;             /* 检查点占的显存(日志用) */
 } K;
 
-void v41_kvreuse_drop(void) { K.valid = 0; }
+/* 作废但留提示: 切换插件后服务端空闲时拿它用新插件重新预填一遍(server_plugins.c), 用户切完再发消息就接得上, 不用等整段预填
+ * (7,240 token 的工具会话实测每次开关后首条 7.1 s)。只记一次: 取走就清, 预热被新请求打断也不再补(那条新请求自己会存新检查点)。 */
+static int g_stale;
+void v41_kvreuse_drop(void) { g_stale = K.valid && K.n > 0; K.valid = 0; }
+int32_t *ds4_engine_v41_kv_stale_prompt(uint32_t *n) {
+    *n = 0;
+    if (!g_stale) return NULL;
+    g_stale = 0;
+    for (uint32_t i = 0; i < K.n; i++) if (K.sig[i]) return NULL;   /* 带图片的提示: 视觉嵌入没留, 预热不了 */
+    int32_t *tok = xmalloc((size_t)K.n * 4);
+    memcpy(tok, K.tok, (size_t)K.n * 4);
+    *n = K.n;
+    return tok;
+}
 
 /* 缓冲不够大就换一块大的(按 1.5 倍长, 免得长对话每步都重分配); 内容不保留 —— 调用方紧接着整段重写 */
 static bool ensure(ds4_gpu_tensor **t, uint64_t need) {

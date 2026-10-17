@@ -341,6 +341,7 @@ void server_plugins_apply(server *s, job *j);
 /* 任务队列(server_batch.c): dequeue 阻塞到有 job 或服务在停(NULL); dequeue_try 不阻塞; job_finish 唤醒等着的客户端线程 */
 job *dequeue(server *s);
 job *dequeue_try(server *s);
+bool queue_pending(server *s);
 void job_finish(job *j);
 /* 语音识别接口(server_asr.c, 2026-10-14): 开/关模型; route 认 /v1/audio/transcriptions(处理了返回 true); apply 在 worker 线程跑 GPU */
 bool server_asr_open(server *s, const char *dir);

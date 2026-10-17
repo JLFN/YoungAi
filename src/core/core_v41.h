@@ -349,7 +349,7 @@ extern int g_ds4_v41_chunk;   /* --v41-chunk(core_v41_api.c): 预填分块, 0 = 
 extern int g_ds4_v41_kv_reuse;
 void v41_kvreuse_save(const ds4_v41_state *st, const int32_t *prompt, uint32_t np, const uint64_t *sig);        /* sig = 每位的图片指纹(无图 NULL) */
 uint32_t v41_kvreuse_restore(ds4_v41_state *st, const int32_t *prompt, uint32_t np, const uint64_t *sig);
-void v41_kvreuse_drop(void);
+void v41_kvreuse_drop(void);   /* 作废检查点但留着它的提示 token(ds4_engine_v41_kv_stale_prompt 取, 切换插件后预热用) */
 #define DS4_V41_LOGIT_LOG 1024   /* 逐步 logits 指纹最多记几步(core_v41_sample.c) */
 void v41_logit_log_reset(void);
 extern int g_ds4_v41_lanes;   /* 合批缓存段按路分流(core_v41_multi.c); --no-lanes 关(A/B 用) */
