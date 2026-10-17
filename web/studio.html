@@ -1977,7 +1977,11 @@ function newView(sid) { return { sid, items: [], next: 0, state: "idle" }; }
 function lastAsst(v) { const it = v.items[v.items.length - 1]; if (it && it.kind === "asst") return it; const a = { kind: "asst", content: "", reasoning: "" }; v.items.push(a); return a; }
 function findTool(v, id) { for (let i = v.items.length - 1; i >= 0; i--) if (v.items[i].kind === "tool" && v.items[i].id === id) return v.items[i]; return null; }
 function applyEv(v, e) {
-  if (e.ev === "user") { v.items.push({ kind: "user", text: e.text }); v.state = "running"; }
+  if (e.ev === "user") {   /* send() 先放了一条 pending 的占位: 认领它(挪到末尾保序), 不再推一条重复的; 按原文对(服务端不改 text), 免得重放的历史消息把它认走 */
+    const p = v.items.findIndex(x => x.kind === "user" && x.pending && x.text === e.text);
+    if (p >= 0) { const it = v.items.splice(p, 1)[0]; it.pending = false; v.items.push(it); } else v.items.push({ kind: "user", text: e.text });
+    v.state = "running";
+  }
   else if (e.ev === "text") lastAsst(v).content += e.d;
   else if (e.ev === "think") lastAsst(v).reasoning += e.d;
   else if (e.ev === "tool") v.items.push({ kind: "tool", id: e.id, name: e.name, args: e.args });
@@ -2255,23 +2259,32 @@ async function send(voice) {
   const msg = voice != null ? voice : inputEl.value.trim(); if (!msg || inputEl.disabled || sending) return;
   if (busy()) { toast(t("ph_busy"), true); return; }
   sending = true; sendBtn.disabled = true; if (voice == null) { inputEl.value = ""; autosize(); }
+  /* 发出去先上屏: 服务端的 user 事件要等工人线程真开跑才写(asst_run.c run_one), 新对话还得先等回包再开流 ——
+     只靠流的话, 排队/拼设备行那几秒页面一直停在初始页(10-17 用户实撞)。占位标 pending, 流里的 user 事件到了由 applyEv 认领 */
+  if (!view || view.sid !== curSid) view = newView(curSid);
+  const mine = { kind: "user", text: msg, pending: true }; view.items.push(mine); view.state = "running"; renderChat();
+  const unshow = () => { const i = view.items.indexOf(mine); if (i >= 0) { view.items.splice(i, 1); view.state = "idle"; } renderChat(); };
   try {
-    const files = pendingFiles.slice(), n0 = view && view.sid === curSid ? view.items.length : 0;
+    const files = pendingFiles.slice();
     const r = await aFetch("send", { session: curSid || "", text: msg, client: clientId, device: deviceInfo(), caps: deviceCaps(), apps: deviceApps(), files });
     if (r.error) {
-      toast(t("fail", r.error), true);
+      unshow(); toast(t("fail", r.error), true);
       if (voice != null) { const cur = inputEl.value.replace(/\s*$/, ""); inputEl.value = cur ? cur + " " + msg : msg; voiceMode(false); }
       else inputEl.value = msg;
       autosize(); return;
     }
     pendingFiles = []; renderAttach();
-    if (r.session !== curSid || !view) { curSid = r.session; lsSet("ds4.asst.sid", curSid); openStream(curSid); }
+    if (r.session !== curSid) {   /* 新对话: 换成服务端给的会话号, 带着占位接着读(keep), 不然 openStream 新建视图会把刚上屏的消息清掉 */
+      curSid = r.session; lsSet("ds4.asst.sid", curSid);
+      const st = view.state; view = newView(curSid); view.items.push(mine); view.state = st; openStream(curSid, true);
+    }
     /* 流比回包快是常事: 工人线程拿到就写 user 事件, 页面可能先读到它(状态已是 running / 等审批)。那时再写状态就把真状态盖掉,
-       以前一律盖成"排队中", 之后的 text/tool 事件不改状态, 于是模型在跑页面却一直写"排队中"(10-13 用户实撞)。只有事件还没到才先占位;
-       "排队中"只在服务端说前面真有别的会话时才显示。 */
-    if (view.items.length === n0 && view.state === "idle") view.state = r.queued ? "queued" : "running";
+       以前一律盖成"排队中", 之后的 text/tool 事件不改状态, 于是模型在跑页面却一直写"排队中"(10-13 用户实撞)。
+       占位还没被认领 = 事件还没到, 这时的状态是 send 自己占的, 才可以改; "排队中"只在服务端说前面真有别的会话时才显示。 */
+    if (mine.pending) view.state = r.queued ? "queued" : "running";
     renderChat(); loadSessions();
-  } finally { sending = false; renderChatGate(); }
+  } catch (e) { unshow(); toast(t("fail", e.message || String(e)), true); if (voice == null) { inputEl.value = msg; autosize(); } }
+  finally { sending = false; renderChatGate(); }
 }
 inputEl.onfocus = () => { if (isApp()) devicePos(); };   /* 预热定位: 手机上第一次定位要 1~4 s(还有权限提示), 放在打字的时候做; 模型调 locate 时直接命中缓存 */
 
