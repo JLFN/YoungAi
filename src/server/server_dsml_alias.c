@@ -45,14 +45,36 @@ size_t dsml_param_close_len(const dsml_syntax *syn, const char *raw, size_t raw_
 bool dsml_param_close_partial(const dsml_syntax *syn, const char *raw, size_t raw_len, size_t pos, size_t min_len) {
     if (!raw || pos > raw_len || raw_len - pos < min_len) return false;
     return raw_partial_lit(raw, raw_len, pos, syn->param_end) ||
-           (dsml_has_bare_alias(syn) && raw_partial_lit(raw, raw_len, pos, DSML_BARE_PARAM_END));
+           (dsml_has_bare_alias(syn) && raw_partial_lit(raw, raw_len, pos, DSML_BARE_PARAM_END)) ||
+           dsml_calls_end_partial(syn, raw, raw_len, pos);   /* 块闭合也可能直接关掉值(隐式闭合, 见下), 尾巴像它的开头同样扣住 */
+}
+
+#define DSML_BARE_INVOKE_END "</invoke>"
+static bool dsml_has_bare_invoke_alias(const dsml_syntax *syn) { return strcmp(syn->invoke_end, DSML_BARE_INVOKE_END) != 0; }
+
+/* ★隐式闭合★(2026-10-18 17:22 实撞, trace serve_20261018_171753 r2, 1017 底座): 模型写完 write_file 的 content 值后直接写
+ * `</html></｜DSML｜ calls>` 就 EOS —— 参数闭标签和 invoke 闭标签都没写。官方解析器同样报错, 但意图没有歧义: 块闭合把还开着的
+ * 参数和 invoke 一起关掉。不认的代价: 10.6k 思考 + 2.5k 文件体整段退回正文, 用户看着调用"打印出来了却没执行"。
+ * 只认 "值 → </calls>" 这一种形状: 值后面先出现 invoke 闭标签再出现块闭合(参数没关、invoke 关了)仍是写坏, 不认
+ * (tests/server_tests_tool_agree.c "unclosed param" 要的就是报错)。闭合长度 0: 调用方的游标停在块闭合上, 外层循环自己收块。 */
+bool dsml_calls_end_at(const dsml_syntax *syn, const char *raw, size_t raw_len, size_t pos) {
+    return raw_full_lit(raw, raw_len, pos, syn->tool_calls_end);
+}
+bool dsml_calls_end_partial(const dsml_syntax *syn, const char *raw, size_t raw_len, size_t pos) {
+    return raw_partial_lit(raw, raw_len, pos, syn->tool_calls_end);
+}
+static const char *dsml_implicit_close_find(const dsml_syntax *syn, const char *s, size_t n) {
+    const char *c = find_lit_bounded(s, n, syn->tool_calls_end);
+    if (!c) return NULL;
+    const size_t m = (size_t)(c - s);
+    if (find_lit_bounded(s, m, syn->invoke_end)) return NULL;
+    if (dsml_has_bare_invoke_alias(syn) && find_lit_bounded(s, m, DSML_BARE_INVOKE_END)) return NULL;
+    return c;
 }
 
 /* invoke 闭标签同样认裸 "</invoke>"(2026-10-16 实撞, 助理"故意不带参数调 read_file": 开标签是 DSML 的, 闭标签写成裸 </invoke>,
  * calls 闭标签仍是 DSML 的)。在参数之间的位置出现, 意图没有歧义。不认的代价: 最终解析整块退回正文, 而流式投影已经把
  * 调用头和 "{" 推给了客户端 —— 客户端拿到一个参数为半截 "{" 的调用(trace request 356)。最终解析、KV 语法跟踪、两条流式投影都经这两个函数; 规则若再分叉, 收尾的一致性检查会报 error(tests/server_tests_tool_agree.c)。 */
-#define DSML_BARE_INVOKE_END "</invoke>"
-static bool dsml_has_bare_invoke_alias(const dsml_syntax *syn) { return strcmp(syn->invoke_end, DSML_BARE_INVOKE_END) != 0; }
 
 size_t dsml_invoke_close_len(const dsml_syntax *syn, const char *raw, size_t raw_len, size_t pos) {
     if (raw_full_lit(raw, raw_len, pos, syn->invoke_end)) return strlen(syn->invoke_end);
@@ -65,11 +87,13 @@ bool dsml_invoke_close_partial(const dsml_syntax *syn, const char *raw, size_t r
            (dsml_has_bare_invoke_alias(syn) && raw_partial_lit(raw, raw_len, pos, DSML_BARE_INVOKE_END));
 }
 
-/* [s, s+n) 内最早出现的闭标签(两种写法取靠前的), *len_out = 命中的那个的长度 */
+/* [s, s+n) 内最早出现的闭标签(两种写法取靠前的), *len_out = 命中的那个的长度; 更早出现的隐式闭合(块闭合直接接值)长度 0 */
 const char *dsml_param_close_find(const dsml_syntax *syn, const char *s, size_t n, size_t *len_out) {
     const char *a = find_lit_bounded(s, n, syn->param_end), *b = NULL;
     if (dsml_has_bare_alias(syn)) b = find_lit_bounded(s, a ? (size_t)(a - s) : n, DSML_BARE_PARAM_END);   /* 只在 a 之前找 */
-    if (b) { if (len_out) *len_out = strlen(DSML_BARE_PARAM_END); return b; }
-    if (a && len_out) *len_out = strlen(syn->param_end);
-    return a;
+    const char *r = b ? b : a;
+    const char *c = dsml_implicit_close_find(syn, s, r ? (size_t)(r - s) : n);
+    if (c) { if (len_out) *len_out = 0; return c; }
+    if (len_out) *len_out = b ? strlen(DSML_BARE_PARAM_END) : (a ? strlen(syn->param_end) : 0);
+    return r;
 }

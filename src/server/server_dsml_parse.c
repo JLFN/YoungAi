@@ -360,6 +360,7 @@ bool parse_generated_message_ex(const char *text, bool require_thinking_closed,
                 p += close;
                 break;
             }
+            if (dsml_calls_end_at(syn, p, strlen(p), 0)) break;   /* 隐式 invoke 闭合: 块闭合直接到了, 游标不动, 外层收块 */
             if (!dsml_param_open_len(syn, p)) {
                 free(name);
                 ds4_buf_free(&args);

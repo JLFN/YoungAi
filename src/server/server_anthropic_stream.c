@@ -32,7 +32,7 @@ static bool anthropic_tool_stream_update(int fd, server *s, const char *id,
             while (ts->parse_pos < raw_len && isspace((unsigned char)raw[ts->parse_pos])) ts->parse_pos++;
             if (ts->parse_pos >= raw_len) return true;
             const size_t invoke_close = dsml_invoke_close_len(ts->syn, raw, raw_len, ts->parse_pos);   /* 与最终解析同一套标签规则(server_dsml_alias.c) */
-            if (invoke_close) {
+            if (invoke_close || dsml_calls_end_at(ts->syn, raw, raw_len, ts->parse_pos)) {   /* 块闭合直接到了 = 隐式 invoke 闭合, 游标不动 */
                 if (ts->args_open &&
                     !anthropic_tool_emit_args_fragment(fd, st, "}", 1)) return false;
                 ts->args_open = false;
@@ -43,7 +43,8 @@ static bool anthropic_tool_stream_update(int fd, server *s, const char *id,
                 continue;
             }
             if (dsml_invoke_close_partial(ts->syn, raw, raw_len, ts->parse_pos) ||
-                dsml_param_open_partial(ts->syn, raw, raw_len, ts->parse_pos)) return true;
+                dsml_param_open_partial(ts->syn, raw, raw_len, ts->parse_pos) ||
+                dsml_calls_end_partial(ts->syn, raw, raw_len, ts->parse_pos)) return true;
             if (dsml_param_open_full(ts->syn, raw, raw_len, ts->parse_pos)) {
                 size_t before_pos = ts->parse_pos;
                 dsml_tool_stream_state before_state = ts->state;

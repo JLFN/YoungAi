@@ -38,6 +38,11 @@ static const agree_case CASES[] = {
     { "utf8 and json-special chars", S_CS "\n" S_IS " name=\"bash\">\n" S_PS " name=\"command\" string=\"true\">echo \"你好\" & ls\\n" S_PE "\n"
       S_PS " name=\"timeout\" string=\"false\">30" S_PE "\n" S_IE "\n" S_CE,
       WANT_CALLS, 1, "{\"command\":\"echo \\\"你好\\\" & ls\\\\n\",\"timeout\":30}" },
+    /* 10-18 17:22 原样形状(1017 底座): content 值写完直接块闭合, 参数/invoke 闭标签都没写 —— 隐式闭合, 两边都认下 */
+    { "calls end closes param", "我把动画写成一份 HTML。\n\n" S_CS "\n" S_IS " name=\"write_file\">\n"
+      S_PS " name=\"path\" string=\"true\">pelican-bicycle.html" S_PE "\n"
+      S_PS " name=\"content\" string=\"true\"><!DOCTYPE html>\n<p>鹈鹕</p>\n</html>" S_CE,
+      WANT_CALLS, 1, "{\"path\":\"pelican-bicycle.html\",\"content\":\"<!DOCTYPE html>\\n<p>鹈鹕</p>\\n</html>\"}" },
     /* 写坏且流上已露出调用头: 参数没闭合 / 参数之间夹了别的标签 / 第一个调用好、第二个坏 */
     { "unclosed param", "Trying.\n\n" S_CS "\n" S_IS " name=\"read_file\">\n" S_PS " name=\"path\" string=\"true\">a.txt\n" S_IE "\n" S_CE,
       WANT_ERROR, 0, NULL },

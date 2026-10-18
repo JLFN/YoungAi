@@ -57,6 +57,9 @@ void test_tracker_bare_param_open(void);
 void test_parse_bare_param_close(void);
 void test_openai_stream_bare_param_close(void);
 void test_tracker_bare_param_close(void);
+void test_parse_calls_end_closes_param(void);   /* server_tests_bare_param.c, 块闭合直接接值 */
+void test_openai_stream_calls_end_closes_param(void);
+void test_tracker_calls_end_closes_param(void);
 void test_openai_stream_stray_think_text(void);
 char *sse_join_field(const char *out, const char *key);   /* 把所有 SSE 帧里某字段的字符串值按序拼起来(server_tests_stray_think.c) */
 void test_openai_stream_stray_think_before_tool(void);

@@ -165,3 +165,82 @@ void test_tracker_bare_param_open(void) {
     dsml_decode_tracker_init(&t); dsml_decode_tracker_update(&t, b, strlen(b));
     TEST_ASSERT(t.decode == DSML_DECODE_STRUCTURAL);    /* 值关了, 回到标签位 */
 }
+
+/* 10-18 17:22 实撞(1017 底座, trace serve_20261018_171753 r2): write_file 的 content 值写完直接 `</html></｜DSML｜ calls>` 就 EOS,
+ * 参数闭标签与 invoke 闭标签都没写。块闭合当隐式闭合(server_dsml_alias.c): 最终解析认下, 流式一个字节的标签都不漏进值, KV 语法跟踪回到块外。 */
+#define CALLS_END_BLOCK \
+    "我把动画写成一份可直接打开的 HTML。\n\n" DS4_TOOL_CALLS_START_SPACED "\n" \
+    DS4_INVOKE_START_SPACED " name=\"write_file\">\n" \
+    DS4_PARAM_START_SPACED " name=\"path\" string=\"true\">pelican-bicycle.html" DS4_PARAM_END_SPACED "\n" \
+    DS4_PARAM_START_SPACED " name=\"content\" string=\"true\"><!DOCTYPE html>\n<html>\n<p>鹈鹕</p>\n</html>" DS4_TOOL_CALLS_END_SPACED
+
+void test_parse_calls_end_closes_param(void) {
+    ds4_chat_set_system_token(true);
+    char *content = NULL, *reasoning = NULL;
+    tool_calls calls = {0};
+    TEST_ASSERT(parse_generated_message_ex(CALLS_END_BLOCK, false, &content, &reasoning, &calls));
+    TEST_ASSERT(content && !strcmp(content, "我把动画写成一份可直接打开的 HTML。"));
+    TEST_ASSERT(calls.len == 1);
+    if (calls.len == 1) {
+        TEST_ASSERT(!strcmp(calls.v[0].name, "write_file"));
+        TEST_ASSERT(!strcmp(calls.v[0].arguments, "{\"path\": \"pelican-bicycle.html\", \"content\": \"<!DOCTYPE html>\\n<html>\\n<p>鹈鹕</p>\\n</html>\"}"));
+    }
+    free(content); free(reasoning); tool_calls_free(&calls);
+    /* 值后面先有 invoke 闭标签再有块闭合 = 参数没关而 invoke 关了, 仍是写坏, 不认(tool_agree "unclosed param" 同一条) */
+    const char *bad = "x\n\n" DS4_TOOL_CALLS_START_SPACED "\n" DS4_INVOKE_START_SPACED " name=\"a\">\n"
+                      DS4_PARAM_START_SPACED " name=\"p\" string=\"true\">1\n" DS4_INVOKE_END_SPACED "\n" DS4_TOOL_CALLS_END_SPACED;
+    content = reasoning = NULL;
+    TEST_ASSERT(!parse_generated_message_ex(bad, false, &content, &reasoning, &calls));
+    free(content); free(reasoning); tool_calls_free(&calls);
+    ds4_chat_set_system_token(false);
+}
+
+void test_openai_stream_calls_end_closes_param(void) {
+    ds4_chat_set_system_token(true);
+    int sv[2];
+    TEST_ASSERT(socketpair(AF_UNIX, SOCK_STREAM, 0, sv) == 0);
+    { const int big = 4 << 20; for (int i = 0; i < 2; i++) { setsockopt(sv[i], SOL_SOCKET, SO_SNDBUF, &big, sizeof big); setsockopt(sv[i], SOL_SOCKET, SO_RCVBUF, &big, sizeof big); } }
+    request r;
+    request_init(&r, REQ_CHAT, 128);
+    r.api = API_OPENAI; r.stream = true; r.think_mode = DS4_THINK_NONE; r.has_tools = true;
+    openai_stream st;
+    openai_stream_start(&r, &st);
+    const char *full = CALLS_END_BLOCK;
+    const size_t n = strlen(full);
+    bool ok = true;
+    char *buf = malloc(n + 1);
+    for (size_t k = 1; k <= n && ok; k++) { memcpy(buf, full, k); buf[k] = 0; ok = openai_sse_stream_update(sv[0], NULL, &r, "chatcmpl_ce", &st, buf, k, false); }
+    free(buf);
+    TEST_ASSERT(ok);
+    char *content = NULL, *reasoning = NULL;
+    tool_calls calls = {0};
+    TEST_ASSERT(parse_generated_message_ex(full, false, &content, &reasoning, &calls));
+    apply_openai_stream_tool_ids(&calls, &st);
+    TEST_ASSERT(openai_sse_finish_live(sv[0], NULL, &r, "chatcmpl_ce", &st, full, n, NULL, &calls, "tool_calls", 10, 4));
+    shutdown(sv[0], SHUT_WR);
+    char *out = read_socket_text(sv[1]);
+    char *args = sse_join_field(out, "arguments");
+    TEST_ASSERT(!strcmp(args, "{\"path\":\"pelican-bicycle.html\",\"content\":\"<!DOCTYPE html>\\n<html>\\n<p>鹈鹕</p>\\n</html>\"}"));
+    free(args);
+    TEST_ASSERT(strstr(out, "\"finish_reason\":\"tool_calls\"") != NULL);
+    TEST_ASSERT(strstr(out, "DSML") == NULL);   /* 块闭合的任何一截都不许漏进 content 值(逐字节喂时 "</｜DSML｜ ca" 要扣住) */
+    free(out); free(content); free(reasoning);
+    tool_calls_free(&calls); openai_stream_free(&st); request_free(&r);
+    close(sv[0]); close(sv[1]);
+    ds4_chat_set_system_token(false);
+}
+
+void test_tracker_calls_end_closes_param(void) {
+    dsml_decode_tracker t;
+    const char *head = "ok\n\n" DS4_TOOL_CALLS_START_SPACED "\n" DS4_INVOKE_START_SPACED " name=\"write_file\">\n" DS4_PARAM_START_SPACED " name=\"content\" string=\"true\"><p>x</p>";
+    char b[768];
+    snprintf(b, sizeof b, "%s</html>%s", head, DS4_TOOL_CALLS_END_SPACED);
+    dsml_decode_tracker_init(&t); dsml_decode_tracker_update(&t, b, strlen(b));
+    TEST_ASSERT(t.decode == DSML_DECODE_OUTSIDE);      /* 块闭合关了值也关了块 */
+    snprintf(b, sizeof b, "%s</html></｜DSML｜ ca", head);
+    dsml_decode_tracker_init(&t); dsml_decode_tracker_update(&t, b, strlen(b));
+    TEST_ASSERT(t.decode == DSML_DECODE_STRUCTURAL);   /* 块闭合写了一半: 语法位, 贪心 */
+    snprintf(b, sizeof b, "%s</html>", head);
+    dsml_decode_tracker_init(&t); dsml_decode_tracker_update(&t, b, strlen(b));
+    TEST_ASSERT(t.decode == DSML_DECODE_STRING_BODY);  /* 还在值体里: 照请求采样 */
+}

@@ -153,6 +153,9 @@ bool dsml_param_open_partial(const dsml_syntax *syn, const char *raw, size_t raw
 size_t dsml_param_close_len(const dsml_syntax *syn, const char *raw, size_t raw_len, size_t pos);
 bool dsml_param_close_partial(const dsml_syntax *syn, const char *raw, size_t raw_len, size_t pos, size_t min_len);
 const char *dsml_param_close_find(const dsml_syntax *syn, const char *s, size_t n, size_t *len_out);
+/* 块闭合 </calls> 直接接在值后面 = 隐式关掉参数与 invoke(server_dsml_alias.c 隐式闭合那段); 三条路在值体/参数之间位都要认它 */
+bool dsml_calls_end_at(const dsml_syntax *syn, const char *raw, size_t raw_len, size_t pos);
+bool dsml_calls_end_partial(const dsml_syntax *syn, const char *raw, size_t raw_len, size_t pos);
 /* invoke 闭标签: 本写法的, 或裸 "</invoke>"(见 server_dsml_alias.c); 最终解析、KV 语法跟踪、两条流式投影一律经这两个, 别直接比 syn->invoke_end */
 size_t dsml_invoke_close_len(const dsml_syntax *syn, const char *raw, size_t raw_len, size_t pos);
 bool dsml_invoke_close_partial(const dsml_syntax *syn, const char *raw, size_t raw_len, size_t pos);

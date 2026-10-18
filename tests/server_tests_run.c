@@ -26,6 +26,9 @@ void ds4_server_unit_tests_run(void) {
     test_parse_bare_param_close();
     test_openai_stream_bare_param_close();
     test_tracker_bare_param_close();
+    test_parse_calls_end_closes_param();
+    test_openai_stream_calls_end_closes_param();
+    test_tracker_calls_end_closes_param();
     test_openai_stream_stray_think_text();
     test_openai_stream_stray_think_before_tool();
     test_think_loop_detector();

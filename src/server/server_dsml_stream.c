@@ -259,7 +259,7 @@ void dsml_decode_tracker_update(dsml_decode_tracker *dt,
         if (dt->mode == DSML_TRACK_STRING_BODY) {
             while (dt->pos < raw_len) {
                 const size_t close = dsml_param_close_len(dt->syn, raw, raw_len, dt->pos);
-                if (close) {
+                if (close || dsml_calls_end_at(dt->syn, raw, raw_len, dt->pos)) {   /* 块闭合直接接值 = 隐式闭合, 不前进(server_dsml_alias.c) */
                     dt->pos += close;
                     dt->mode = DSML_TRACK_STRUCTURAL;
                     dt->decode = DSML_DECODE_STRUCTURAL;
@@ -279,7 +279,7 @@ void dsml_decode_tracker_update(dsml_decode_tracker *dt,
             while (dt->pos < raw_len) {
                 if (!dt->json_in_string) {
                     const size_t close = dsml_param_close_len(dt->syn, raw, raw_len, dt->pos);
-                    if (close) {
+                    if (close || dsml_calls_end_at(dt->syn, raw, raw_len, dt->pos)) {
                         dt->pos += close;
                         dt->mode = DSML_TRACK_STRUCTURAL;
                         dt->decode = DSML_DECODE_STRUCTURAL;
