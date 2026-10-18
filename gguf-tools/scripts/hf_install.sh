@@ -36,8 +36,8 @@
 #   --port N           listen port (default 8000)
 #   --endpoint URL     Hugging Face endpoint for the downloads, e.g. https://hf-mirror.com
 #   --pip-index URL    package index, used only if the `hf` CLI has to be installed first
-#   --posttrain        also load the experimental post-training file (docs/TECHNICAL.md §7; finance only, so it switches
-#                      the default domain to finance)
+#   --posttrain        also load the post-training file published with this base (docs/TECHNICAL.md §7). None is
+#                      published for the 1017 base yet, so this option currently stops with an error
 #   --no-xet           download over the plain LFS channel instead of Xet (use it if downloads keep failing with
 #                      "peer closed connection": some proxies cut Xet transfers)
 #
@@ -73,9 +73,12 @@ sidecar_of() {
     esac
 }
 DOMAINS="finance | code | law | medicine | science | none"
-# ③ was solved on top of the finance sidecar (its base.fnv is that sidecar's fingerprint); the engine refuses any
-# other pairing, but only after a 2-minute load — so the script refuses first.
-POSTTRAIN="posttrain-experimental-20260924"; POSTTRAIN_DOMAIN="finance"
+# ③ published in this repository and the domain whose sidecar it was solved on (its base.fnv is that sidecar's
+# fingerprint); the engine refuses any other pairing, but only after a 2-minute load — so the script refuses first.
+# Empty = none for this base: the 2026-09-24 experiment was solved on the previous base's finance sidecar, matches no
+# 1017 sidecar, and is not published here. One assignment per line: hf_publish_spark.sh reads POSTTRAIN= from this file.
+POSTTRAIN=""
+POSTTRAIN_DOMAIN=""
 # The image tool's segmenter is fetched from its authors' repository, not re-published in ours (it is their file under their
 # license). The workbench looks for <dir>/model/seg/mobile_sam.pt (src/assistant/tools/tool_image.c); without it edit_image still
 # works, but falls back to picking regions by colour, which bleeds into backgrounds of a similar shade.
@@ -117,6 +120,7 @@ INFOF="$DIR/server.info"
 
 say() { echo "[youngai $(date +%H:%M:%S)] $*"; }
 die() { echo "[youngai] ERROR: $*" >&2; exit 1; }
+[ "$WITH_PT" = 0 ] || [ -n "$POSTTRAIN" ] || die "no post-training file is published for this base (see docs/TECHNICAL.md §7)"
 # --posttrain only pairs with the sidecar it was solved on: given alone, it picks that sidecar instead of the default
 [ "$WITH_PT" = 1 ] && [ "$DOMAIN_SET" = 0 ] && DOMAIN="$POSTTRAIN_DOMAIN"
 SIDECAR=$(sidecar_of "$DOMAIN") || die "unknown --domain '$DOMAIN' (choose $DOMAINS)"

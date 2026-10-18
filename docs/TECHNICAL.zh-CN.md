@@ -551,7 +551,6 @@ KL 0.5149 → 0.5131、top-1 一致率 74.56% → 74.77%；除注意力核外其
 | `DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative-grrb-law_fit_n15360-engine/` | ② 法律侧车：增益 40 层，路由偏置 25 层 |
 | `DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative-grrb-med_fit_n15360-engine/` | ② 医疗侧车：增益 40 层，路由偏置 31 层 |
 | `DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative-grrb-sci_fit_n15360-engine/` | ② 科研侧车：增益 40 层，路由偏置 30 层 |
-| `posttrain-experimental-20260924/` | ③ 一份实验性的后训练文件：`gr_L39.bin` + `base.fnv`（见下） |
 | `bin/ds4`、`bin/ds4-server` | 引擎二进制，在 Spark 上用 `make cuda-spark` 从源码编出来的；源码在 [github.com/fodelf/YoungAi](https://github.com/fodelf/YoungAi)（引擎、CUDA 核、量化与侧车工具链） |
 | `LICENSE`、`LICENSE-DeepSeek` | 引擎（含 GGML）与模型权重各自的 MIT 声明 |
 
@@ -620,16 +619,16 @@ SIDECAR=DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative-grrb-vqfin41_vqhalf_a_n81
 # 去掉 --zchain 就是裸基座
 ```
 
-**发布的那份后训练文件是旧实验。** `posttrain-experimental-20260924/` 是上一版闭式解（见 4.3）在一条大盘研判
-请求上解出的末层增益，只用来展示格式和加载方式；你自己训出来的 ③ 用同样的方式加载：
+**1017 版底座没有发布后训练文件。** 你自己训出来的 ③（"训练"页，或 `./ds4 --ptrain`）这样加载：
 
 ```sh
 ./bin/ds4-server … --zchain <训它时挂的那份侧车> --posttrain <你的 ③ 目录>
 ```
 
-③ 里的 `base.fnv` 是它训练时依据的那份侧车的指纹，配别的侧车引擎直接拒绝加载。这份实验文件是对着**上一版**底座的
-金融侧车训的，所以叠不到任何 1017 版侧车上：服务加载时会因为指纹对不上而停下。要用就在当前这一对上重新训一份 ③
-（"训练"页，或 `./ds4 --ptrain`）。
+③ 里的 `base.fnv` 是它训练时依据的那份侧车的指纹，配别的侧车引擎直接拒绝加载。所以旧实验
+`posttrain-experimental-20260924/`（上一版闭式解，见 4.3，在一条大盘研判请求上解出的末层增益）只留在上一版仓库
+[wenzhouwu/YoungAi-DeepSeek-V4.1-Flash](https://huggingface.co/wenzhouwu/YoungAi-DeepSeek-V4.1-Flash)：它是对着上一版底座的
+金融侧车训的，叠不到任何 1017 版侧车上，服务加载时会因为指纹对不上而停下。同样的原因，`install.sh --posttrain` 现在会直接报错。
 
 ### 在 Mac 上编译和运行
 

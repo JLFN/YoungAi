@@ -12,7 +12,8 @@
 #   DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative-grrb-...-engine/   ② 领域侧车, 每个 ~40 MB(金融 vqfin41 / 编程 code / 法律 law / 医疗 med / 科研 sci);
 #                                        清单只认 install.sh 的 sidecar_of 表(用户按 --domain 选), 这里不另抄一份
 #   posttrain-experimental-20260924/     ③ 09-24 大盘研判那一条请求上解的候选(只放 gr_L39.bin + base.fnv;
-#                                        predict.txt 带请求的行号与 token id, 不发)
+#                                        predict.txt 带请求的行号与 token id, 不发)。只在 install.sh 的 POSTTRAIN= 非空时发:
+#                                        它是对着旧底座金融侧车解的, 1017 那版 install.sh 置空, 新仓库不带
 #   <底座>.vision.gguf                   视觉塔侧车 0.97 GB(v41_to_gguf vision 出, 原件 BF16; 名从 install.sh 的 VISION= 读)。单独一个文件而不进主 GGUF:
 #                                        塞进主文件头部会变长, 40 个分块每块字节都变 = 重传 115 GB
 #   bin/ds4, bin/ds4-server              spark(aarch64, CUDA 13)上 make cuda-spark 的产物
@@ -54,6 +55,8 @@ GGUF_NAME=$(ins_var GGUF); VISION_NAME=$(ins_var VISION)
 AMP_NAMES=$(sed -n 's/^ *[a-z]*) *echo "\(DeepSeek-[^"]*-engine\)";;$/\1/p' "$INSTALL")
 PT_SRC="$V41/night/review_iter_20260924_0729/r1_pt/cand_g1_t6_r10_l1_k1e+09_n0"
 PT_NAME="posttrain-experimental-20260924"
+PT_WANT=$(ins_var POSTTRAIN)   # 空 = 这一版底座不发 ③
+BASE_HF="$ROOT/hf/$(ins_var BASE_REPO | sed 's#.*/##')"   # 出厂权重目录 = BASE_REPO 斜杠后半截(LICENSE-DeepSeek 从这里拷)
 STAGE="$ROOT/gguf/hf_upload/${REPO#*/}"
 README_ASSETS="web/logo.jpg docs/img/arch.png docs/img/arch-en.png docs/img/studio-agent.png docs/img/studio-agent-en.png docs/TECHNICAL.md docs/TECHNICAL.zh-CN.md docs/pwa.md"
 
@@ -122,14 +125,21 @@ stage() {
     # 只查 ds4-server: ./ds4 也认这个参数, 但它的 --help 没列, 拿它查会误拒
     h=$("$ROOT/ds4-server" --help 2>&1)
     case "$h" in *--vision-gguf*) ;; *) die "$ROOT/ds4-server 不认 --vision-gguf, 先 make cuda-spark";; esac
-    [ -s "$PT_SRC/gr_L39.bin" ] && [ -s "$PT_SRC/base.fnv" ] || die "后训练候选缺 gr_L39.bin/base.fnv: $PT_SRC"
-    mkdir -p "$STAGE/bin" "$STAGE/$PT_NAME"
+    # ③ 跟 install.sh 走: 那边 POSTTRAIN 空就不摆。发了用户也挂不上(指纹对不上, 加载两分钟后才停), 文件表里还多一行误导
+    if [ -n "$PT_WANT" ]; then
+        [ "$PT_WANT" = "$PT_NAME" ] || die "install.sh 的 POSTTRAIN=$PT_WANT, 这里只会摆 $PT_NAME"
+        [ -s "$PT_SRC/gr_L39.bin" ] && [ -s "$PT_SRC/base.fnv" ] || die "后训练候选缺 gr_L39.bin/base.fnv: $PT_SRC"
+    else
+        [ -e "$STAGE/$PT_NAME" ] && die "发布目录里有上次摆的 $STAGE/$PT_NAME, 而 install.sh 不发它: 看一眼再删(里面是硬链接, 删了原件不动)"
+    fi
+    [ -s "$BASE_HF/LICENSE" ] || die "缺 $BASE_HF/LICENSE(出厂权重目录 = install.sh 的 BASE_REPO)"
+    mkdir -p "$STAGE/bin"
     cp -f "$ROOT/README.md" "$ROOT/README.zh-CN.md" "$ROOT/LICENSE" "$STAGE/"
     for f in $README_ASSETS; do mkdir -p "$STAGE/$(dirname "$f")" && cp -f "$ROOT/$f" "$STAGE/$f"; done
-    cp -f "$ROOT/hf/DeepSeek-V4.1-Flash/LICENSE" "$STAGE/LICENSE-DeepSeek"
+    cp -f "$BASE_HF/LICENSE" "$STAGE/LICENSE-DeepSeek"
     cp -f "$INSTALL" "$STAGE/install.sh"
     cp -f "$ROOT/ds4" "$ROOT/ds4-server" "$STAGE/bin/"
-    ln -f "$PT_SRC/gr_L39.bin" "$PT_SRC/base.fnv" "$STAGE/$PT_NAME/"
+    [ -n "$PT_WANT" ] && mkdir -p "$STAGE/$PT_NAME" && ln -f "$PT_SRC/gr_L39.bin" "$PT_SRC/base.fnv" "$STAGE/$PT_NAME/"
     LOG "发布目录 $STAGE:"
     (cd "$STAGE" && find . -type f -not -path './.cache/*' | sort | xargs ls -l | awk '{printf "  %14d  %s\n", $5, $9}')
 }
@@ -254,11 +264,12 @@ case "$CMD" in
   small)
     need_login; [ -d "$STAGE" ] || die "先跑 stage"
     KEEP=(); BINMSG=", aarch64 CUDA binaries"; [ "${3:-}" = "--keep-bin" ] && { KEEP=(--exclude "bin/*"); BINMSG=""; LOG "--keep-bin: bin/ 不上传, 线上二进制不动"; }
+    PTMSG=""; [ -n "$PT_WANT" ] && PTMSG=", experimental post-training file"
     LOG "上传小文件(不含 GGUF 分块) → $REPO (公开)"
     # 与 big 同一条线路、同一个病(见 big 段的 ★走 LFS★): 侧车 + 二进制几十 MB, 走 Xet 正好撞上 10~20 s 掐断; 卡死同样不超时
     if ! run_with_stall_guard "$STALL_S" "$PLOG" env HF_HUB_DISABLE_XET=1 "$HF" upload "$REPO" "$STAGE" . --repo-type model --no-private \
         --exclude "*.gguf" --exclude "*.part*-of-*" --exclude ".cache/*" "${KEEP[@]}" \
-        --commit-message "README (with screenshots and technical notes), install.sh, licenses, SHA256SUMS, domain sidecars (finance, code, law, medicine, science), experimental post-training file$BINMSG"; then
+        --commit-message "README (with screenshots and technical notes), install.sh, licenses, SHA256SUMS, domain sidecars (finance, code, law, medicine, science)$PTMSG$BINMSG"; then
         tail -c 600 "$PLOG" | tr '\r' '\n' | grep -v '^\s*$' | tail -5; die "小文件上传失败(完整输出 $PLOG)"
     fi
     LOG "SMALL_DONE https://huggingface.co/$REPO";;

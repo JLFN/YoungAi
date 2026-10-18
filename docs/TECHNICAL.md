@@ -652,7 +652,6 @@ what the installer does, for doing it yourself, plus the details of the server a
 | `DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative-grrb-law_fit_n15360-engine/` | ② law sidecar: gains on 40 layers, router bias on 25 layers |
 | `DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative-grrb-med_fit_n15360-engine/` | ② medicine sidecar: gains on 40 layers, router bias on 31 layers |
 | `DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative-grrb-sci_fit_n15360-engine/` | ② science sidecar: gains on 40 layers, router bias on 30 layers |
-| `posttrain-experimental-20260924/` | ③ an experimental post-training file: `gr_L39.bin` + `base.fnv` (see below) |
 | `bin/ds4`, `bin/ds4-server` | engine binaries, built on the Spark with `make cuda-spark` from the source at [github.com/fodelf/YoungAi](https://github.com/fodelf/YoungAi) (engine, CUDA kernels, quantization and sidecar toolchain) |
 | `LICENSE`, `LICENSE-DeepSeek` | MIT notices for the engine (incl. GGML) and for the model weights |
 
@@ -733,18 +732,19 @@ Started from the source tree they are there; an install made by `install.sh` has
 # plus --no-dspark for plain greedy (speed baselines); drop --zchain to run the bare base
 ```
 
-**The published post-training file is an old experiment.** `posttrain-experimental-20260924/` holds
-last-layer gains from the earlier closed-form solve (§4.3) on one market-outlook request; it only shows the
-format and the loading path. A ③ you train yourself loads the same way:
+**No post-training file is published for the 1017 base.** A ③ you train yourself (*Train* tab, or
+`./ds4 --ptrain`) loads like this:
 
 ```sh
 ./bin/ds4-server … --zchain <the sidecar it was trained on> --posttrain <your ③ directory>
 ```
 
 `base.fnv` inside a ③ is the fingerprint of the sidecar it was trained against, and the engine refuses any
-other pairing. The experimental file was trained against the *previous* base's finance sidecar, so it does
-not stack on any 1017 sidecar: the server stops at load with a fingerprint mismatch. Train a new ③ on the
-current pair instead (*Train* tab, or `./ds4 --ptrain`).
+other pairing. That is why the old experiment `posttrain-experimental-20260924/` (last-layer gains from the
+earlier closed-form solve, §4.3, on one market-outlook request) stays in the previous repository,
+[wenzhouwu/YoungAi-DeepSeek-V4.1-Flash](https://huggingface.co/wenzhouwu/YoungAi-DeepSeek-V4.1-Flash): it was
+trained against the previous base's finance sidecar and does not stack on any 1017 sidecar — the server stops
+at load with a fingerprint mismatch. `install.sh --posttrain` stops with an error for the same reason.
 
 ### Building and running on a Mac
 
