@@ -11996,3 +11996,10 @@ A = 只在提示里找(Strata 默认索引范围), B = 提示 + 已生成都找;
 - **spark 工作台换新二进制**: `train_ui_spark.sh restart`(等助理/训练空闲)18:50:59 起新 ds4-train(pid 903049), 模型子进程 837664 没动, frpc 跟着重起, 公网 https://47.116.132.99:8443 200。
 - **误建目录已删**(用户批): `gguf/v41/DeepSeek-V4.1-Flash-vq8x4096-fp4/`, 软链指向的 hf/ 原件确认还在。
 - **没做 / 已知问题(写进了 release 说明)**: HF 新仓库 `wenzhouwu/YoungAi-DeepSeek-V4.1-Flash-1017` 还只有基座 + 视觉 + 五侧车, 没跑 `small`/`tts` ⇒ 没有 README / install.sh / bin/ / tts 旁白语音, 文档里 `curl …-1017/resolve/main/install.sh` 现在 404; 实验性 ③ 叠不到 1017 侧车; 1017 长思考更易进环(检测器保底)。
+
+## 10-18 19:5x~20:05 · HF 新仓库补齐 README / install.sh / bin / tts(用户: "补齐")
+
+- **发前改了三处(8a1c7fa)**: ① 原 `stage` 会把 ③ `posttrain-experimental-20260924/` 一起摆进去 —— 它是对着旧底座金融侧车解的, 指纹对不上任何 1017 侧车, 发到新仓库用户一挂就在加载后停下。改成跟 install.sh 走: `POSTTRAIN=""`(这一版没有 ③), `--posttrain` 直接报 "no post-training file is published for this base"; 发布脚本只在 POSTTRAIN 非空时摆 ③, 提交说明跟着变。② `LICENSE-DeepSeek` 原来写死从 `hf/DeepSeek-V4.1-Flash/` 拷, 改从 BASE_REPO 对应目录拷(新旧 LICENSE 逐字节同, 不影响内容)。③ TECHNICAL 中英文件表删 ③ 那行, 说明旧实验留在上一版仓库。干净 worktree `make test` exit 0(studio models 23/0, 单测会真跑 hf_install.sh probe), 同步 spark 前核过 4 个文件是上一次提交的版本。
+- **spark 上传(走 Mac 17897 隧道, 日志 /tmp/hf_small_1017.log)**: `stage` 摆出的目录没有 ③, `bin/ds4`(17,760,336 B)/ `bin/ds4-server`(19,450,400 B)与 GitHub release 包里的逐字节同, install.sh = 8a1c7fa。`small` 20:02:34→20:03:04, `tts` 两个语音各 40 s(62,634,336 / 62,634,368 B)+ install.sh, `verify` **VERIFY_OK 409 个文件同大小**, CHAIN_EXIT 0。
+- **远端核对**: 412 个文件(发布目录 409 + tts 2 + HF 的 .gitattributes), tts / bin / README / LICENSE / install.sh 大小与本地一致, posttrain 条目 0; 从 Mac `curl https://huggingface.co/wenzhouwu/YoungAi-DeepSeek-V4.1-Flash-1017/resolve/main/install.sh` 200 且与提交版逐字节同(文档里"只要 API"那条不再 404)。GitHub v0.4.0-rc 说明里"新仓库缺文件"那条已知问题删掉, ③ 那条改成"这一版没有发布后训练文件, --posttrain 直接报错"。
+- 注意: release 包里随带的 hf_install.sh 是 7ac8a74 版(POSTTRAIN 还指旧 ③); 包里它只给模型页下载用, 下载不走 --posttrain, 没重打包。
