@@ -209,9 +209,12 @@ scoreids)
   # 第 6 参数 = 换哪份反修目录重打分(none = 不挂): 09-30 用户令"编程域语料带英文, 试一试有没有同样的问题" —— 同一条序列
   # 挂金融 / 编程 / 不挂三份各打一趟, 比 </think> 的概率总和与环里的锁死程度。输出按反修目录名分文件, 三份不互相覆盖。
   AMPDIR="${6:-$AMP}"; ZC=(); [ "$AMPDIR" != none ] && ZC=(--zchain "$AMPDIR")
+  # 第 7 参数 = 换哪个底座 GGUF 重打分(2026-10-18, 1017 底座的鹈鹕思考 43k 不收口): 重打分必须用吐出这条序列的那套模型+反修,
+  # 否则量的是另一个模型对这条序列的看法。不给 = 脚本头部的现役 v3。
+  MODEL="${7:-$MODEL}"; [ -s "$MODEL" ] || { LOG "★没有 $MODEL★"; exit 1; }
   [ -s "$IDS" ] || { LOG "★没有 $IDS★"; exit 1; }
   tag=$(basename "$IDS" .ids)_top${K}_$([ "$AMPDIR" = none ] && echo bare || basename "$AMPDIR" | sed 's/^DeepSeek-V4.1-Flash-//; s/-engine$//')
-  LOG "== scoreids $tag: $(wc -l < "$IDS") token(提示 $NP), top-$K, 块 512, 反修 ${AMPDIR}"
+  LOG "== scoreids $tag: $(wc -l < "$IDS") token(提示 $NP), top-$K, 块 512, 底座 $(basename "$MODEL"), 反修 ${AMPDIR}"
   ./ds4 -m "$MODEL" "${ZC[@]}" --cuda --v41-chunk 512 \
       --score-ids "$IDS" --score-topk "$K" "$OUT/$tag.bin" --score-no-logits > "$OUT/$tag.log" 2>&1
   LOG "打分 rc=$? $(grep -a -h '完成\|PPL\|★\|token' "$OUT/$tag.log" | tail -2 | tr '\n' ' ')"
@@ -241,6 +244,24 @@ dryreplay)
     LOG "$t: rc=$rc 续写 $n token; </think> $([ -n "$te" ] && echo "在第 $te 位" || echo "没出"); 末 id $(tail -1 "$OUT/$t.gen.ids")(EOS=1)"
     tail -c 500 "$OUT/$t.out" | tr '\n' '|' | sed 's/^/    尾巴: /'; echo
   done; done ;;
+greedyparity)
+  # ★解码路 vs 预填路在长位置上逐位对拍(2026-10-18, 用户"是不是引擎 bug")★: 从一条真实序列的第 ENTRY 位起, 解码路温 0 续写 NGEN 个 token,
+  # 再把 前缀+续写 整段用预填路(--score-split = 前缀长, 与部署同一种状态: 前缀 CED 预填, 续写段跑满解码器)重打分 top-5, 看续写段每一位
+  # 预填路 argmax 是不是解码路真吐的那个 id。两条路本该同一个 argmax(温 0), 平局位翻面是浮点次序的正常代价; "预填路 p>0.7 却被解码路选了别的"
+  # 就是 09-22 位平面那类真 bug 的指纹(cmp-topk 按把握分档)。为什么单开一段: engref(09-30)只对了预填路; faith 对的是采样序列, 只能统计不能逐位。
+  IDS="${2:?完整 ids(提示+生成)}"; NP="${3:?提示 token 数}"; ENTRY="${4:?续写起点(生成段序号)}"; NGEN="${5:-64}"; AMPDIR="${6:-$AMP}"; MODEL="${7:-$MODEL}"
+  [ -s "$IDS" ] || { LOG "★没有 $IDS★"; exit 1; }; [ -s "$MODEL" ] || { LOG "★没有 $MODEL★"; exit 1; }
+  ZC=(); [ "$AMPDIR" != none ] && ZC=(--zchain "$AMPDIR")
+  tag=$(basename "$IDS" .ids)_gp$ENTRY; PRE="$OUT/$tag.prefix.ids"; head -n $((NP + ENTRY)) "$IDS" > "$PRE"; NPRE=$(wc -l < "$PRE")
+  LOG "== greedyparity $tag: 前缀 $NPRE token, 温 0 续写 $NGEN, 底座 $(basename "$MODEL"), 反修 $AMPDIR"
+  ./ds4 --cuda -m "$MODEL" "${ZC[@]}" --temp 0 --seed 1 --no-dspark --gen-ids "$PRE" -n "$NGEN" --emit-trace > "$OUT/$tag.out" 2> "$OUT/$tag.err"
+  rc=$?; grep -a '^\[emit\] ' "$OUT/$tag.err" | awk '{print $3}' > "$OUT/$tag.gen.ids"
+  LOG "续写 rc=$rc $(wc -l < "$OUT/$tag.gen.ids") token; 尾巴: $(tail -c 300 "$OUT/$tag.out" | tr '\n' '|')"
+  cat "$PRE" "$OUT/$tag.gen.ids" > "$OUT/$tag.full.ids"
+  ./ds4 --cuda -m "$MODEL" "${ZC[@]}" --v41-chunk 512 --score-split "$NPRE" \
+      --score-ids "$OUT/$tag.full.ids" --score-topk 5 "$OUT/$tag.top5.bin" --score-no-logits > "$OUT/$tag.score.log" 2>&1
+  LOG "打分 rc=$? $(grep -a -h '完成\|PPL\|★' "$OUT/$tag.score.log" | tail -1)"
+  python3 "$TOOLS" cmp-topk "$OUT/$tag.top5.bin" "$OUT/$tag.full.ids" "$NPRE" | tee "$OUT/$tag.parity" ;;
 engref)
   # ★引擎 vs 参考实现, 同一份量化权重, 逐位对拍★(2026-09-30): 学生 = 裸引擎 --score-ids 全 logits(anchor_metrics 的 <S><V><f32> 格式);
   # 参考 = v41_judge.sh file: 档产的落盘学生(官方 model.py 读同一份量化权重)。同权重只差实现 ⇒ KLD / same-top 按位置分桶掉下来 = 引擎在

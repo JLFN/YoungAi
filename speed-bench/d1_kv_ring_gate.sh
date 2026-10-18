@@ -163,9 +163,14 @@ fi
 if [ "$MODE" = online ]; then
   P="${6:-speed-bench/fin_chat_prompt.txt}"; NOK="${7:-}"
   [ -f "$P" ] || { echo "★没有 $P★"; exit 1; }
-  run ds4 onl_plain -n "$NGEN" --no-dspark --prompt-file "$P"
-  run ds4 onl_spec  -n "$NGEN" --dspark --emit-trace --prompt-file "$P"
-  echo "== 在线: $(basename "$P"), $NGEN token"
+  # 提示以 .ids 结尾 = 真实请求的 token id, 按 id 喂(--gen-ids; 与 sim/dflt 档、multi_probe 同口径: 真实请求只有 id 准, 文本重分词拼不回去);
+  # 否则是文本提示, 引擎套聊天模板(2026-10-18 加, 量新底座 1017 + 编程侧车的预填/解码速度要用没调过参的真实请求)
+  case "$P" in *.ids) PARG=(--gen-ids "$P");; *) PARG=(--prompt-file "$P");; esac
+  run ds4 onl_plain -n "$NGEN" --no-dspark "${PARG[@]}"
+  run ds4 onl_spec  -n "$NGEN" --dspark --emit-trace "${PARG[@]}"
+  echo "== 在线: $(basename "$P"), $NGEN token  [$(basename "$MODEL" .gguf) + $(basename "$AMP")]"
+  echo "  预填(纯解码趟): $(grep -a -h 'prefill .* token' "$OUT/onl_plain.err" | tail -1)"
+  echo "  预填(投机趟):   $(grep -a -h 'prefill .* token' "$OUT/onl_spec.err" | tail -1)"
   echo "  纯解码: $(grep -a -h 'decode .* token' "$OUT/onl_plain.err") $(grep -a -h '稳态' "$OUT/onl_plain.err" | sed 's/.*⇒ //')"
   echo "  投机:   $(grep -a -h 'decode .* token' "$OUT/onl_spec.err") $(grep -a -h '稳态' "$OUT/onl_spec.err" | sed 's/.*⇒ //')"
   grep -a -h "DSpark:\|一轮 \|暂存换过指针\|走图解了" "$OUT/onl_spec.err" | sed 's/^/  /'

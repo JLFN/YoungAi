@@ -471,11 +471,56 @@ def cmd_cyclescan(min_run="256", *traces):
               "  ★触发★" if r[9] else ""))
 
 
+def cmd_temper(topk_path, ids_path, n_prompt, entry="0", temps="1.0,1.2,1.5,2.0", min_p="0.02", tok="128822"):
+    """温度/min_p 能不能把出口抽出来(2026-10-18, 用户"之前配置的温度和 min 参数再看看"): 同一份 top-K, 对每个 T 把 p 换成 p^(1/T) 在 K 内归一
+    (K 外质量不算 ⇒ 出口概率略偏高, 上界口径), 再按 min_p·p(top-1) 砍, 报入环前/后两段的出口 Σp 与"一次都抽不到"概率 exp(−Σ)。
+    代价一侧同一张表: 温度抬高后 top-1 平均概率(掉得越多正文越飘), 以及 K 外尾巴质量的上界 Σ_tail p^(1/T) ≤ (1−mass)·p_min^(1/T−1)
+    (尾巴每个 p ≤ p_min; 这是 10-12 "每 160 token 抽一个垃圾词"那种乱码的来源)。判读: 出口 Σ 到 3 以上(exp(−3)=5%)才算能靠采样逃环;
+    同一 T 下尾巴上界若也到 1e-2/位量级, 就是拿正文乱码换出口。"""
+    import math
+    ids = [int(x) for x in open(ids_path).read().split()]
+    n_prompt, entry, min_p, tok = int(n_prompt), int(entry), float(min_p), int(tok)
+    Ts = [float(t) for t in temps.split(",")]
+    f = open(topk_path, "rb")
+    magic, K, S, V = struct.unpack("<4I", f.read(16))
+    assert magic == 0x44475445, "不是 ETGD 文件"
+    row = struct.Struct("<Iiff" + "%di" % K + "%df" % K)
+    g0 = n_prompt - 1
+    seg = {k: {T: dict(n=0, out=0.0, top1=0.0, tail=0.0, tail_n=0) for T in Ts} for k in ("入环前", "入环后")}
+    while True:
+        buf = f.read(row.size)
+        if len(buf) < row.size: break
+        v = row.unpack(buf); i = v[0]
+        if i < g0 or i + 1 >= len(ids): continue
+        tid, pr = v[4:4 + K], v[4 + K:4 + 2 * K]
+        mass = v[3]; pmin = min(pr)
+        s = seg["入环后" if i - g0 >= entry else "入环前"]
+        for T in Ts:
+            q = [p ** (1.0 / T) for p in pr]; Z = sum(q)
+            q1 = max(q) / Z; gate = min_p * q1
+            kept = sum(x for x in q if x / Z >= gate) / Z
+            st = s[T]; st["n"] += 1; st["top1"] += q1
+            # 尾巴上界: 每个 K 外 p ≤ pmin ⇒ p^(1/T) ≤ p·pmin^(1/T−1); 归一分母至少是 Z
+            if mass < 1.0 and pmin > 0:
+                st["tail"] += (1.0 - mass) * pmin ** (1.0 / T - 1.0) / Z; st["tail_n"] += 1
+            for q_, t_ in zip(q, tid):
+                if t_ == tok and q_ / Z >= gate: st["out"] += (q_ / Z) / kept
+    print("ETGD K=%d; 生成 %d 位, 入环位 %d, min_p %.3f, 出口 tok %d; 温度 %s" % (K, len(ids) - n_prompt, entry, min_p, tok, temps))
+    for name, byT in seg.items():
+        if not byT[Ts[0]]["n"]: continue
+        print("== %s %d 位" % (name, byT[Ts[0]]["n"]))
+        print("   %5s | %9s %10s | %8s | %s" % ("T", "出口Σp", "一次不出", "均top-1", "K外尾巴/位 上界"))
+        for T in Ts:
+            st = byT[T]
+            print("   %5.2f | %9.4f %10.3g | %8.3f | %.2e" % (T, st["out"], math.exp(-st["out"]), st["top1"] / st["n"],
+                  st["tail"] / max(1, st["tail_n"])))
+
+
 if __name__ == "__main__":
     cmds = {"extract": cmd_extract, "cut": cmd_cut, "cmp-emit": cmd_cmp_emit, "cmp-topk": cmd_cmp_topk,
             "eos-scan": cmd_eos_scan, "rows": cmd_rows, "loopstat": cmd_loopstat, "faith": cmd_faith,
             "anchor-faith": cmd_anchor_faith, "tokprobe": cmd_tokprobe, "minp": cmd_minp,
-            "cyclescan": cmd_cyclescan}
+            "cyclescan": cmd_cyclescan, "temper": cmd_temper}
     if len(sys.argv) < 2 or sys.argv[1] not in cmds:
         sys.exit(__doc__ + "  rows <rows.txt> <ids> <n_prompt> <入口位置> [tokenizer.json] [窗口=12]   --row-out 的分桶命中率 + 入口逐行解码\n")
     cmds[sys.argv[1]](*sys.argv[2:])
