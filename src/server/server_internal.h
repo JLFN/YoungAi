@@ -292,7 +292,10 @@ bool should_remember_thinking_checkpoint(const request *r, const thinking_state 
 void log_tool_calls_summary(const char *ctx, const tool_calls *calls, bool responses_protocol);
 void server_progress_cb(void *ud, const char *event, int current, int total);
 /* 思考段逐 token 死环检测(server_think_loop.c, 2026-10-17): 判据与门槛的依据写在那个文件头 */
-enum { THINK_LOOP_MAXP = 256, THINK_LOOP_MIN_RUN = 256 };
+/* 死环判据两条(或): ① 段长 ≥ max(3P, MIN_RUN); ② 段长 ≥ max(MIN_CYC·P, MIN_RUN_SMALL) —— ② 让短周期的环早点停
+ * (2026-10-18 晚: 用户看着 20 token 一圈的 "身体覆盖座垫…" 原样刷了 13 遍才被 ① 截, 历史 3,250 段合法段里同一单元最多转 7.9 圈
+ * (P=8, 段长 63)、段长 ≥64 的最多 5.8 圈(P=22), 8 圈留 1.38× 余量; 账在 speed-bench/think_loop_scan.c 的 cyc 列)。 */
+enum { THINK_LOOP_MAXP = 256, THINK_LOOP_MIN_RUN = 256, THINK_LOOP_MIN_CYC = 8, THINK_LOOP_MIN_RUN_SMALL = 64 };
 typedef struct { int32_t ring[THINK_LOOP_MAXP]; uint32_t run[THINK_LOOP_MAXP + 1]; uint32_t n; } think_loop;
 void think_loop_push(think_loop *d, int32_t tok);
 bool think_loop_hit(const think_loop *d, int *period, int *span);   /* true = 已成死环; period/span 可为 NULL */
@@ -333,9 +336,9 @@ typedef struct {
     int32_t *ids; int n_ids, cap_ids;   /* 引擎真吐的 token id(含 EOS): 收尾写进 --trace, 真实请求才能逐位重放对拍(bug.md §5.4 E0) */
     ds4_decode_sampling sp;   /* 本请求的采样面(请求没带的落到 ds4.h 的官方默认); 单 worker 路覆写全局, 并发路按请求传给引擎 */
     int spec_rounds, spec_offered, spec_accepted;   /* 投机账(调用方在 v41_gen_end 前从引擎取): 监控页的草稿接受率; rounds=0 = 没投机 */
-    think_loop loop;          /* 思考段死环检测(server_think_loop.c): 只喂思考段里真吐的 token */
-    bool think_loop_on;       /* 提示以思考开场才开; 非思考请求不进检测 */
-    int think_end, loop_period, loop_span;   /* </think> 的 id; 强制收口时记下的周期/段长, v41_emit 收到那个 token 时落日志 */
+    think_loop loop;          /* 死环检测(server_think_loop.c): 喂当前段真吐的 token, 思考段收口时清零, 正文从零起算 */
+    bool think_loop_on;       /* 思考段检测只在提示以思考开场时开(非思考请求没有思考段); 正文检测一律开 */
+    int think_end, loop_period, loop_span;   /* </think> 的 id; 强制收口/结束时记下的周期/段长, v41_emit 收到那个 token 时落日志 */
 } v41_gen;
 /* 每多少个 token 探一次对端: 一次 poll 约 1 µs, 一步解码 40 ms ⇒ 开销在噪声里; 最坏多算 16 个 token。 */
 enum { V41_ALIVE_CHECK_TOKENS = 16 };

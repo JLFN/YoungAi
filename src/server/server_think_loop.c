@@ -1,6 +1,7 @@
-/* server_think_loop.c — 思考段逐 token 死环检测, 触发就强制吐 </think>(2026-10-17, 用户定)。
+/* server_think_loop.c — 逐 token 死环检测: 思考段触发就强制吐 </think>(2026-10-17, 用户定), 正文触发就强制 EOS(2026-10-18)。
  *
- * 判据: 思考段里出现周期 P ≤ THINK_LOOP_MAXP 的逐 token 复读, 段长(含第一圈) ≥ max(3P, THINK_LOOP_MIN_RUN)。
+ * 判据: 一段(思考段 / 正文各自从零起算)里出现周期 P ≤ THINK_LOOP_MAXP 的逐 token 复读, 段长(含第一圈) ≥ max(3P, THINK_LOOP_MIN_RUN),
+ * 或 ≥ max(THINK_LOOP_MIN_CYC·P, THINK_LOOP_MIN_RUN_SMALL)(短周期的环转够 8 圈就停, 不用等 256 个 token; 依据见 server_internal.h 那条枚举的注释)。
  * 为什么只抓"逐 token 精确周期": 饿了么那条(fable5 10-16 夜)进环后 46,571 位逐 id 周期 43, 模型给第一候选的概率中位 1.000,
  * 全精度底座在同一位置也是 1.000 —— 再想下去一个新 token 都不会有, 截断不丢任何信息; 换 seed 续写、开 DRY 都出不来(10-17 实测)。
  * 措辞会变的环(鹈鹕/r331)故意不抓: 它跟正常的反复推敲在 token 上分不开, 抓了就会误伤。
@@ -26,7 +27,9 @@ bool think_loop_hit(const think_loop *d, int *period, int *span) {
     const uint32_t lim = d->n < THINK_LOOP_MAXP ? d->n : THINK_LOOP_MAXP;
     for (uint32_t p = 1; p <= lim; p++) {
         const uint32_t r = d->run[p];   /* 连续 r 位与 p 位前相同 ⇒ 这一段长 r + p, 其中完整重复了 r / p 圈 */
-        if (r >= 2u * p && r + p >= THINK_LOOP_MIN_RUN) {
+        const uint32_t len = r + p;
+        if ((r >= 2u * p && len >= THINK_LOOP_MIN_RUN) ||
+            (len >= THINK_LOOP_MIN_CYC * p && len >= THINK_LOOP_MIN_RUN_SMALL)) {
             if (period) *period = (int)p;
             if (span) *span = (int)(r + p);
             return true;
@@ -35,11 +38,16 @@ bool think_loop_hit(const think_loop *d, int *period, int *span) {
     return false;
 }
 
-/* 引擎取下一个 token 之前问(ds4_force_fn): 已收到的思考 token + ahead 这几个草稿之后, 是不是已经陷进死环。是 ⇒ 这一位强制 </think>。
- * ahead 里出现 </think> 或 EOS 就是已经出了思考段, 不再管。命中时把周期/段长记在 g 上, v41_emit 收到这个 </think> 时落日志。 */
+/* 引擎取下一个 token 之前问(ds4_force_fn): 已收到的本段 token + ahead 这几个草稿之后, 是不是已经陷进死环。
+ * 是 ⇒ 思考段这一位强制 </think>, 正文这一位强制 EOS。ahead 里出现 </think> 或 EOS 就是本段已经结束, 不再管。
+ * 命中时把周期/段长记在 g 上, v41_emit 收到那个强制 token 时落日志。
+ * 正文也抓(2026-10-18): 10-13 r38 正文周期 4 刷了 80,891 位、10-17 不思考的鹈鹕正文三行一圈 99,280 token 到 curl 断开才停 ——
+ * 思考段那套只喂 think token, 正文一直没人管。门槛同一套: 10-17 的离线账(cyclescan)本来就把正文段算在内, 正文里周期 ~250 的
+ * 合法重复(工具调用模板)段长 ≤ 312, 被 3P 这条挡住, 误报 0。思考段以 think_loop_on 为开关(非思考请求没有思考段), 正文一律开。 */
 int32_t v41_think_loop_force(void *ud, const int32_t *ahead, uint32_t n) {
     v41_gen *g = ud;
-    if (!g->think_loop_on || !g->thinking.inside) return -1;
+    const bool inside = g->thinking.inside;
+    if (inside && !g->think_loop_on) return -1;
     think_loop d = g->loop;
     for (uint32_t i = 0; i < n; i++) {
         if (ahead[i] == g->think_end || ahead[i] == g->eos) return -1;
@@ -48,5 +56,5 @@ int32_t v41_think_loop_force(void *ud, const int32_t *ahead, uint32_t n) {
     int p = 0, span = 0;
     if (!think_loop_hit(&d, &p, &span)) return -1;
     g->loop_period = p; g->loop_span = span;
-    return g->think_end;
+    return inside ? g->think_end : g->eos;
 }

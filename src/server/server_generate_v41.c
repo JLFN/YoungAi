@@ -139,7 +139,16 @@ int v41_emit(int token, void *ud) {
         }
         g->ids[g->n_ids++] = token;
     }
-    if (token == g->eos) { g->finish = "stop"; return 1; }
+    if (token == g->eos) {
+        if (g->loop_period) {   /* v41_think_loop_force 在正文里抓到死环, 这个 EOS 是它强制的(server_think_loop.c) */
+            server_log(DS4_LOG_WARNING, "ds4-server: %s ctx=%s 正文逐 token 复读(周期 %d, 段长 %d)已成死环, 第 %d 个生成 token 处强制结束",
+                       v41_kind(g), g->ctx_span, g->loop_period, g->loop_span, g->completion + 1);
+            trace_event(s, g->trace_id, "body loop: token-exact repeat period %d over %d tokens, forced EOS at generated token %d",
+                        g->loop_period, g->loop_span, g->completion + 1);
+            g->loop_period = 0;
+        }
+        g->finish = "stop"; return 1;
+    }
     if (g->completion >= g->max_tokens) return 1;   /* finish 保持 "length" */
 
     size_t piece_len = 0;
@@ -148,13 +157,18 @@ int v41_emit(int token, void *ud) {
     mon_token(s, j->mon, g->completion);
     trace_piece(s, g->trace_id, piece, piece_len);
     ds4_buf_append(&g->text, piece, piece_len);
-    if (g->think_loop_on && g->thinking.inside && token != g->think_end) think_loop_push(&g->loop, token);
-    if (token == g->think_end && g->loop_period) {
-        server_log(DS4_LOG_WARNING, "ds4-server: %s ctx=%s 思考段逐 token 复读(周期 %d, 段长 %d)已成死环, 第 %d 个生成 token 处强制收口",
-                   v41_kind(g), g->ctx_span, g->loop_period, g->loop_span, g->completion);
-        trace_event(s, g->trace_id, "think loop: token-exact repeat period %d over %d tokens, forced </think> at generated token %d",
-                    g->loop_period, g->loop_span, g->completion);
-        g->loop_period = 0;
+    /* 死环检测喂 token(server_think_loop.c): 思考段只在思考请求上喂, 正文一律喂; </think> 本身不喂, 收口后正文从零起算 */
+    if (g->thinking.inside) { if (g->think_loop_on && token != g->think_end) think_loop_push(&g->loop, token); }
+    else think_loop_push(&g->loop, token);
+    if (token == g->think_end) {
+        if (g->loop_period) {
+            server_log(DS4_LOG_WARNING, "ds4-server: %s ctx=%s 思考段逐 token 复读(周期 %d, 段长 %d)已成死环, 第 %d 个生成 token 处强制收口",
+                       v41_kind(g), g->ctx_span, g->loop_period, g->loop_span, g->completion);
+            trace_event(s, g->trace_id, "think loop: token-exact repeat period %d over %d tokens, forced </think> at generated token %d",
+                        g->loop_period, g->loop_span, g->completion);
+            g->loop_period = 0;
+        }
+        memset(&g->loop, 0, sizeof g->loop);
     }
     thinking_state_feed(&g->thinking, piece, piece_len);
     if (j->req.kind == REQ_CHAT && j->req.has_tools) dsml_decode_tracker_update(&g->dsml_tracker, g->text.ptr, g->text.len);
