@@ -4,7 +4,7 @@
  *   ② 还会不会正常说话: 收口探针(core_ptrain_probe.c, train.log 的 probe 行) —— 挂 ③ 的收口数不得少于部署态在同一组题、同一上限下的收口数;
  *      少了的轮不参选(10-11 B 臂 e02: 留出在降、wt2 在噪声里, 挂上去 37k token 不停 —— 留出损失是 teacher-forced, 看不见这个)。
  *   ③ 通用退了多少(报数; 只有统计上坐实的"真退"才不参选, 噪声内一律参选 —— 10-11 下午用户定"wt2 是常识, 不该动"): 同一把判决料(WikiText-2 前 TR_GATE_NTOK token), 学生 = 引擎 --score-ids(部署同路), 两臂 ② 与 ②+③, 教师锚 = FP 教师的
- *      top-K 落盘(gguf/v41judge/teacher_g7_wt2_n512.bin, 发布包随带), 判决器 = anchor_metrics 五指标 + --row-out 逐位置表 → 两臂逐位置配对差 ± 标准误。
+ *      top-K 落盘(gguf/v41judge/teacher_g7_wt2_n512[_<底座>].bin, 按装着的 GGUF 选, 见 tr_wt2_teacher; 发布包随带当前底座那份), 判决器 = anchor_metrics 五指标 + --row-out 逐位置表 → 两臂逐位置配对差 ± 标准误。
  *      标签: 真退(ΔΣmin ≤ −TR_DRIFT_SE 个 SE 或 ΔKLD ≥ +TR_DRIFT_SE 个 SE) / 真进 / 噪声内。
  * 为什么不再拿 wt2 的绝对线否决: 老门线 −0.5pp 只有 1.3~1.5 个配对标准误(±0.3~0.39pp), 同一趟三轮 +0.42/−0.68/+0.86 乱跳, 刷掉的恰好是学会先验的那轮(10-04 0001/0003 e03);
  *   wt2 量的是"像不像原模型", 判不了有效。但 ≥3 SE 的真退(0004 e03 −1.09 / B e03 −1.70 / C e03 −2.22)是训过头的统计证据, 这种轮不参选(有噪声内的轮可选时它本来就该让位)。
@@ -19,8 +19,29 @@
 #define TR_SCORE_BUDGET_MB 40000   /* 打分路的引擎预算 + 权重缓存(v41_judge.sh 同值: 打分只做预填, 不需要服务那么多常驻) */
 #define TR_SCORE_WCACHE_MB 88000
 #define TR_WT2_IDS "gguf/go-onebit/g7/wt2.ids"
-#define TR_WT2_TEACHER "gguf/v41judge/teacher_g7_wt2_n512.bin"
+#define TR_WT2_DIR "gguf/v41judge"
+#define TR_WT2_STEM "teacher_g7_wt2_n512"
 #define TR_ANCHOR_METRICS "gguf-tools/bench/anchor_metrics"
+
+/* 教师锚按底座选(2026-10-18): 锚是某一版出厂权重的 FP 前向, 换了底座不换锚, 配对差量的就是"更像旧底座"而不是"退没退"(换 1017 底座后实撞: 一直读的是 09-12 旧底座那份)。
+ * 命名照 v41_judge.sh: 默认出厂目录的锚不带后缀, --hf 别的目录的带 _<目录名>。GGUF 文件名以 <目录名> 加 '-' 或 '.' 开头就是那一版底座量出来的
+ * (量化链按底座名给产物命名; 元数据 general.name 新旧一样, 分不开)。几个都对上取最长的: DeepSeek-V4.1-Flash 也是 DeepSeek-V4.1-Flash-1017-… 的前缀。
+ * 一个都对不上 = 默认底座, 用不带后缀的那份; 发布包只带当前底座那份带后缀的锚, 所以装了别的底座的模型会报"没有教师锚", 不会拿错锚出数。 */
+void tr_wt2_teacher(const char *mdl, char *out, size_t n) {
+    const char *g = strrchr(mdl, '/'); g = g ? g + 1 : mdl;
+    char dir[TR_PATH + 32], name[256] = ""; snprintf(dir, sizeof dir, "%s/" TR_WT2_DIR, tr_root);
+    const size_t pl = strlen(TR_WT2_STEM "_");
+    size_t best = 0;
+    DIR *d = opendir(dir); struct dirent *de;
+    while (d && (de = readdir(d))) {
+        const size_t l = strlen(de->d_name);
+        if (l <= pl + 4 || strncmp(de->d_name, TR_WT2_STEM "_", pl) || strcmp(de->d_name + l - 4, ".bin")) continue;
+        const char *x = de->d_name + pl; const size_t xl = l - pl - 4;
+        if (xl > best && !strncmp(g, x, xl) && (g[xl] == '-' || g[xl] == '.')) { best = xl; snprintf(name, sizeof name, "%s", de->d_name); }
+    }
+    if (d) closedir(d);
+    snprintf(out, n, "%s/%s", dir, best ? name : TR_WT2_STEM ".bin");
+}
 
 typedef struct { double smin, kld; bool ok; } arm_read;
 
@@ -35,12 +56,12 @@ static arm_read read_arm(const char *text) {
 
 /* 一臂: ./ds4 --score-ids → stu.bin, 再 anchor_metrics(--row-out 逐位置表留给配对) → 文本(返回 malloc; NULL = 失败) */
 static char *score_arm(const char *run_dir, const char *tag, const char *mdl, const char *zch, char *const extra[], int nextra, const char *pt,
-                       const char *ids_n, FILE *log, tr_cancel_fn cancel, void *ud) {
-    char stu[TR_PATH + 320], lp[TR_PATH + 320], rows[TR_PATH + 320], am[TR_PATH + 64], ref[TR_PATH + 64], ids[TR_PATH + 64], bud[16], wc[16];
+                       const char *ids_n, const char *ref, FILE *log, tr_cancel_fn cancel, void *ud) {
+    char stu[TR_PATH + 320], lp[TR_PATH + 320], rows[TR_PATH + 320], am[TR_PATH + 64], ids[TR_PATH + 64], bud[16], wc[16];
     snprintf(stu, sizeof stu, "%s/eval/stu_%s.bin", run_dir, tag);
     snprintf(lp, sizeof lp, "%s/eval/score_%s.log", run_dir, tag);
     snprintf(rows, sizeof rows, "%s/eval/rows_%s.txt", run_dir, tag);
-    snprintf(am, sizeof am, "%s/" TR_ANCHOR_METRICS, tr_root); snprintf(ref, sizeof ref, "%s/" TR_WT2_TEACHER, tr_root); snprintf(ids, sizeof ids, "%s/" TR_WT2_IDS, tr_root);
+    snprintf(am, sizeof am, "%s/" TR_ANCHOR_METRICS, tr_root); snprintf(ids, sizeof ids, "%s/" TR_WT2_IDS, tr_root);
     snprintf(bud, sizeof bud, "%d", TR_SCORE_BUDGET_MB); snprintf(wc, sizeof wc, "%d", TR_SCORE_WCACHE_MB);
     const char *argv[64]; int na = tr_ds4_base_argv(argv, 40, mdl, zch, extra, nextra);
     argv[na++] = "--mem-budget-mb"; argv[na++] = bud; argv[na++] = "--weight-cache-mb"; argv[na++] = wc;
@@ -112,10 +133,10 @@ static int last_run_epochs(const char *run_dir, double eval[100], int stop[100],
 }
 
 /* 漂移报数: 锚 / 判决器 / 判决料三件齐才跑(缺就 false, 调用方只少这组数) */
-static bool drift_ready(const char *run_dir, char *ids_n, size_t in, FILE *log) {
+static bool drift_ready(const char *run_dir, const char *ref, char *ids_n, size_t in, FILE *log) {
     char p[TR_PATH + 400], src[TR_PATH + 64]; struct stat st;
-    snprintf(p, sizeof p, "%s/" TR_WT2_TEACHER, tr_root);
-    if (stat(p, &st)) { tr_logf(log, "★没有教师锚 %s(发布包随带; 要在有 HF 出厂权重的机器上用 v41_judge.sh 出) —— 这趟不报通用漂移★", p); return false; }
+    if (stat(ref, &st)) { tr_logf(log, "★没有这版底座的教师锚 %s(发布包随带当前底座那份; 别的底座要在有它 HF 出厂权重的机器上用 v41_judge.sh --hf 出) —— 这趟不报通用漂移★", ref); return false; }
+    tr_logf(log, "漂移: 教师锚 %s", ref);
     snprintf(p, sizeof p, "%s/" TR_ANCHOR_METRICS, tr_root);
     if (stat(p, &st)) { tr_logf(log, "★没有判决器 %s(make -C gguf-tools anchor_metrics) —— 这趟不报通用漂移★", p); return false; }
     snprintf(src, sizeof src, "%s/" TR_WT2_IDS, tr_root);
@@ -135,8 +156,9 @@ bool tr_gate_pick(const char *run_dir, const char *mdl, const char *zch, char *c
     double eval[100]; int stop[100], base_stop = -1, by_gen = 0;
     const int ne = last_run_epochs(run_dir, eval, stop, &base_stop, &by_gen);
     if (!ne) { tr_logf(log, "★train.log 里没有这趟的 epoch 行★"); return false; }
-    const bool drift = drift_ready(run_dir, ids_n, sizeof ids_n, log);
-    char *base = drift ? score_arm(run_dir, "base", mdl, zch, extra, nextra, NULL, ids_n, log, cancel, ud) : NULL;
+    char ref[TR_PATH + 320]; tr_wt2_teacher(mdl, ref, sizeof ref);
+    const bool drift = drift_ready(run_dir, ref, ids_n, sizeof ids_n, log);
+    char *base = drift ? score_arm(run_dir, "base", mdl, zch, extra, nextra, NULL, ids_n, ref, log, cancel, ud) : NULL;
     if (drift && !base) return false;
     const arm_read b = base ? read_arm(base) : (arm_read){ 0, 0, false };
     double best = 0; bool any = false; struct stat st;
@@ -149,7 +171,7 @@ bool tr_gate_pick(const char *run_dir, const char *mdl, const char *zch, char *c
         snprintf(tag, sizeof tag, "ckpt_e%02u", e);
         char dr[200] = "通用漂移: 没报(锚/判决器缺)"; bool worse = false;
         if (base) {
-            char *arm = score_arm(run_dir, tag, mdl, zch, extra, nextra, ck, ids_n, log, cancel, ud);
+            char *arm = score_arm(run_dir, tag, mdl, zch, extra, nextra, ck, ids_n, ref, log, cancel, ud);
             if (!arm) { free(base); return false; }
             const arm_read a = read_arm(arm);
             const paired pr = pair_rows(run_dir, tag);

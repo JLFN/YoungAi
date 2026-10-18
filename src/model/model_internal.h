@@ -122,6 +122,8 @@ int tr_ds4_base_argv(const char *argv[], int max, const char *mdl, const char *z
 /* 对 run_dir 下每个 ckpt_eNN: 留出损失比第 0 步低、收口不少于部署态、通用漂移不是真退(≥ TR_DRIFT_SE 个 SE)的轮里最低者写 pick.txt; ② 臂(一次)与 ②+③ 臂配对出漂移,
  * 全文落 eval/gate_ckpt_eNN.txt(先 ② 后 ②+③, 末行"配对", 记录页同口径读)。返回 false = 跑挂了; pick 空串 = 这趟无效(没有一轮参选) */
 bool tr_gate_pick(const char *run_dir, const char *mdl, const char *zch, char *const extra[], int nextra, FILE *log, tr_cancel_fn cancel, void *ud, char *pick, size_t pn);
+/* 底座 GGUF 对应的 wt2 教师锚绝对路径(不查存在; 选法见 model_train_pick.c 该函数注释) */
+void tr_wt2_teacher(const char *mdl, char *out, size_t n);
 
 /* model_catalog.c: 模型页路由; 不是 /api/models/ 开头返回 -1 */
 int tr_models_api(const tr_req *rq, ds4_buf *out, int serving, int port);

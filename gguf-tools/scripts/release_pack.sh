@@ -11,7 +11,7 @@
 #   跑模型: ds4-server + ds4-train(主进程: 页面、起服、训练编排全在它的 C 里) + web/ 页面 + hf_install.sh(模型页下载, hf CLI 的包装)
 #   改图: ds4-seg(分割程序, 几百 KB; 它读的 41 MB 权重不进包, 模型页下载时从作者的 HF 仓库取到 gguf/hub/model/seg/)
 #   跑训练: ds4(训练器与判决学生都是它) + anchor_metrics(wt2 门的五指标)
-#           + 保持料 hold.jsonl + 判决料 wt2.ids + 它的 FP 教师锚 teacher_g7_wt2_n512.bin(265 MB: 要 HF 出厂权重才能出, 拿包的人出不了)
+#           + 保持料 hold.jsonl + 判决料 wt2.ids + 当前底座的 FP 教师锚 teacher_g7_wt2_n512_<底座>.bin(265 MB: 要 HF 出厂权重才能出, 拿包的人出不了)
 # 二进制是在本机编的, 只能发给同平台机器: spark 上打的(linux-aarch64, CUDA 架构 = GB10)给 DGX Spark 用; Mac 上打的(darwin-arm64, Metal)给
 # Apple Silicon 用 —— Mac 包多带 metal/*.metal(着色器源, 引擎运行时按相对路径拼接加载), 且★Mac 上从没跑过真模型★(要 ≥128 GB 统一内存的机器, 手头只有 16 GB)。
 set -euo pipefail
@@ -20,9 +20,15 @@ OUT="${1:-$ROOT/dist}"
 NAME="youngai-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m)-$(date +%Y%m%d)"
 # web/ 只收页面与图: spark 的工作树里 web/ 下还躺着老构建留下的 .o, 整目录拷会一起进包
 # PWA 四件(manifest / sw.js / 图标)缺了不只是装不成 App: 穿透的公网检测取的就是 /manifest.webmanifest, 拿不到 200 设置里永远显示断线
+# 教师锚只带当前底座那份: 底座 = install.sh 的 BASE_REPO 斜杠后半截(= v41_judge.sh --hf 的目录名, 锚文件带 _<它> 后缀)。ds4-train 按装着的 GGUF
+# 文件名选锚(model_train_pick.c tr_wt2_teacher); 带了别的底座的锚不报错, 只是把"退没退"量成"像不像那个底座"(10-18 换 1017 底座时查出一直在读旧锚)。
+BASE=$(sed -n 's/^BASE_REPO="[^/]*\/\([^"]*\)".*/\1/p' gguf-tools/scripts/hf_install.sh)
+[ -n "$BASE" ] || { echo "hf_install.sh 里读不到 BASE_REPO"; exit 1; }
+TEACHER="gguf/v41judge/teacher_g7_wt2_n512_$BASE.bin"
+[ -s "$TEACHER" ] || { echo "缺当前底座的教师锚 $TEACHER(在有 hf/$BASE 出厂权重的机器上: v41_judge.sh gguf/go-onebit/g7/wt2.ids 512 --hf hf/$BASE …)"; exit 1; }
 FILES=(ds4-server ds4-train ds4 ds4-seg gguf-tools/bench/anchor_metrics web/*.html web/*.jpg web/*.png web/manifest.webmanifest web/sw.js LICENSE LICENSE-DeepSeek README.md README.zh-CN.md
        gguf-tools/scripts/hf_install.sh
-       gguf-tools/data/posttrain/hold.jsonl gguf/go-onebit/g7/wt2.ids gguf/v41judge/teacher_g7_wt2_n512.bin)
+       gguf-tools/data/posttrain/hold.jsonl gguf/go-onebit/g7/wt2.ids "$TEACHER")
 # 只带一个脚本: 下载(hf CLI 的包装)。起服/训练/门/选轮全在 ds4-train 的 C 里(src/model/model_serve.c model_train_job.c model_train_pick.c), 10-10 起不再随包发脚本。
 [ "$(uname -s)" = Darwin ] && FILES+=(metal/*.metal)
 for f in "${FILES[@]}"; do [ -e "$f" ] || { echo "缺 $f(二进制要先编: make cuda-spark(Mac: make) 与 make -C gguf-tools anchor_metrics)"; exit 1; }; done

@@ -89,6 +89,22 @@ int studio_models_test(const char *base) {
       CHECKM(loc && strstr(loc, "\"path\":\"gguf/m/beta.gguf\""), "picked model of another base still listed: %s", loc);
       unlink(cur); unlink(old); unlink(bk); }
 
+    /* 选轮的 wt2 教师锚按装着的 GGUF 选(model_train_pick.c tr_wt2_teacher): 最长的底座名前缀胜, 名字后面必须紧跟 '-' 或 '.', 都不对上用不带后缀的 */
+    { const char *tf[] = { "teacher_g7_wt2_n512.bin", "teacher_g7_wt2_n512_Base-X.bin", "teacher_g7_wt2_n512_Base-X-1017.bin", "log_teacher_g7_wt2_n512_Base-X-1017-q.txt" };
+      char p[4600], got[4800];
+      snprintf(p, sizeof p, "%s/gguf/v41judge", d); mkdir(p, 0700);
+      for (int i = 0; i < 4; i++) { snprintf(p, sizeof p, "%s/gguf/v41judge/%s", d, tf[i]); FILE *s = fopen(p, "w"); if (s) fclose(s); }
+      const char *cases[][2] = { { "/x/gguf/v41/Base-X-1017-vq8-q4k.gguf", "teacher_g7_wt2_n512_Base-X-1017.bin" },
+                                 { "/x/gguf/v41/Base-X-vq8-q4k.gguf", "teacher_g7_wt2_n512_Base-X.bin" },
+                                 { "Base-X-10170-q.gguf", "teacher_g7_wt2_n512_Base-X.bin" },   /* Base-X-1017 后面跟的是 '0', 不算 */
+                                 { "/x/Other-q4.gguf", "teacher_g7_wt2_n512.bin" } };
+      for (int i = 0; i < 4; i++) {
+          tr_wt2_teacher(cases[i][0], got, sizeof got);
+          const char *bn = strrchr(got, '/');
+          CHECKM(bn && !strcmp(bn + 1, cases[i][1]) && !strncmp(got, d, strlen(d)), "wt2 teacher for %s: %s (want %s)", cases[i][0], got, cases[i][1]);
+      }
+      for (int i = 0; i < 4; i++) { snprintf(p, sizeof p, "%s/gguf/v41judge/%s", d, tf[i]); unlink(p); } }
+
     unlink(ln); unlink(b); unlink(pick);
     ds4_buf_free(&out);
     snprintf(tr_root, sizeof tr_root, "%s", root_save);
