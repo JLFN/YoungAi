@@ -1,7 +1,3 @@
-> **v0.3.0-rc 已发布：<https://github.com/fodelf/YoungAi/releases/tag/v0.3.0-rc>**<br>
-> 这是基于 DeepSeek-V4.1-Flash 的最后一个 RC 版本。下载对应平台的包（DGX Spark 用 `linux-aarch64`，Apple Silicon 用 `darwin-arm64`），
-> 解压后运行目录里的 `ds4-train`，浏览器打开 `http://<主机>:8000/`，再到"模型"页下载模型。
-
 <p align="center">
   <img src="web/logo.jpg" width="96" alt="YoungAi logo">
 </p>
@@ -17,14 +13,28 @@
 <p align="center">
   <a href="https://fodelf.github.io/YoungAi/"><b>项目网站 · 使用指南</b></a> ·
   <a href="https://github.com/fodelf/YoungAi/blob/restructure/README.md">English</a> · <b>中文</b> ·
-  <a href="https://huggingface.co/wenzhouwu/YoungAi-DeepSeek-V4.1-Flash">Hugging Face</a> ·
+  <a href="https://huggingface.co/wenzhouwu/YoungAi-DeepSeek-V4.1-Flash-1017">Hugging Face</a> ·
   <a href="https://github.com/fodelf/YoungAi/blob/restructure/docs/TECHNICAL.zh-CN.md">技术细节</a>
 </p>
 
 ![YoungAi 工作台：助理在全网找最便宜的 DGX Spark](docs/img/studio-agent.png)
 
-背后的模型是 DeepSeek V4.1 Flash（官方权重 510 GB），压到 113.6 GB 跑在一台 128 GB 的 DGX Spark 上，1M 上下文。
+背后的模型是 DeepSeek V4.1 Flash 的 1017 版（官方权重 510 GB），压到 113.6 GB 跑在一台 128 GB 的 DGX Spark 上，1M 上下文。
 开源，MIT 协议；纯 C99 + CUDA（Apple Silicon 用 Metal），一个 Makefile，不链任何第三方库。
+
+## 模型
+
+| | 数 |
+|---|---|
+| 体积 | 官方 510 GB → 基座 113.6 GB（每 8 个权重一起向量量化，约 1.6 bit/权重，不用训练数据） |
+| 速度（DGX Spark） | 读提示 999 token/s；写 45.7 token/s（投机解码开），不开 30.1（真实 7.7k token 请求，挂编程侧车） |
+| 上下文 | 1M token，满载 KV 缓存 0.89 GB |
+| 领域侧车 | 金融 / 编程 / 法律 / 医疗 / 科研，各约 40 MB，聊天框下拉切换，不到 1 秒 |
+
+挂侧车后，下一个字和原版全精度模型一致的比例提高 2.6–3.8 个百分点（例：编程 78.3% → 82.0%），
+通用英文也跟着涨（76.8% → 77.9–79.7%）。测法和完整结果表见[技术细节第五章](docs/TECHNICAL.zh-CN.md#五实测结果)。
+
+**Mac**：`make` 编出 Metal 版，126 项 GPU 核测试在真 Apple GPU 上全过；整模型还没在 Mac 上跑过（手上的 Mac 只有 16 GB）。
 
 ## 它能干什么
 
@@ -123,23 +133,9 @@ make cuda-spark
 只要 API 不要工作台、不想编译：
 
 ```sh
-curl -fsSLO https://huggingface.co/wenzhouwu/YoungAi-DeepSeek-V4.1-Flash/resolve/main/install.sh
+curl -fsSLO https://huggingface.co/wenzhouwu/YoungAi-DeepSeek-V4.1-Flash-1017/resolve/main/install.sh
 bash install.sh                      # 默认编程侧车，--domain law 换领域；--endpoint https://hf-mirror.com 走镜像
 ```
-
-## 模型
-
-| | 数 |
-|---|---|
-| 体积 | 官方 510 GB → 基座 113.6 GB（每 8 个权重一起向量量化，约 1.6 bit/权重，不用训练数据） |
-| 速度（DGX Spark） | 读提示 1,055 token/s（12.5k token）；写 45.5 token/s（真实 14k token 的 Agent 请求，投机解码开） |
-| 上下文 | 1M token，满载 KV 缓存 0.89 GB |
-| 领域侧车 | 金融 / 编程 / 法律 / 医疗 / 科研，各约 40 MB，聊天框下拉切换，不到 1 秒 |
-
-挂侧车后，下一个字和原版全精度模型一致的比例提高 2.9–3.7 个百分点（例：编程 78.6% → 82.3%），
-测法和完整结果表见[技术细节第五章](docs/TECHNICAL.zh-CN.md#五实测结果)。
-
-**Mac**：`make` 编出 Metal 版，126 项 GPU 核测试在真 Apple GPU 上全过；整模型还没在 Mac 上跑过（手上的 Mac 只有 16 GB）。
 
 ## 局限
 
@@ -177,7 +173,7 @@ bash install.sh                      # 默认编程侧车，--domain law 换领�
 的分叉；GGUF、q4_K 等布局和大量核经验来自 [llama.cpp 与 GGML](https://github.com/ggml-org/llama.cpp)，GGML 的版权声明
 保留在 `LICENSE`。模型属于 DeepSeek，感谢公开权重和参考代码。
 
-引擎 MIT（[`LICENSE`](LICENSE)）；量化权重派生自 DeepSeek V4.1 Flash，同为 MIT（[`LICENSE-DeepSeek`](LICENSE-DeepSeek)）。
+引擎 MIT（[`LICENSE`](LICENSE)）；量化权重派生自 DeepSeek V4.1 Flash（1017 版），同为 MIT（[`LICENSE-DeepSeek`](LICENSE-DeepSeek)）。
 
 语音输入 Powered by Moonshine AI。识别模型 moonshine-tiny-zh **不是 MIT**，用的是 Moonshine AI Community License：研究和非商用免费；
 商用要先到 moonshine.ai/community-license 登记，你和关联方年营收超过 100 万美元时许可自动终止，得另谈；不许拿它的输出去训练基础模型。

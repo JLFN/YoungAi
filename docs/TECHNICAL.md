@@ -27,10 +27,13 @@ weights ever could.
 **What we measured.**
 
 - **Five domains, one recipe.** Finance, code, law, medicine and science each get a sidecar from the
-  same solver. On its own held-out text each sidecar lifts Same top-1 by **+2.8 to +3.7 pp** and cuts
-  mean KL by **16–28%** (tables in [§5.1](#51-quality)).
+  same solver. On its own held-out text each sidecar lifts Same top-1 by **+2.6 to +3.8 pp** and cuts
+  mean KL by **17–30%** (tables in [§5.1](#51-quality)).
 - **No harm to general text.** On English Wikipedia every one of the five sidecars raises Same top-1
-  from 78.5% to **80.7–82.8%** and Σmin from 0.769 to **0.787–0.801**.
+  from 76.8% to **77.9–79.7%** and Σmin from 0.725 to **0.753–0.760**.
+- **It reproduces on a new base.** The same recipe, corpora and solver were rerun unchanged on the 1017
+  release of the weights; per-domain gains match the previous base within 0.3 pp (code +3.67 vs +3.65,
+  medicine +3.75 vs +3.74).
 - **Leverage.** +3 pp is what roughly 0.15 extra bits per weight would buy on the bit-width curve —
   about 11 GB of extra expert storage. The sidecar that delivers it is about **40 MB**.
 
@@ -262,15 +265,16 @@ the model's own bf16 router; the recomputation must match the engine's choice on
 
 | Sidecar | Fitting corpus | Gains / router bias | Size | Teacher fixture + 40-layer solve |
 |---|---|---|---:|---|
-| finance | 8,192 tokens, five Chinese-finance sources | 39 / 27 layers | 40.8 MB | 27 + 73 min |
-| code | 15,360 tokens, 30 programming languages × 512 | 39 / 29 layers | 40.8 MB | 31 + 124 min |
-| law | 15,360 tokens, 6 sources × 2,560 (3 Chinese, 3 English) | 40 / 24 layers | 41.8 MB | 31 + 104 min |
-| medicine | 15,360 tokens, 6 sources × 2,560 (3 Chinese, 3 English) | 40 / 29 layers | 41.8 MB | 32 + 115 min |
-| science | 15,360 tokens, 6 sources × 2,560 (3 Chinese, 3 English) | 40 / 29 layers | 41.8 MB | 32 + 104 min |
+| finance | 8,192 tokens, five Chinese-finance sources | 40 / 32 layers | 40 MB | 28 + 34 min |
+| code | 15,360 tokens, 30 programming languages × 512 | 40 / 29 layers | 40 MB | 31 + 65 min |
+| law | 15,360 tokens, 6 sources × 2,560 (3 Chinese, 3 English) | 40 / 25 layers | 40 MB | 33 + 64 min |
+| medicine | 15,360 tokens, 6 sources × 2,560 (3 Chinese, 3 English) | 40 / 31 layers | 40 MB | 33 + 75 min |
+| science | 15,360 tokens, 6 sources × 2,560 (3 Chinese, 3 English) | 40 / 30 layers | 40 MB | 34 + 72 min |
 
-**Evidence** (Same top-1, paired runs; full tables in [§5.1](#51-quality)). Finance: gains 71.7 → 73.9%;
-router bias on top, gains held fixed, +0.24 pp and KLD −2.5% (English +0.78 pp, KLD −3.8%). With each
-domain's own sidecar: code 78.6 → 82.3%, law 72.9 → 76.4%, medicine 69.1 → 72.8%, science 71.7 → 74.9%.
+**Evidence** (Same top-1, paired runs; full tables in [§5.1](#51-quality)). With each domain's own sidecar:
+finance 71.8 → 74.4%, code 78.3 → 82.0%, law 73.2 → 76.5%, medicine 69.4 → 73.1%, science 71.5 → 74.9%.
+The router bias earns its place on top of the gains: on the previous base, with the finance gains held
+fixed, adding it gave +0.24 pp and KL −2.5% on finance, +0.78 pp and KL −3.8% on English.
 
 ### 4.3 The post-training file
 
@@ -335,8 +339,10 @@ activations don't look like the fitting rows never fires. Every published method
 weights (knowledge modules, prompt distillation, cartridges, self-distillation) trains by gradient with the
 teacher's distribution as the target; that is what this version does.
 
-**Evidence.** One DGX Spark, a real file of 1,326 questions generated from 20 trading-review documents
-(plus the 63 hold questions), 3 epochs, layers 0–39, learning rate 2e-4, 72 minutes end to end:
+**Evidence.** All post-training numbers in this section were measured on the previous base (before the
+1017 release) and have not been rerun on the current one. One DGX Spark, a real file of 1,326 questions
+generated from 20 trading-review documents (plus the 63 hold questions), 3 epochs, layers 0–39, learning
+rate 2e-4, 72 minutes end to end:
 
 | | Held-out loss | Hold-set KL | WikiText-2 Σmin | WikiText-2 mean KL | WikiText-2 Same top-1 |
 |---|---:|---:|---:|---:|---:|
@@ -499,14 +505,18 @@ judge, and our engine is scored on the same path it serves.
 - **Disjoint slices.** Each domain's text is split into a fitting slice and a judging slice that never mix;
   a source (a document, a code repository) lands on one side only.
 
-  | Ruler | Judging slice | Original model PPL |
+  | Ruler | Judging slice | Original model PPL (1017) |
   |---|---|---:|
-  | finance | 8,192 tokens, five Chinese-finance sources | 6.978 |
-  | code | 15,360 tokens: 30 languages × 512 from GitHub (`codeparrot/github-code-clean`), license headers stripped | 4.766 |
-  | law | 15,360 tokens, 6 × 2,560: Chinese statutes, criminal-case facts (CAIL2018), bar-exam questions (JEC-QA); US Supreme Court opinions, EU legislation, contract clauses (LexGLUE) | 4.865 |
-  | medicine | 15,360 tokens, 6 × 2,560: Chinese medical encyclopedia Q&A, real doctor consultations (cMedQA2), licensing-exam questions with explanations (CMExam); PubMed abstracts, PMC case reports, USMLE questions (MedQA) | 8.625 |
-  | science | 15,360 tokens, 6 × 2,560: Chinese journal abstracts, STEM and humanities / social science (CSL), college STEM questions (C-Eval); arXiv LaTeX source, S2ORC full papers (peS2o), MMLU-Pro STEM questions | 8.770 |
-  | English | WikiText-2, 512 tokens | 1.657 |
+  | finance | 8,192 tokens, five Chinese-finance sources | 6.946 |
+  | code | 15,360 tokens: 30 languages × 512 from GitHub (`codeparrot/github-code-clean`), license headers stripped | 4.777 |
+  | law | 15,360 tokens, 6 × 2,560: Chinese statutes, criminal-case facts (CAIL2018), bar-exam questions (JEC-QA); US Supreme Court opinions, EU legislation, contract clauses (LexGLUE) | 4.741 |
+  | medicine | 15,360 tokens, 6 × 2,560: Chinese medical encyclopedia Q&A, real doctor consultations (cMedQA2), licensing-exam questions with explanations (CMExam); PubMed abstracts, PMC case reports, USMLE questions (MedQA) | 8.647 |
+  | science | 15,360 tokens, 6 × 2,560: Chinese journal abstracts, STEM and humanities / social science (CSL), college STEM questions (C-Eval); arXiv LaTeX source, S2ORC full papers (peS2o), MMLU-Pro STEM questions | 8.559 |
+  | English | WikiText-2, 512 tokens | 1.795 |
+
+  The teacher is the release being quantized: each new set of official weights gets its own teacher logits,
+  cached under a name that carries the weights' folder. Scoring a new base against the old base's teacher
+  would count the difference between two models as quantization error, without any error message.
 
 - **Paired, one variable at a time.** Comparisons use the same binary in the same run.
 - **Gates beyond the five numbers.**
@@ -523,75 +533,84 @@ judge, and our engine is scored on the same path it serves.
 ### 5.1 Quality
 
 Each domain is judged on its own judging slice ([§4.5](#45-how-we-measure)): bare base vs the base with
-that domain's sidecar. Within a table all rows come from the same engine binary in one run, except rows
-marked ¹.
+that domain's sidecar, base and sidecars built from the 1017 release. All rows come from the engine's
+scoring path with one binary; within a table, one run.
 
-**Finance** (judge slice, 8,192 tokens; original model PPL 6.978):
-
-| | Same top-1 | Σmin (median / p5) | Mean KL | PPL ratio |
-|---|---:|---|---:|---:|
-| ① base alone ¹ | 71.73% | 0.703 (0.751 / 0.231) | 0.612 | 1.339 |
-| ① + finance sidecar, gains only | 73.94% | 0.742 (0.810 / 0.276) | 0.522 | 1.282 |
-| **① + finance sidecar** | **74.57%** | **0.745 (0.810 / 0.283)** | **0.512** | **1.267** |
-
-¹ Reference forward on the same file; engine vs reference on the same file differ by KL 0.013.
-Tensor-core prefill ([§4.4](#44-the-engine)) moves the finance-sidecar row to 74.77% / 0.744 / 0.513
-(rounding noise).
-
-**Code** (judge slice, 15,360 tokens = 30 languages × 512; original model PPL 4.766):
+**Finance** (judge slice, 8,192 tokens; original model PPL 6.946):
 
 | | Same top-1 | Σmin (median / p5) | Mean KL | PPL ratio |
 |---|---:|---|---:|---:|
-| ① base alone | 78.61% | 0.754 (0.809 / 0.318) | 0.421 | 1.367 |
-| **① + coding sidecar** | **82.26%** | **0.803 (0.872 / 0.402)** | **0.303** | **1.229** |
+| ① base alone | 71.80% | 0.702 (0.749 / 0.229) | 0.599 | 1.351 |
+| **① + finance sidecar** | **74.38%** | **0.742 (0.806 / 0.286)** | **0.496** | **1.270** |
 
-**Law** (judge slice, 15,360 tokens = 6 sources × 2,560; original model PPL 4.865):
-
-| | Same top-1 | Σmin (median / p5) | Mean KL | PPL ratio |
-|---|---:|---|---:|---:|
-| ① base alone | 72.90% | 0.713 (0.773 / 0.206) | 0.578 | 1.358 |
-| **① + law sidecar** | **76.36%** | **0.760 (0.834 / 0.272)** | **0.454** | **1.251** |
-
-**Medicine** (judge slice, 15,360 tokens = 6 sources × 2,560; original model PPL 8.625):
+**Code** (judge slice, 15,360 tokens = 30 languages × 512; original model PPL 4.777):
 
 | | Same top-1 | Σmin (median / p5) | Mean KL | PPL ratio |
 |---|---:|---|---:|---:|
-| ① base alone | 69.08% | 0.683 (0.692 / 0.259) | 0.602 | 1.378 |
-| **① + medicine sidecar** | **72.82%** | **0.739 (0.767 / 0.325)** | **0.465** | **1.280** |
+| ① base alone | 78.29% | 0.735 (0.785 / 0.306) | 0.451 | 1.399 |
+| **① + coding sidecar** | **81.96%** | **0.790 (0.853 / 0.399)** | **0.318** | **1.243** |
 
-**Science** (judge slice, 15,360 tokens = 6 sources × 2,560; original model PPL 8.770):
+**Law** (judge slice, 15,360 tokens = 6 sources × 2,560; original model PPL 4.741):
 
 | | Same top-1 | Σmin (median / p5) | Mean KL | PPL ratio |
 |---|---:|---|---:|---:|
-| ① base alone | 71.65% | 0.707 (0.726 / 0.282) | 0.537 | 1.259 |
-| **① + science sidecar** | **74.93%** | **0.753 (0.788 / 0.347)** | **0.422** | **1.173** |
+| ① base alone | 73.20% | 0.708 (0.754 / 0.237) | 0.544 | 1.357 |
+| **① + law sidecar** | **76.45%** | **0.751 (0.809 / 0.298)** | **0.431** | **1.254** |
 
-**General English** (WikiText-2, 512 tokens; original model PPL 1.657): the check that a domain sidecar
+**Medicine** (judge slice, 15,360 tokens = 6 sources × 2,560; original model PPL 8.647):
+
+| | Same top-1 | Σmin (median / p5) | Mean KL | PPL ratio |
+|---|---:|---|---:|---:|
+| ① base alone | 69.37% | 0.676 (0.679 / 0.262) | 0.605 | 1.392 |
+| **① + medicine sidecar** | **73.12%** | **0.730 (0.754 / 0.315)** | **0.474** | **1.290** |
+
+**Science** (judge slice, 15,360 tokens = 6 sources × 2,560; original model PPL 8.559):
+
+| | Same top-1 | Σmin (median / p5) | Mean KL | PPL ratio |
+|---|---:|---|---:|---:|
+| ① base alone | 71.48% | 0.699 (0.712 / 0.306) | 0.523 | 1.300 |
+| **① + science sidecar** | **74.85%** | **0.748 (0.776 / 0.358)** | **0.408** | **1.205** |
+
+**General English** (WikiText-2, 512 tokens; original model PPL 1.795): the check that a domain sidecar
 does not cost general capability. The bare-base row reads identically in every run.
 
 | | Same top-1 | Σmin (median / p5) | Mean KL | PPL ratio |
 |---|---:|---|---:|---:|
-| ① base alone | 78.52% | 0.769 (0.950 / 0.065) | 0.694 | 1.797 |
-| ① + finance sidecar | 80.66% | 0.787 (0.965 / 0.083) | 0.619 | 1.658 |
-| ① + coding sidecar | 82.23% | 0.797 (0.972 / 0.103) | 0.584 | 1.644 |
-| ① + law sidecar | 82.81% | 0.800 (0.973 / 0.085) | 0.580 | 1.590 |
-| ① + medicine sidecar | 82.81% | 0.801 (0.976 / 0.102) | 0.599 | 1.592 |
-| ① + science sidecar | 82.62% | 0.800 (0.975 / 0.126) | 0.566 | 1.564 |
+| ① base alone | 76.76% | 0.725 (0.912 / 0.061) | 0.810 | 1.684 |
+| ① + finance sidecar | 79.49% | 0.754 (0.943 / 0.072) | 0.706 | 1.506 |
+| ① + coding sidecar | 79.69% | 0.756 (0.936 / 0.075) | 0.680 | 1.525 |
+| ① + law sidecar | 78.12% | 0.755 (0.949 / 0.069) | 0.714 | 1.520 |
+| ① + medicine sidecar | 78.71% | 0.753 (0.944 / 0.077) | 0.711 | 1.474 |
+| ① + science sidecar | 77.93% | 0.760 (0.946 / 0.078) | 0.681 | 1.449 |
 
 At 512 positions one position is 0.2 pp: these rows read as "no regression", not as a gain.
+
+**Against the previous base.** The same recipe on the previous release of the weights gave per-domain
+gains of +2.84 (finance), +3.65 (code), +3.46 (law), +3.74 (medicine) and +3.28 pp (science); this base
+gives +2.58, +3.67, +3.25, +3.75 and +3.37. The bare base reads lower on WikiText-2 (76.8% vs 78.5%), but
+that ruler's teacher changed too (original-model PPL 1.795 vs 1.657 on the same 512 tokens), and on the
+16× longer finance ruler the bare base is level (71.70% vs 71.73% on the reference path).
 
 ### 5.2 Speed (one DGX Spark)
 
 | Workload | Prefill | Decode |
 |---|---:|---:|
-| 12.5k-token prompt | **1,055 t/s** (539 with `--decoder-full`) | — |
-| Real agent request, 14.1k-token prompt | **940 t/s** | — |
-| 106.7k-token prompt through the server | **671 t/s** (159 s to the first token) | — |
-| Short prompt, plain greedy | — | **30.5–30.7 t/s** |
-| Real agent request, 14.1k-token prompt, plain | — | 28.9–29.4 t/s |
-| Same request, speculative (default) | — | **43.0 t/s** (3.04 tokens per round) |
-| Request never used for tuning, 9.2k prompt, speculative | — | **40.0 t/s** |
-| 51k context, plain | — | 27.5 t/s |
+| Real request, 7.7k-token prompt, 1017 base + coding sidecar, plain | **999 t/s** | **30.1 t/s** (33.2 ms per token) |
+| Same request, speculative (default) | 1,017 t/s | **45.7 t/s** (2.11 of 5 drafts accepted) |
+| 12.5k-token prompt † | **1,055 t/s** (539 with `--decoder-full`) | — |
+| Real agent request, 14.1k-token prompt † | **940 t/s** | — |
+| 106.7k-token prompt through the server † | **671 t/s** (159 s to the first token) | — |
+| Short prompt, plain greedy † | — | **30.5–30.7 t/s** |
+| Real agent request, 14.1k-token prompt, plain † | — | 28.9–29.4 t/s |
+| Same request, speculative † | — | **43.0 t/s** (3.04 tokens per round) |
+| Request never used for tuning, 9.2k prompt, speculative † | — | **40.0 t/s** |
+| 51k context, plain † | — | 27.5 t/s |
+
+† Measured on the previous base. The 1017 base file has the same size and layout to the byte
+(113,556,639,424 bytes) and its sidecars are the same size, so every kernel reads the same bytes: on the
+7.7k request, run back to back with one binary, the previous base with its coding sidecar reads 1,007 t/s
+prefill and 30.0 t/s plain decode. Speculative decode is not comparable across bases from one run (46.5 vs
+45.7 t/s): the two models write different text, and acceptance follows the text.
 
 ---
 
@@ -620,18 +639,19 @@ Negative results carry as much of the design as positive ones. Each row was meas
 The one-command installer and its options are in the [README](../README.md#how-to-use-it). This section is
 what the installer does, for doing it yourself, plus the details of the server and its pages.
 
-**Files in the [Hugging Face repository](https://huggingface.co/wenzhouwu/YoungAi-DeepSeek-V4.1-Flash).**
+**Files in the [Hugging Face repository](https://huggingface.co/wenzhouwu/YoungAi-DeepSeek-V4.1-Flash-1017).**
 
 | Path | What |
 |---|---|
-| `DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative.gguf.part01-of-40` … `part40-of-40` | ① base, 113,556,639,424 bytes, split into 40 parts |
+| `DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative.gguf.part01-of-40` … `part40-of-40` | ① base, 113,556,639,424 bytes, split into 40 parts |
+| `DeepSeek-V4.1-Flash-1017.vision.gguf` | the vision tower, 971,066,016 bytes, kept at original BF16; read from disk only when an image arrives |
 | `SHA256SUMS` | sha256 of the assembled base and of every part |
 | `install.sh` | the one-command installer |
-| `DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative-grrb-vqfin41_vqhalf_a_n8192-engine/` | ② finance sidecar: `gr_Lnn.bin` (gains, 39 layers) + `rb_Lnn.bin` (router bias, 27 layers) + `manifest.txt` (per-layer λ and held-out gain) |
-| `DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative-grrb-code_fit_n15360-engine/` | ② coding sidecar, same layout: gains on 39 layers, router bias on 29 layers |
-| `DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative-grrb-law_fit_n15360-engine/` | ② law sidecar: gains on 40 layers, router bias on 24 layers |
-| `DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative-grrb-med_fit_n15360-engine/` | ② medicine sidecar: gains on 40 layers, router bias on 29 layers |
-| `DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative-grrb-sci_fit_n15360-engine/` | ② science sidecar: gains on 40 layers, router bias on 29 layers |
+| `DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative-grrb-vqfin41_vqhalf_a_n8192-engine/` | ② finance sidecar: `gr_Lnn.bin` (gains, 40 layers) + `rb_Lnn.bin` (router bias, 32 layers) + `manifest.txt` (per-layer λ and held-out gain) |
+| `DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative-grrb-code_fit_n15360-engine/` | ② coding sidecar, same layout: gains on 40 layers, router bias on 29 layers |
+| `DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative-grrb-law_fit_n15360-engine/` | ② law sidecar: gains on 40 layers, router bias on 25 layers |
+| `DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative-grrb-med_fit_n15360-engine/` | ② medicine sidecar: gains on 40 layers, router bias on 31 layers |
+| `DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative-grrb-sci_fit_n15360-engine/` | ② science sidecar: gains on 40 layers, router bias on 30 layers |
 | `posttrain-experimental-20260924/` | ③ an experimental post-training file: `gr_L39.bin` + `base.fnv` (see below) |
 | `bin/ds4`, `bin/ds4-server` | engine binaries, built on the Spark with `make cuda-spark` from the source at [github.com/fodelf/YoungAi](https://github.com/fodelf/YoungAi) (engine, CUDA kernels, quantization and sidecar toolchain) |
 | `LICENSE`, `LICENSE-DeepSeek` | MIT notices for the engine (incl. GGML) and for the model weights |
@@ -640,12 +660,12 @@ what the installer does, for doing it yourself, plus the details of the server a
 part's worth, because it appends and deletes one part at a time).
 
 ```sh
-hf download wenzhouwu/YoungAi-DeepSeek-V4.1-Flash --local-dir ds4-v41
+hf download wenzhouwu/YoungAi-DeepSeek-V4.1-Flash-1017 --local-dir ds4-v41
 cd ds4-v41
 sha256sum -c --ignore-missing SHA256SUMS            # every part must report OK
-cat DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative.gguf.part{01..40}-of-40 > DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative.gguf
+cat DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative.gguf.part{01..40}-of-40 > DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative.gguf
 sha256sum -c --ignore-missing SHA256SUMS            # now the assembled .gguf reports OK too
-rm DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative.gguf.part*-of-40
+rm DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative.gguf.part*-of-40
 chmod +x bin/ds4 bin/ds4-server                      # downloads do not keep the executable bit
 ```
 
@@ -653,8 +673,8 @@ chmod +x bin/ds4 bin/ds4-server                      # downloads do not keep the
 from two shards of the official checkpoint (≈ 101.5 GB each).
 
 ```sh
-hf download deepseek-ai/DeepSeek-V4.1-Flash \
-    model-00047-of-00048.safetensors model-00048-of-00048.safetensors --local-dir /data/DeepSeek-V4.1-Flash
+hf download deepseek-ai/DeepSeek-V4.1-Flash-1017 \
+    model-00047-of-00048.safetensors model-00048-of-00048.safetensors --local-dir /data/DeepSeek-V4.1-Flash-1017
 ```
 
 Any folder works; tell the engine where it is with `--engram-dir` (next step). The GGUF itself only records the
@@ -665,19 +685,20 @@ engine warns at load and stops at the first request with `ds4: engram 表打不�
 
 ```sh
 cd ds4-v41
-SIDECAR=DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative-grrb-vqfin41_vqhalf_a_n8192-engine    # finance
-# SIDECAR=DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative-grrb-code_fit_n15360-engine         # code
-# SIDECAR=DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative-grrb-law_fit_n15360-engine          # law
-# SIDECAR=DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative-grrb-med_fit_n15360-engine          # medicine
-# SIDECAR=DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative-grrb-sci_fit_n15360-engine          # science
-./bin/ds4-server --cuda -m DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative.gguf --zchain $SIDECAR \
-    --engram-dir /data/DeepSeek-V4.1-Flash --mem-budget-mb 110000 --host 0.0.0.0 --port 8000
+SIDECAR=DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative-grrb-vqfin41_vqhalf_a_n8192-engine    # finance
+# SIDECAR=DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative-grrb-code_fit_n15360-engine         # code
+# SIDECAR=DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative-grrb-law_fit_n15360-engine          # law
+# SIDECAR=DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative-grrb-med_fit_n15360-engine          # medicine
+# SIDECAR=DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative-grrb-sci_fit_n15360-engine          # science
+./bin/ds4-server --cuda -m DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative.gguf --zchain $SIDECAR \
+    --engram-dir /data/DeepSeek-V4.1-Flash-1017 --mem-budget-mb 110000 --host 0.0.0.0 --port 8000
 ```
 
 Loading takes about two minutes. Endpoints: `/v1/chat/completions`, `/v1/completions`, `/v1/responses`
 (OpenAI style) and `/v1/messages` (Anthropic style). Sampling knobs a request leaves out follow the model
 card's evaluation recipe: `temperature` 1.0, `top_p` 0.95, no `min_p` — sampled on the GPU, speculative decoding kept on
-(34–37 tokens/s across runs on the 14k-token agent request vs 45.5 greedy). For byte-reproducible output send
+(34–37 tokens/s across runs on the 14k-token agent request vs 45.5 greedy, measured on the previous base).
+For byte-reproducible output send
 `"temperature": 0` explicitly.
 Requests default to **non-thinking** mode. Turn thinking on per request with `"reasoning_effort": "high"` (or
 `"max"`), `"thinking": {"type": "enabled"}`, `"think": true`, or `"model": "deepseek-reasoner"`. The quantized
@@ -706,21 +727,24 @@ Started from the source tree they are there; an install made by `install.sh` has
 **Command line.**
 
 ```sh
-./bin/ds4 --cuda -m DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative.gguf --zchain $SIDECAR \
-    --engram-dir /data/DeepSeek-V4.1-Flash -p "Explain the price-to-earnings ratio."
+./bin/ds4 --cuda -m DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative.gguf --zchain $SIDECAR \
+    --engram-dir /data/DeepSeek-V4.1-Flash-1017 -p "Explain the price-to-earnings ratio."
 # samples with the model card's recipe by default (plain decode); add --temp 0 for greedy + speculative,
 # plus --no-dspark for plain greedy (speed baselines); drop --zchain to run the bare base
 ```
 
 **The published post-training file is an old experiment.** `posttrain-experimental-20260924/` holds
 last-layer gains from the earlier closed-form solve (§4.3) on one market-outlook request; it only shows the
-format and the loading path. A ③ you train yourself loads the same way. `base.fnv` is the finance sidecar's
-fingerprint, so this one stacks only on that sidecar and the engine refuses any other pairing:
+format and the loading path. A ③ you train yourself loads the same way:
 
 ```sh
-./bin/ds4-server … --zchain DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative-grrb-vqfin41_vqhalf_a_n8192-engine \
-    --posttrain posttrain-experimental-20260924
+./bin/ds4-server … --zchain <the sidecar it was trained on> --posttrain <your ③ directory>
 ```
+
+`base.fnv` inside a ③ is the fingerprint of the sidecar it was trained against, and the engine refuses any
+other pairing. The experimental file was trained against the *previous* base's finance sidecar, so it does
+not stack on any 1017 sidecar: the server stops at load with a fingerprint mismatch. Train a new ③ on the
+current pair instead (*Train* tab, or `./ds4 --ptrain`).
 
 ### Building and running on a Mac
 
@@ -743,8 +767,8 @@ To try it on a Mac with enough memory: `install.sh` is Linux-only, so do Steps 1
 start your own build from the source tree:
 
 ```sh
-./ds4-server --metal -m /path/to/DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative.gguf --zchain /path/to/$SIDECAR \
-    --engram-dir /path/to/DeepSeek-V4.1-Flash --mem-budget-mb 110000 --port 8000
+./ds4-server --metal -m /path/to/DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative.gguf --zchain /path/to/$SIDECAR \
+    --engram-dir /path/to/DeepSeek-V4.1-Flash-1017 --mem-budget-mb 110000 --port 8000
 ```
 
 Start it from the source directory (or pass `--chdir <source dir>`): the Metal shaders are compiled at

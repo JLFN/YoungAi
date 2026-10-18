@@ -46,7 +46,7 @@
       <div class="btns">
         <a class="btn btn-primary" href="guide.html"><span lang="zh-CN">使用指南 →</span><span lang="en">Read the guide →</span></a>
         <a class="btn btn-ghost" href="https://github.com/fodelf/YoungAi"><span lang="zh-CN">GitHub 源码</span><span lang="en">Source on GitHub</span></a>
-        <a class="btn btn-ghost" href="https://huggingface.co/wenzhouwu/YoungAi-DeepSeek-V4.1-Flash">Hugging Face</a>
+        <a class="btn btn-ghost" href="https://huggingface.co/wenzhouwu/YoungAi-DeepSeek-V4.1-Flash-1017">Hugging Face</a>
       </div>
     </div>
     <div>
@@ -61,7 +61,7 @@
     <div class="stats">
       <div class="stat"><b>0 B</b><span lang="zh-CN">上云的数据</span><span lang="en">of your data sent to a cloud</span></div>
       <div class="stat"><b>1M</b><span lang="zh-CN">token 上下文，满载 KV 只要 0.89 GB</span><span lang="en">token context; full KV cache is 0.89 GB</span></div>
-      <div class="stat"><b>45.5 t/s</b><span lang="zh-CN">写字速度（真实 14k token 请求）</span><span lang="en">generation on a real 14k-token request</span></div>
+      <div class="stat"><b>45.7 t/s</b><span lang="zh-CN">写字速度（真实 7.7k token 请求）</span><span lang="en">generation on a real 7.7k-token request</span></div>
       <div class="stat"><b>30+</b><span lang="zh-CN">个工具，每次都在内核沙盒里跑</span><span lang="en">tools, each call in a kernel sandbox</span></div>
     </div>
   </div>
@@ -296,19 +296,19 @@
     <div class="kicker"><span lang="zh-CN">背后的模型</span><span lang="en">The model behind it</span></div>
     <h2 lang="zh-CN">510 GB 的前沿模型，装进一台 128 GB 的机器</h2>
     <h2 lang="en">A 510 GB frontier model on a 128 GB machine</h2>
-    <p class="sub" lang="zh-CN">DeepSeek V4.1 Flash 原样发布是 510 GB。我们自己写的推理引擎（纯 C99 + CUDA / Metal，一个 Makefile）把它压到 113.6 GB，跑在一台 DGX Spark 上。</p>
-    <p class="sub" lang="en">DeepSeek V4.1 Flash is 510 GB as released. Our own inference engine (plain C99 + CUDA / Metal, one Makefile) shrinks it to 113.6 GB and runs it on one DGX Spark.</p>
+    <p class="sub" lang="zh-CN">DeepSeek V4.1 Flash 的 1017 版原样发布是 510 GB。我们自己写的推理引擎（纯 C99 + CUDA / Metal，一个 Makefile）把它压到 113.6 GB，跑在一台 DGX Spark 上。</p>
+    <p class="sub" lang="en">DeepSeek V4.1 Flash, the 1017 release, is 510 GB as published. Our own inference engine (plain C99 + CUDA / Metal, one Makefile) shrinks it to 113.6 GB and runs it on one DGX Spark.</p>
     <div class="table-wrap"><table>
       <tr><th><span lang="zh-CN">项</span><span lang="en">Item</span></th><th><span lang="zh-CN">数</span><span lang="en">Number</span></th></tr>
       <tr><td lang="zh-CN">体积</td><td lang="en">Size</td>
           <td lang="zh-CN">官方 510 GB → 基座 113.6 GB（每 8 个权重一起向量量化，约 1.6 bit/权重，不用训练数据）</td>
           <td lang="en">510 GB → 113.6 GB base (8 weights vector-quantized together, ~1.6 bit/weight, no training data)</td></tr>
-      <tr><td lang="zh-CN">读提示</td><td lang="en">Reading</td><td>1,055 token/s <span lang="zh-CN">（12.5k token 提示）</span><span lang="en">(12.5k-token prompt)</span></td></tr>
-      <tr><td lang="zh-CN">写回答</td><td lang="en">Writing</td><td>45.5 token/s <span lang="zh-CN">（真实 14k token Agent 请求，投机解码开）</span><span lang="en">(real 14k-token agent request, speculative decoding on)</span></td></tr>
+      <tr><td lang="zh-CN">读提示</td><td lang="en">Reading</td><td>999 token/s <span lang="zh-CN">（真实 7.7k token 请求，挂编程侧车）</span><span lang="en">(a real 7.7k-token request, coding sidecar on)</span></td></tr>
+      <tr><td lang="zh-CN">写回答</td><td lang="en">Writing</td><td>45.7 token/s <span lang="zh-CN">（同一请求，投机解码开；不开 30.1）</span><span lang="en">(same request, speculative decoding on; 30.1 without)</span></td></tr>
       <tr><td lang="zh-CN">上下文</td><td lang="en">Context</td><td>1M token <span lang="zh-CN">· 满载 KV 缓存 0.89 GB</span><span lang="en">· full KV cache 0.89 GB</span></td></tr>
       <tr><td lang="zh-CN">领域侧车</td><td lang="en">Domain sidecars</td>
-          <td lang="zh-CN">金融 / 编程 / 法律 / 医疗 / 科研，各约 40 MB；挂上后与原版全精度模型下一个字的一致率高 2.9–3.7 个百分点</td>
-          <td lang="en">finance / code / law / medicine / science, ~40 MB each; next-token agreement with the full-precision original rises 2.9–3.7 points</td></tr>
+          <td lang="zh-CN">金融 / 编程 / 法律 / 医疗 / 科研，各约 40 MB；挂上后与原版全精度模型下一个字的一致率高 2.6–3.8 个百分点</td>
+          <td lang="en">finance / code / law / medicine / science, ~40 MB each; next-token agreement with the full-precision original rises 2.6–3.8 points</td></tr>
     </table></div>
     <p lang="zh-CN">测法和完整结果表：<a href="https://github.com/fodelf/YoungAi/blob/restructure/docs/TECHNICAL.zh-CN.md">技术细节</a>。</p>
     <p lang="en">Method and full tables: <a href="https://github.com/fodelf/YoungAi/blob/restructure/docs/TECHNICAL.md">technical notes</a>.</p>
@@ -352,7 +352,7 @@ make cuda-spark
     <div>
       <a href="guide.html"><span lang="zh-CN">使用指南</span><span lang="en">Guide</span></a> ·
       <a href="https://github.com/fodelf/YoungAi">GitHub</a> ·
-      <a href="https://huggingface.co/wenzhouwu/YoungAi-DeepSeek-V4.1-Flash">Hugging Face</a> ·
+      <a href="https://huggingface.co/wenzhouwu/YoungAi-DeepSeek-V4.1-Flash-1017">Hugging Face</a> ·
       <span lang="zh-CN">起步于 <a href="https://github.com/antirez/ds4">antirez/ds4</a></span><span lang="en">Started as a fork of <a href="https://github.com/antirez/ds4">antirez/ds4</a></span>
     </div>
   </div>

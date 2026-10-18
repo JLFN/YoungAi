@@ -1,6 +1,6 @@
 ---
 license: mit
-base_model: deepseek-ai/DeepSeek-V4.1-Flash
+base_model: deepseek-ai/DeepSeek-V4.1-Flash-1017
 base_model_relation: quantized
 language:
 - en
@@ -21,10 +21,6 @@ tags:
 pipeline_tag: text-generation
 ---
 
-> **v0.3.0-rc is out: <https://github.com/fodelf/YoungAi/releases/tag/v0.3.0-rc>**<br>
-> This is the last RC built on DeepSeek-V4.1-Flash. Download the package for your machine (`linux-aarch64` for DGX Spark,
-> `darwin-arm64` for Apple Silicon), unpack it, run the `ds4-train` inside, open `http://<host>:8000/`, and download the model from the *Models* page.
-
 <p align="center">
   <img src="web/logo.jpg" width="96" alt="YoungAi logo">
 </p>
@@ -40,15 +36,31 @@ pipeline_tag: text-generation
 <p align="center">
   <a href="https://fodelf.github.io/YoungAi/"><b>Website · user guide</b></a> ·
   <b>English</b> · <a href="https://github.com/fodelf/YoungAi/blob/restructure/README.zh-CN.md">中文</a> ·
-  <a href="https://huggingface.co/wenzhouwu/YoungAi-DeepSeek-V4.1-Flash">Hugging Face</a> ·
+  <a href="https://huggingface.co/wenzhouwu/YoungAi-DeepSeek-V4.1-Flash-1017">Hugging Face</a> ·
   <a href="https://github.com/fodelf/YoungAi/blob/restructure/docs/TECHNICAL.md">Technical notes</a>
 </p>
 
 ![YoungAi Studio: the assistant hunting for the cheapest DGX Spark](docs/img/studio-agent-en.png)
 
-The model behind it is DeepSeek V4.1 Flash (510 GB as released), shrunk to 113.6 GB and running on a single 128 GB
+The model behind it is DeepSeek V4.1 Flash, the 1017 release (510 GB as published), shrunk to 113.6 GB and running on a single 128 GB
 DGX Spark with a 1M-token context. Open source, MIT. Plain C99 + CUDA (Metal on Apple Silicon), one Makefile, no
 third-party libraries linked.
+
+## The model
+
+| | |
+|---|---|
+| Size | 510 GB as released → 113.6 GB base (8 weights vector-quantized together, ~1.6 bit/weight, no training data used) |
+| Speed (DGX Spark) | reads 999 tokens/s; writes 45.7 tokens/s with speculative decoding, 30.1 without (a real 7.7k-token request, coding sidecar on) |
+| Context | 1M tokens; the full KV cache is 0.89 GB |
+| Domain sidecars | finance / code / law / medicine / science, ~40 MB each, switched from the chat box in under a second |
+
+With a sidecar, how often our next token matches the original full-precision model's goes up 2.6–3.8 points (code:
+78.3% → 82.0%), and general English text goes up too (76.8% → 77.9–79.7%). Method and full tables:
+[technical notes §5](docs/TECHNICAL.md#5-results).
+
+**On a Mac**, `make` builds the Metal version; 126 GPU kernel tests pass on a real Apple GPU. The full model has not run on a
+Mac yet (ours has 16 GB).
 
 ## What it does
 
@@ -160,24 +172,9 @@ compatible). Create a key on the *API* tab and send `Authorization: Bearer <key>
 `{"text":"…"}`; other sample rates or formats get a 400 saying what arrived. API only, no Studio, no build:
 
 ```sh
-curl -fsSLO https://huggingface.co/wenzhouwu/YoungAi-DeepSeek-V4.1-Flash/resolve/main/install.sh
+curl -fsSLO https://huggingface.co/wenzhouwu/YoungAi-DeepSeek-V4.1-Flash-1017/resolve/main/install.sh
 bash install.sh                      # --domain law for another domain (default: code); --endpoint https://hf-mirror.com for a mirror
 ```
-
-## The model
-
-| | |
-|---|---|
-| Size | 510 GB as released → 113.6 GB base (8 weights vector-quantized together, ~1.6 bit/weight, no training data used) |
-| Speed (DGX Spark) | reads 1,055 tokens/s (12.5k-token prompt); writes 45.5 tokens/s (a real 14k-token agent request, speculative decoding on) |
-| Context | 1M tokens; the full KV cache is 0.89 GB |
-| Domain sidecars | finance / code / law / medicine / science, ~40 MB each, switched from the chat box in under a second |
-
-With a sidecar, how often our next token matches the original full-precision model's goes up 2.9–3.7 points (code:
-78.6% → 82.3%). Method and full tables: [technical notes §5](docs/TECHNICAL.md#5-results).
-
-**On a Mac**, `make` builds the Metal version; 126 GPU kernel tests pass on a real Apple GPU. The full model has not run on a
-Mac yet (ours has 16 GB).
 
 ## Limits
 
@@ -224,7 +221,7 @@ YoungAi started as a fork of [antirez/ds4](https://github.com/antirez/ds4) (Dwar
 engine). GGUF, layouts such as q4_K and much kernel know-how come from [llama.cpp and GGML](https://github.com/ggml-org/llama.cpp);
 the GGML copyright notice stays in `LICENSE`. The model is DeepSeek's; thanks for releasing the weights and the reference code.
 
-Engine: MIT ([`LICENSE`](LICENSE)). The quantized weights derive from DeepSeek V4.1 Flash, also MIT
+Engine: MIT ([`LICENSE`](LICENSE)). The quantized weights derive from DeepSeek V4.1 Flash (1017), also MIT
 ([`LICENSE-DeepSeek`](LICENSE-DeepSeek)).
 
 Voice input is Powered by Moonshine AI. The moonshine-tiny-zh recognizer is **not MIT**; it is under the Moonshine AI

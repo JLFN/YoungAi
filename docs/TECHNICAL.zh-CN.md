@@ -23,9 +23,11 @@ README 里没写的都在这里：系统为什么长成这样、三个文件背�
 **实测。**
 
 - **五个领域，同一套做法。** 金融、编程、法律、医疗、科研各用同一个解算器解出一份侧车。在各自的留出文本上，
-  top-1 一致率 **+2.8 到 +3.7 个点**，平均 KL 降 **16–28%**（表格见 5.1）。
-- **不伤通用。** 在英文维基上，五个侧车挂哪一个，top-1 一致率都从 78.5% 升到 **80.7–82.8%**，
-  Σmin 从 0.769 升到 **0.787–0.801**。
+  top-1 一致率 **+2.6 到 +3.8 个点**，平均 KL 降 **17–30%**（表格见 5.1）。
+- **不伤通用。** 在英文维基上，五个侧车挂哪一个，top-1 一致率都从 76.8% 升到 **77.9–79.7%**，
+  Σmin 从 0.725 升到 **0.753–0.760**。
+- **换底座照样复现。** 同一套配方、同一份语料、同一个解算器，原封不动地在 1017 版官方权重上重跑一遍，
+  各领域的增益和上一版底座相差不到 0.3 个点（编程 +3.67 对 +3.65，医疗 +3.75 对 +3.74）。
 - **杠杆。** 按实测的位宽曲线，+3 个点大约相当于每个权重多 0.15 bit，也就是专家多占约 11 GB。
   而做到这件事的侧车只有约 **40 MB**。
 
@@ -220,15 +222,15 @@ E2M1 只有 8 个幅值格点。所以把 Gauss–Seidel 的每一步拆成三�
 
 | 侧车 | 拟合语料 | 增益 / 路由偏置 | 体积 | 教师夹具 + 40 层解算 |
 |---|---|---|---:|---|
-| 金融 | 8,192 token，五个中文金融来源 | 39 / 27 层 | 40.8 MB | 27 + 73 分钟 |
-| 编程 | 15,360 token，30 种编程语言 × 512 | 39 / 29 层 | 40.8 MB | 31 + 124 分钟 |
-| 法律 | 15,360 token，6 个来源 × 2,560（3 中 3 英） | 40 / 24 层 | 41.8 MB | 31 + 104 分钟 |
-| 医疗 | 15,360 token，6 个来源 × 2,560（3 中 3 英） | 40 / 29 层 | 41.8 MB | 32 + 115 分钟 |
-| 科研 | 15,360 token，6 个来源 × 2,560（3 中 3 英） | 40 / 29 层 | 41.8 MB | 32 + 104 分钟 |
+| 金融 | 8,192 token，五个中文金融来源 | 40 / 32 层 | 40 MB | 28 + 34 分钟 |
+| 编程 | 15,360 token，30 种编程语言 × 512 | 40 / 29 层 | 40 MB | 31 + 65 分钟 |
+| 法律 | 15,360 token，6 个来源 × 2,560（3 中 3 英） | 40 / 25 层 | 40 MB | 33 + 64 分钟 |
+| 医疗 | 15,360 token，6 个来源 × 2,560（3 中 3 英） | 40 / 31 层 | 40 MB | 33 + 75 分钟 |
+| 科研 | 15,360 token，6 个来源 × 2,560（3 中 3 英） | 40 / 30 层 | 40 MB | 34 + 72 分钟 |
 
-**证据**（top-1 一致率，成对跑；完整表格见 5.1）。金融：增益 71.7 → 73.9%；增益固定、再加路由偏置
-+0.24 个点、KL −2.5%（英文 +0.78 个点、KL −3.8%）。挂本域侧车：编程 78.6 → 82.3%、法律 72.9 → 76.4%、
-医疗 69.1 → 72.8%、科研 71.7 → 74.9%。
+**证据**（top-1 一致率，成对跑；完整表格见 5.1）。挂本域侧车：金融 71.8 → 74.4%、编程 78.3 → 82.0%、
+法律 73.2 → 76.5%、医疗 69.4 → 73.1%、科研 71.5 → 74.9%。路由偏置叠在增益上是有用的：在上一版底座上，
+金融增益固定、再加路由偏置，金融 +0.24 个点、KL −2.5%，英文 +0.78 个点、KL −3.8%。
 
 ### 4.3 后训练文件
 
@@ -275,7 +277,8 @@ WikiText-2 两臂（② 对 ② + ③）逐位置配对的 Σmin 与 KL 之差�
 一句话，改不动整条推理链；而且答案位的激活不像拟合行时就根本不点火。公开的"把文档写进权重"的方法（knowledge
 modules、prompt distillation、cartridges、自蒸馏）全是梯度训练、以老师分布当目标——这一版就是这么做的。
 
-**证据。** 一台 DGX Spark，一份真实数据：20 篇交易复盘出的 1,326 道题（另加 63 道保持料），3 轮，0–39 层，
+**证据。** 这一节所有后训练读数都是在上一版底座（1017 版之前）上量的，还没在当前底座上重跑。
+一台 DGX Spark，一份真实数据：20 篇交易复盘出的 1,326 道题（另加 63 道保持料），3 轮，0–39 层，
 学习率 2e-4，端到端 72 分钟：
 
 | | 留出损失 | 保持料 KL | WikiText-2 Σmin | WikiText-2 平均 KL | WikiText-2 top-1 一致率 |
@@ -405,14 +408,17 @@ KL 0.5149 → 0.5131、top-1 一致率 74.56% → 74.77%；除注意力核外其
 - **互不重叠的切片**：每个领域的文本切成拟合份和判决份，永不混用；同一个来源（一篇文档、一个代码仓库）
   只进其中一份。
 
-  | 尺 | 判决切片 | 原模型 PPL |
+  | 尺 | 判决切片 | 原模型 PPL（1017 版） |
   |---|---|---:|
-  | 金融 | 8,192 token，五个中文金融来源 | 6.978 |
-  | 编程 | 15,360 token：30 种语言 × 512，取自 GitHub（`codeparrot/github-code-clean`），剥掉许可证头 | 4.766 |
-  | 法律 | 15,360 token，6 × 2,560：中国法律法规、刑事案件公诉事实（CAIL2018）、司法考试真题（JEC-QA）；美国最高法院判决、欧盟法规、合同条款（LexGLUE） | 4.865 |
-  | 医疗 | 15,360 token，6 × 2,560：医学百科问答、寻医问药真实医生回答（cMedQA2）、执业医师考试题与解析（CMExam）；PubMed 摘要、PMC 病例报告、USMLE 考题（MedQA） | 8.625 |
-  | 科研 | 15,360 token，6 × 2,560：中文核心期刊摘要·理工农医与人文社科（CSL）、大学理工科试题（C-Eval）；arXiv LaTeX 原文、S2ORC 论文全文（peS2o）、MMLU-Pro 理工类试题 | 8.770 |
-  | 英文 | WikiText-2，512 token | 1.657 |
+  | 金融 | 8,192 token，五个中文金融来源 | 6.946 |
+  | 编程 | 15,360 token：30 种语言 × 512，取自 GitHub（`codeparrot/github-code-clean`），剥掉许可证头 | 4.777 |
+  | 法律 | 15,360 token，6 × 2,560：中国法律法规、刑事案件公诉事实（CAIL2018）、司法考试真题（JEC-QA）；美国最高法院判决、欧盟法规、合同条款（LexGLUE） | 4.741 |
+  | 医疗 | 15,360 token，6 × 2,560：医学百科问答、寻医问药真实医生回答（cMedQA2）、执业医师考试题与解析（CMExam）；PubMed 摘要、PMC 病例报告、USMLE 考题（MedQA） | 8.647 |
+  | 科研 | 15,360 token，6 × 2,560：中文核心期刊摘要·理工农医与人文社科（CSL）、大学理工科试题（C-Eval）；arXiv LaTeX 原文、S2ORC 论文全文（peS2o）、MMLU-Pro 理工类试题 | 8.559 |
+  | 英文 | WikiText-2，512 token | 1.795 |
+
+  老师就是被量化的那一版：每换一版官方权重，就单独算一份老师 logits，缓存文件名里带着权重目录名。
+  拿旧底座的老师去判新底座，会把两个模型本身的差别算成量化误差，而且不报任何错。
 
 - **成对、一次只动一个变量**：对比一律同一个二进制、同一趟跑。
 - **五个数之外的门。**
@@ -427,74 +433,82 @@ KL 0.5149 → 0.5131、top-1 一致率 74.56% → 74.77%；除注意力核外其
 
 ### 5.1 质量
 
-每个领域都在它自己的判决切片上判（见 4.5）：裸基座对比挂上本域侧车。同一张表里的各行都是同一个引擎二进制、
-同一趟跑出来的，标 ¹ 的行除外。
+每个领域都在它自己的判决切片上判（见 4.5）：裸基座对比挂上本域侧车，基座和侧车都由 1017 版官方权重做出。
+所有行都走引擎的打分路、同一个二进制；同一张表里是同一趟。
 
-**金融**（判决切片 8,192 token；原模型 PPL 6.978）：
-
-| | top-1 一致率 | Σmin（中位 / p5） | 平均 KL | PPL 比值 |
-|---|---:|---|---:|---:|
-| 只有 ① 基座 ¹ | 71.73% | 0.703（0.751 / 0.231） | 0.612 | 1.339 |
-| ① + 金融侧车，只挂增益 | 73.94% | 0.742（0.810 / 0.276） | 0.522 | 1.282 |
-| **① + 金融侧车** | **74.57%** | **0.745（0.810 / 0.283）** | **0.512** | **1.267** |
-
-¹ 同一份文件上的参考前向；引擎与参考前向在同一份文件上的差距是 KL 0.013。
-预填换张量核（见 4.4）后，金融侧车那一行是 74.77% / 0.744 / 0.513（舍入噪声）。
-
-**编程**（判决切片 15,360 token = 30 种语言 × 512；原模型 PPL 4.766）：
+**金融**（判决切片 8,192 token；原模型 PPL 6.946）：
 
 | | top-1 一致率 | Σmin（中位 / p5） | 平均 KL | PPL 比值 |
 |---|---:|---|---:|---:|
-| 只有 ① 基座 | 78.61% | 0.754（0.809 / 0.318） | 0.421 | 1.367 |
-| **① + 编程侧车** | **82.26%** | **0.803（0.872 / 0.402）** | **0.303** | **1.229** |
+| 只有 ① 基座 | 71.80% | 0.702（0.749 / 0.229） | 0.599 | 1.351 |
+| **① + 金融侧车** | **74.38%** | **0.742（0.806 / 0.286）** | **0.496** | **1.270** |
 
-**法律**（判决切片 15,360 token = 6 个来源 × 2,560；原模型 PPL 4.865）：
-
-| | top-1 一致率 | Σmin（中位 / p5） | 平均 KL | PPL 比值 |
-|---|---:|---|---:|---:|
-| 只有 ① 基座 | 72.90% | 0.713（0.773 / 0.206） | 0.578 | 1.358 |
-| **① + 法律侧车** | **76.36%** | **0.760（0.834 / 0.272）** | **0.454** | **1.251** |
-
-**医疗**（判决切片 15,360 token = 6 个来源 × 2,560；原模型 PPL 8.625）：
+**编程**（判决切片 15,360 token = 30 种语言 × 512；原模型 PPL 4.777）：
 
 | | top-1 一致率 | Σmin（中位 / p5） | 平均 KL | PPL 比值 |
 |---|---:|---|---:|---:|
-| 只有 ① 基座 | 69.08% | 0.683（0.692 / 0.259） | 0.602 | 1.378 |
-| **① + 医疗侧车** | **72.82%** | **0.739（0.767 / 0.325）** | **0.465** | **1.280** |
+| 只有 ① 基座 | 78.29% | 0.735（0.785 / 0.306） | 0.451 | 1.399 |
+| **① + 编程侧车** | **81.96%** | **0.790（0.853 / 0.399）** | **0.318** | **1.243** |
 
-**科研**（判决切片 15,360 token = 6 个来源 × 2,560；原模型 PPL 8.770）：
+**法律**（判决切片 15,360 token = 6 个来源 × 2,560；原模型 PPL 4.741）：
 
 | | top-1 一致率 | Σmin（中位 / p5） | 平均 KL | PPL 比值 |
 |---|---:|---|---:|---:|
-| 只有 ① 基座 | 71.65% | 0.707（0.726 / 0.282） | 0.537 | 1.259 |
-| **① + 科研侧车** | **74.93%** | **0.753（0.788 / 0.347）** | **0.422** | **1.173** |
+| 只有 ① 基座 | 73.20% | 0.708（0.754 / 0.237） | 0.544 | 1.357 |
+| **① + 法律侧车** | **76.45%** | **0.751（0.809 / 0.298）** | **0.431** | **1.254** |
 
-**通用英文**（WikiText-2，512 token；原模型 PPL 1.657）：用来确认挂领域侧车不伤通用能力。裸基座那一行
+**医疗**（判决切片 15,360 token = 6 个来源 × 2,560；原模型 PPL 8.647）：
+
+| | top-1 一致率 | Σmin（中位 / p5） | 平均 KL | PPL 比值 |
+|---|---:|---|---:|---:|
+| 只有 ① 基座 | 69.37% | 0.676（0.679 / 0.262） | 0.605 | 1.392 |
+| **① + 医疗侧车** | **73.12%** | **0.730（0.754 / 0.315）** | **0.474** | **1.290** |
+
+**科研**（判决切片 15,360 token = 6 个来源 × 2,560；原模型 PPL 8.559）：
+
+| | top-1 一致率 | Σmin（中位 / p5） | 平均 KL | PPL 比值 |
+|---|---:|---|---:|---:|
+| 只有 ① 基座 | 71.48% | 0.699（0.712 / 0.306） | 0.523 | 1.300 |
+| **① + 科研侧车** | **74.85%** | **0.748（0.776 / 0.358）** | **0.408** | **1.205** |
+
+**通用英文**（WikiText-2，512 token；原模型 PPL 1.795）：用来确认挂领域侧车不伤通用能力。裸基座那一行
 每趟都读出同样的数。
 
 | | top-1 一致率 | Σmin（中位 / p5） | 平均 KL | PPL 比值 |
 |---|---:|---|---:|---:|
-| 只有 ① 基座 | 78.52% | 0.769（0.950 / 0.065） | 0.694 | 1.797 |
-| ① + 金融侧车 | 80.66% | 0.787（0.965 / 0.083） | 0.619 | 1.658 |
-| ① + 编程侧车 | 82.23% | 0.797（0.972 / 0.103） | 0.584 | 1.644 |
-| ① + 法律侧车 | 82.81% | 0.800（0.973 / 0.085） | 0.580 | 1.590 |
-| ① + 医疗侧车 | 82.81% | 0.801（0.976 / 0.102） | 0.599 | 1.592 |
-| ① + 科研侧车 | 82.62% | 0.800（0.975 / 0.126） | 0.566 | 1.564 |
+| 只有 ① 基座 | 76.76% | 0.725（0.912 / 0.061） | 0.810 | 1.684 |
+| ① + 金融侧车 | 79.49% | 0.754（0.943 / 0.072） | 0.706 | 1.506 |
+| ① + 编程侧车 | 79.69% | 0.756（0.936 / 0.075） | 0.680 | 1.525 |
+| ① + 法律侧车 | 78.12% | 0.755（0.949 / 0.069） | 0.714 | 1.520 |
+| ① + 医疗侧车 | 78.71% | 0.753（0.944 / 0.077） | 0.711 | 1.474 |
+| ① + 科研侧车 | 77.93% | 0.760（0.946 / 0.078） | 0.681 | 1.449 |
 
 512 个位置里一个位置就是 0.2 个点：这几行只能读作"没退"，不算收益。
+
+**和上一版底座比。** 同一套配方在上一版官方权重上的各领域增益是：金融 +2.84、编程 +3.65、法律 +3.46、
+医疗 +3.74、科研 +3.28 个点；这一版是 +2.58、+3.67、+3.25、+3.75、+3.37。裸基座在 WikiText-2 上读数低一些
+（76.8% 对 78.5%），但这把尺的老师也换了（同样 512 个 token，原模型 PPL 1.795 对 1.657）；在长 16 倍的
+金融尺上，裸基座是持平的（参考前向路上 71.70% 对 71.73%）。
 
 ### 5.2 速度（一台 DGX Spark）
 
 | 场景 | 预填 | 解码 |
 |---|---:|---:|
-| 12.5k token 提示 | **1,055 t/s**（`--decoder-full` 时 539） | — |
-| 真实 Agent 请求，14.1k token 提示 | **940 t/s** | — |
-| 走服务端的 106.7k token 提示 | **671 t/s**（到首字 159 s） | — |
-| 短提示，纯贪心 | — | **30.5–30.7 t/s** |
-| 真实 Agent 请求，14.1k token 提示，纯解码 | — | 28.9–29.4 t/s |
-| 同一请求，投机（默认） | — | **43.0 t/s**（每轮产出 3.04 个 token） |
-| 调参时从没碰过的请求，9.2k 提示，投机 | — | **40.0 t/s** |
-| 5.1 万上下文，纯解码 | — | 27.5 t/s |
+| 真实请求，7.7k token 提示，1017 基座 + 编程侧车，纯解码 | **999 t/s** | **30.1 t/s**（每 token 33.2 ms） |
+| 同一请求，投机（默认） | 1,017 t/s | **45.7 t/s**（每轮 5 个草稿接受 2.11 个） |
+| 12.5k token 提示 † | **1,055 t/s**（`--decoder-full` 时 539） | — |
+| 真实 Agent 请求，14.1k token 提示 † | **940 t/s** | — |
+| 走服务端的 106.7k token 提示 † | **671 t/s**（到首字 159 s） | — |
+| 短提示，纯贪心 † | — | **30.5–30.7 t/s** |
+| 真实 Agent 请求，14.1k token 提示，纯解码 † | — | 28.9–29.4 t/s |
+| 同一请求，投机 † | — | **43.0 t/s**（每轮产出 3.04 个 token） |
+| 调参时从没碰过的请求，9.2k 提示，投机 † | — | **40.0 t/s** |
+| 5.1 万上下文，纯解码 † | — | 27.5 t/s |
+
+† 在上一版底座上量的。1017 版基座文件和它体积、布局逐字节相同（113,556,639,424 字节），侧车也一样大，
+所以每个核读的字节都一样：在那条 7.7k 请求上用同一个二进制前后连跑，上一版底座挂它的编程侧车是预填
+1,007 t/s、纯解码 30.0 t/s。投机解码跑一趟没法跨底座比（46.5 对 45.7 t/s）：两个模型写出来的文字不一样，
+接受率跟着文字走。
 
 ---
 
@@ -524,18 +538,19 @@ KL 0.5149 → 0.5131、top-1 一致率 74.56% → 74.77%；除注意力核外其
 一键安装和它的选项在 [README](../README.zh-CN.md#使用方式) 里。这一节是安装脚本做的事（想手动来可以照着做），
 以及服务和页面的细节。
 
-**[Hugging Face 仓库](https://huggingface.co/wenzhouwu/YoungAi-DeepSeek-V4.1-Flash)里有什么。**
+**[Hugging Face 仓库](https://huggingface.co/wenzhouwu/YoungAi-DeepSeek-V4.1-Flash-1017)里有什么。**
 
 | 路径 | 是什么 |
 |---|---|
-| `DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative.gguf.part01-of-40` … `part40-of-40` | ① 基座，113,556,639,424 字节，切成 40 份 |
+| `DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative.gguf.part01-of-40` … `part40-of-40` | ① 基座，113,556,639,424 字节，切成 40 份 |
+| `DeepSeek-V4.1-Flash-1017.vision.gguf` | 视觉塔，971,066,016 字节，保持原件 BF16；只在来图时从盘上读 |
 | `SHA256SUMS` | 拼好的基座和每一份的 sha256 |
 | `install.sh` | 一键安装脚本 |
-| `DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative-grrb-vqfin41_vqhalf_a_n8192-engine/` | ② 金融侧车：`gr_Lnn.bin`（增益，39 层）+ `rb_Lnn.bin`（路由偏置，27 层）+ `manifest.txt`（逐层 λ 与留出集收益） |
-| `DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative-grrb-code_fit_n15360-engine/` | ② 编程侧车，结构相同：增益 39 层，路由偏置 29 层 |
-| `DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative-grrb-law_fit_n15360-engine/` | ② 法律侧车：增益 40 层，路由偏置 24 层 |
-| `DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative-grrb-med_fit_n15360-engine/` | ② 医疗侧车：增益 40 层，路由偏置 29 层 |
-| `DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative-grrb-sci_fit_n15360-engine/` | ② 科研侧车：增益 40 层，路由偏置 29 层 |
+| `DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative-grrb-vqfin41_vqhalf_a_n8192-engine/` | ② 金融侧车：`gr_Lnn.bin`（增益，40 层）+ `rb_Lnn.bin`（路由偏置，32 层）+ `manifest.txt`（逐层 λ 与留出集收益） |
+| `DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative-grrb-code_fit_n15360-engine/` | ② 编程侧车，结构相同：增益 40 层，路由偏置 29 层 |
+| `DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative-grrb-law_fit_n15360-engine/` | ② 法律侧车：增益 40 层，路由偏置 25 层 |
+| `DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative-grrb-med_fit_n15360-engine/` | ② 医疗侧车：增益 40 层，路由偏置 31 层 |
+| `DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative-grrb-sci_fit_n15360-engine/` | ② 科研侧车：增益 40 层，路由偏置 30 层 |
 | `posttrain-experimental-20260924/` | ③ 一份实验性的后训练文件：`gr_L39.bin` + `base.fnv`（见下） |
 | `bin/ds4`、`bin/ds4-server` | 引擎二进制，在 Spark 上用 `make cuda-spark` 从源码编出来的；源码在 [github.com/fodelf/YoungAi](https://github.com/fodelf/YoungAi)（引擎、CUDA 核、量化与侧车工具链） |
 | `LICENSE`、`LICENSE-DeepSeek` | 引擎（含 GGML）与模型权重各自的 MIT 声明 |
@@ -543,20 +558,20 @@ KL 0.5149 → 0.5131、top-1 一致率 74.56% → 74.77%；除注意力核外其
 **第一步：下载并拼回基座。** 手动拼接时需要 227 GB 空闲空间（一键脚本只多占一份的空间，因为它每追加一份就删一份）。
 
 ```sh
-hf download wenzhouwu/YoungAi-DeepSeek-V4.1-Flash --local-dir ds4-v41
+hf download wenzhouwu/YoungAi-DeepSeek-V4.1-Flash-1017 --local-dir ds4-v41
 cd ds4-v41
 sha256sum -c --ignore-missing SHA256SUMS            # 每一份都必须显示 OK
-cat DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative.gguf.part{01..40}-of-40 > DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative.gguf
+cat DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative.gguf.part{01..40}-of-40 > DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative.gguf
 sha256sum -c --ignore-missing SHA256SUMS            # 这次拼好的 .gguf 也要显示 OK
-rm DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative.gguf.part*-of-40
+rm DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative.gguf.part*-of-40
 chmod +x bin/ds4 bin/ds4-server                      # 下载不保留可执行权限
 ```
 
 **第二步：n-gram 记忆表。** 它不在 Hugging Face 仓库里：引擎直接从官方权重的两个分片里原样读取（每个约 101.5 GB）。
 
 ```sh
-hf download deepseek-ai/DeepSeek-V4.1-Flash \
-    model-00047-of-00048.safetensors model-00048-of-00048.safetensors --local-dir /data/DeepSeek-V4.1-Flash
+hf download deepseek-ai/DeepSeek-V4.1-Flash-1017 \
+    model-00047-of-00048.safetensors model-00048-of-00048.safetensors --local-dir /data/DeepSeek-V4.1-Flash-1017
 ```
 
 放哪个目录都行，下一步用 `--engram-dir` 告诉引擎。GGUF 里只记着这两个分片在“构建它的那台机器”上的路径，
@@ -566,18 +581,18 @@ hf download deepseek-ai/DeepSeek-V4.1-Flash \
 
 ```sh
 cd ds4-v41
-SIDECAR=DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative-grrb-vqfin41_vqhalf_a_n8192-engine    # 金融
-# SIDECAR=DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative-grrb-code_fit_n15360-engine         # 编程
-# SIDECAR=DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative-grrb-law_fit_n15360-engine          # 法律
-# SIDECAR=DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative-grrb-med_fit_n15360-engine          # 医疗
-# SIDECAR=DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative-grrb-sci_fit_n15360-engine          # 科研
-./bin/ds4-server --cuda -m DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative.gguf --zchain $SIDECAR \
-    --engram-dir /data/DeepSeek-V4.1-Flash --mem-budget-mb 110000 --host 0.0.0.0 --port 8000
+SIDECAR=DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative-grrb-vqfin41_vqhalf_a_n8192-engine    # 金融
+# SIDECAR=DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative-grrb-code_fit_n15360-engine         # 编程
+# SIDECAR=DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative-grrb-law_fit_n15360-engine          # 法律
+# SIDECAR=DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative-grrb-med_fit_n15360-engine          # 医疗
+# SIDECAR=DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative-grrb-sci_fit_n15360-engine          # 科研
+./bin/ds4-server --cuda -m DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative.gguf --zchain $SIDECAR \
+    --engram-dir /data/DeepSeek-V4.1-Flash-1017 --mem-budget-mb 110000 --host 0.0.0.0 --port 8000
 ```
 
 加载大约两分钟。接口：`/v1/chat/completions`、`/v1/completions`、`/v1/responses`（OpenAI 风格）和
 `/v1/messages`（Anthropic 风格）。请求里没带的采样参数按模型卡的评测配方：`temperature` 1.0、`top_p` 0.95、
-不设 `min_p`，在 GPU 上采样，投机解码照开（真实 14k token Agent 请求几趟 34–37 token/s，贪心 45.5）。要输出逐字节
+不设 `min_p`，在 GPU 上采样，投机解码照开（真实 14k token Agent 请求几趟 34–37 token/s，贪心 45.5，上一版底座上量的）。要输出逐字节
 可复现就显式传 `"temperature": 0`。
 请求默认**不思考**。要思考按请求显式打开：`"reasoning_effort": "high"`（或 `"max"`）、`"thinking": {"type": "enabled"}`、
 `"think": true`，或 `"model": "deepseek-reasoner"`。量化后的权重对"停"类决策（`</think>`、EOS）给的概率比 FP 模型低，
@@ -599,20 +614,22 @@ SIDECAR=DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative-grrb-vqfin41_vqhalf_a_n8192-en
 **命令行。**
 
 ```sh
-./bin/ds4 --cuda -m DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative.gguf --zchain $SIDECAR \
-    --engram-dir /data/DeepSeek-V4.1-Flash -p "解释一下什么是市盈率。"
+./bin/ds4 --cuda -m DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative.gguf --zchain $SIDECAR \
+    --engram-dir /data/DeepSeek-V4.1-Flash-1017 -p "解释一下什么是市盈率。"
 # 默认按模型卡配方采样（纯解码）；加 --temp 0 走贪心 + 投机，再加 --no-dspark 是纯贪心（测速度基线时用）；
 # 去掉 --zchain 就是裸基座
 ```
 
 **发布的那份后训练文件是旧实验。** `posttrain-experimental-20260924/` 是上一版闭式解（见 4.3）在一条大盘研判
-请求上解出的末层增益，只用来展示格式和加载方式；你自己训出来的 ③ 用同样的方式加载。`base.fnv` 是金融侧车的
-指纹，所以这一份只能叠在金融侧车上，配别的侧车引擎直接拒绝加载：
+请求上解出的末层增益，只用来展示格式和加载方式；你自己训出来的 ③ 用同样的方式加载：
 
 ```sh
-./bin/ds4-server … --zchain DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative-grrb-vqfin41_vqhalf_a_n8192-engine \
-    --posttrain posttrain-experimental-20260924
+./bin/ds4-server … --zchain <训它时挂的那份侧车> --posttrain <你的 ③ 目录>
 ```
+
+③ 里的 `base.fnv` 是它训练时依据的那份侧车的指纹，配别的侧车引擎直接拒绝加载。这份实验文件是对着**上一版**底座的
+金融侧车训的，所以叠不到任何 1017 版侧车上：服务加载时会因为指纹对不上而停下。要用就在当前这一对上重新训一份 ③
+（"训练"页，或 `./ds4 --ptrain`）。
 
 ### 在 Mac 上编译和运行
 
@@ -629,8 +646,8 @@ bf16 的地方逐元素相同；注意力差在一个 bf16 舍入格以内；每
 那步跳过——下载来的 `bin/` 是 Linux 的），然后用自己编的二进制在源码目录里起服务：
 
 ```sh
-./ds4-server --metal -m /path/to/DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative.gguf --zchain /path/to/$SIDECAR \
-    --engram-dir /path/to/DeepSeek-V4.1-Flash --mem-budget-mb 110000 --port 8000
+./ds4-server --metal -m /path/to/DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative.gguf --zchain /path/to/$SIDECAR \
+    --engram-dir /path/to/DeepSeek-V4.1-Flash-1017 --mem-budget-mb 110000 --port 8000
 ```
 
 必须在源码目录里启动（或传 `--chdir <源码目录>`）：Metal shader 是启动时按相对路径从 `metal/*.metal` 现编的，
