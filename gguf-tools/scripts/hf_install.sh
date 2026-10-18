@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# install.sh — download, install and start YoungAi-DeepSeek-V4.1-Flash on an NVIDIA DGX Spark, in one command.
-# (Source of the install.sh published at huggingface.co/wenzhouwu/YoungAi-DeepSeek-V4.1-Flash.)
+# install.sh — download, install and start YoungAi-DeepSeek-V4.1-Flash-1017 on an NVIDIA DGX Spark, in one command.
+# (Source of the install.sh published at huggingface.co/wenzhouwu/YoungAi-DeepSeek-V4.1-Flash-1017.)
 #
 #   bash install.sh                  check the machine, download ~318 GB (resumable), start the server on
 #                                    127.0.0.1:8000 and run a one-line smoke test
@@ -19,7 +19,7 @@
 #   bash install.sh download         download only, on any machine (no hardware check, no server start); the
 #                                    DwarfStar workbench's Models tab runs this into <repo>/gguf/hub
 #   bash install.sh probe            print download progress from disk, one item per line (no network):
-#                                    repo R · shards S47 S48 · gguf NAME TOTAL HAVE · engram TOTAL HAVE · sidecar DOMAIN DIR 0|1
+#                                    repo R · base B · shards S47 S48 · gguf NAME TOTAL HAVE · engram TOTAL HAVE · sidecar DOMAIN DIR 0|1
 #                                    · seg NAME TOTAL HAVE
 #
 # Options:
@@ -28,7 +28,10 @@
 #   --dir DIR          install directory (default: $HOME/youngai); needs ~325 GB free, ~122 GB with --engram-dir
 #   --engram-dir DIR   you already have the two official n-gram shards (a folder holding
 #                      model-00047-of-00048.safetensors and model-00048-of-00048.safetensors): use them where they
-#                      are instead of downloading 203 GB. They are only read, never moved or modified
+#                      are instead of downloading 203 GB. They are only read, never moved or modified.
+#                      They must come from deepseek-ai/DeepSeek-V4.1-Flash-1017: the older DeepSeek-V4.1-Flash release has
+#                      shards with the same names and sizes but different tables, which this script cannot tell apart —
+#                      the server would load them without complaint and answer worse
 #   --host ADDR        listen address (default 127.0.0.1; 0.0.0.0 serves your LAN)
 #   --port N           listen port (default 8000)
 #   --endpoint URL     Hugging Face endpoint for the downloads, e.g. https://hf-mirror.com
@@ -42,13 +45,13 @@
 # Everything is written under --dir; no sudo, nothing outside it.
 set -uo pipefail
 
-REPO="wenzhouwu/YoungAi-DeepSeek-V4.1-Flash"
-BASE_REPO="deepseek-ai/DeepSeek-V4.1-Flash"
-GGUF="DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative.gguf"
+REPO="wenzhouwu/YoungAi-DeepSeek-V4.1-Flash-1017"
+BASE_REPO="deepseek-ai/DeepSeek-V4.1-Flash-1017"
+GGUF="DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative.gguf"
 GGUF_BYTES=113556639424
 # The vision tower ships as its own file so the 40 base parts stay byte-identical. An install made before it was
 # published simply has no such file: the server then starts without it and rejects image requests (HTTP 400).
-VISION="DeepSeek-V4.1-Flash.vision.gguf"
+VISION="DeepSeek-V4.1-Flash-1017.vision.gguf"
 # Narration voices live under tts/ in the repository and ride along with the "everything except the parts" download;
 # nothing here reads them — the workbench (ds4-train) looks for <dir>/model/tts/<name>.gguf itself (src/assistant/tools/tool_tts.c).
 # The base is published as 40 parts (…gguf.part01-of-40 … part40-of-40) because a single 113.6 GB upload could not
@@ -60,11 +63,11 @@ PART_EXTRA=24
 # Domain → sidecar directory in this repository. A new domain = one more line here (and in the README quality table).
 sidecar_of() {
     case "$1" in
-        finance) echo "DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative-grrb-vqfin41_vqhalf_a_n8192-engine";;
-        code)    echo "DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative-grrb-code_fit_n15360-engine";;
-        law)     echo "DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative-grrb-law_fit_n15360-engine";;
-        medicine) echo "DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative-grrb-med_fit_n15360-engine";;
-        science) echo "DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative-grrb-sci_fit_n15360-engine";;
+        finance) echo "DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative-grrb-vqfin41_vqhalf_a_n8192-engine";;
+        code)    echo "DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative-grrb-code_fit_n15360-engine";;
+        law)     echo "DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative-grrb-law_fit_n15360-engine";;
+        medicine) echo "DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative-grrb-med_fit_n15360-engine";;
+        science) echo "DeepSeek-V4.1-Flash-1017-vq8sh14-q4k-mtpnative-grrb-sci_fit_n15360-engine";;
         none)    echo "";;
         *)       return 1;;
     esac
@@ -334,6 +337,7 @@ incomplete_bytes() {
 probe() {
     local have k=0 i d
     echo "repo $REPO"
+    echo "base $BASE_REPO"
     echo "shards ${SHARDS[*]}"
     if [ "$(fsize "$MODEL/$GGUF")" = "$GGUF_BYTES" ]; then have=$GGUF_BYTES
     else
