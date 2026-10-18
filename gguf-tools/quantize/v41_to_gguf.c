@@ -338,6 +338,10 @@ int main(int argc, char **argv) {
     }
     char cfgp[4200]; snprintf(cfgp, sizeof cfgp, "%s/inference/config.json", qdir); v41_cfg_load(&C, cfgp);
     v41_cfg_vision_load(&C, qdir);   /* 视觉塔超参在顶层 config.json 的 vision_config(2026-10-13) */
+    /* ★主文件不带视觉塔★(2026-10-17): 10-13 用户定的是视觉塔走侧车(`v41_to_gguf vision …` 出 *.vision.gguf, 引擎 --vision-gguf 第二映射),
+     * 主 GGUF 与 09-22 现役同口径(1000 张量)。这里不清零的话 plan_vision/emit_vision_kv 会把 306 个 BF16 张量(0.971 GB)连元数据一起塞进主文件
+     * —— 10-17 量新底座时实撞: 同配方多出 0.97 GB, 查了半天才发现是这一步。清零后两个函数各自 return, 侧车模式 main_vision 不走这里不受影响。 */
+    if (C.vis_layers) { fprintf(stderr, "[视觉] 主文件不带视觉塔(%d 块): 走侧车 `v41_to_gguf vision <量化目录> <原始HF> <out>.vision.gguf`\n", C.vis_layers); C.vis_layers = 0; }
     fprintf(stderr, "[配置] %d 层 dim %d 专家 %d top-%d 路由 %s ×%.2f; 压缩比 %d 项; kv源 %d 索引源 %d engram %d 层\n",
             C.n_layers, C.dim, C.n_routed_experts, C.n_activated_experts, C.score_func, C.route_scale, C.n_compress_ratios, C.n_kv_source, C.n_index_source, C.n_engram);
     /* engram 常量 */
