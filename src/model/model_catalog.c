@@ -1,6 +1,7 @@
 /* model_catalog.c — 工作台"模型"页的接口(2026-10-10, 用户 "少一个模型 tab, 可以下载模型, 跟 unsloth 的客户端页面一样")。总述见 model_internal.h。
  *
  * 本机模型 = gguf/ 下三层以内、≥8 GiB 的 .gguf。小于这个的是 MTP/草稿器之类的部件, 单独装不起来, 列出来只会让人点错。
+ *   再只留当前底座的、同名只留一份(规则见 current_base / add_model)。
  * 配套侧车 = 与 GGUF 同目录、名字以 "<GGUF 去掉 .gguf>-" 开头、里面有 gr_L*.bin 或 manifest.txt 的目录。
  *   反修产物和 HF 发布包都是这个命名, 所以按前缀配对, 不需要任何清单。
  * n-gram 表: GGUF 上一级目录里有 deepseek-engram/(下载包的布局)就给起服加 --engram-dir;
@@ -89,12 +90,11 @@ static int list_sidecars(const char *gguf_abs, char *out[], int max) {
     return ns;
 }
 
-static void emit_model(ds4_buf *b, int *n, const char *dir, const char *name, const struct stat *st) {
-    char abs[TR_PATH + 600], eg[TR_PATH + 640], hub[TR_PATH + 16];
-    snprintf(abs, sizeof abs, "%s/%s", dir, name);
+static void emit_model(ds4_buf *b, int n, const char *abs, const struct stat *st) {
+    char eg[TR_PATH + 640], hub[TR_PATH + 16];
     snprintf(hub, sizeof hub, "%s/gguf/hub/", tr_root);
     engram_of(abs, eg, sizeof eg);
-    ds4_buf_puts(b, *n ? "," : ""); (*n)++;
+    ds4_buf_puts(b, n ? "," : "");
     ds4_buf_puts(b, "{\"path\":"); ds4_json_escape(b, rel(abs));
     ds4_buf_printf(b, ",\"bytes\":%lld,\"mtime\":%ld,\"hub\":%s,\"engram\":", (long long)st->st_size, (long)st->st_mtime, strncmp(abs, hub, strlen(hub)) ? "false" : "true");
     ds4_json_escape(b, eg[0] ? rel(eg) : "");
@@ -158,8 +158,42 @@ static void emit_posttrains(ds4_buf *b) {
     ds4_buf_putc(b, ']');
 }
 
+/* 本机模型只列当前底座的(10-18 用户: "模型列表只保留 DeepSeek-V4.1-Flash-1017, 旧模型不要显示")。
+ * 当前底座 = hf_install.sh 的 BASE_REPO 斜杠后半截, 文件名以它加 '-' 或 '.' 开头才列: 新旧底座量出来的 GGUF 元数据 general.name
+ * 一样, 只有文件名分得开; 底座名只写在那个脚本里, 换底座改那一处这里跟着变。读不到(脚本不在)= 不筛。
+ * 装着的 / 下次要装的不管哪个底座都列: 聊天页的侧车下拉按装着的模型去这张表里找侧车, 不列它下拉就空了。 */
+static void current_base(char out[256]) {
+    char p[TR_PATH + 64], ln[512]; out[0] = 0;
+    snprintf(p, sizeof p, "%s/gguf-tools/scripts/hf_install.sh", tr_root);
+    FILE *f = fopen(p, "r");
+    while (f && fgets(ln, sizeof ln, f)) if (sscanf(ln, "BASE_REPO=\"%*[^/]/%255[^\"]\"", out) == 1) break;
+    if (f) fclose(f);
+}
+typedef struct { char abs[TR_PATH + 600]; struct stat st; int rank; } mcand;
+typedef struct { mcand *v; int n, cap; const char *base, *keep[2]; } mscan;
+
+static void add_model(mscan *s, const char *abs, const char *name, const struct stat *st) {
+    const bool keep = !strcmp(abs, s->keep[0]) || !strcmp(abs, s->keep[1]);
+    const size_t bl = strlen(s->base);
+    if (bl && !keep && (strncmp(name, s->base, bl) || (name[bl] != '-' && name[bl] != '.'))) return;
+    char *sc[MAX_SIDECARS]; const int ns = list_sidecars(abs, sc, MAX_SIDECARS);
+    for (int i = 0; i < ns; i++) free(sc[i]);
+    const int rank = (keep ? 2 : 0) + (ns > 0);
+    /* 同名只列一份: 备份拷贝(spark 上 gguf/v41/backup-20260925 里就有一份)和正本同名, 页面上两行一模一样, 分不清点的是哪个。
+     * 留 装着/要装的 > 有侧车的 > 路径短的 */
+    for (int i = 0; i < s->n; i++) {
+        if (strcmp(strrchr(s->v[i].abs, '/') + 1, name)) continue;
+        if (rank > s->v[i].rank || (rank == s->v[i].rank && strlen(abs) < strlen(s->v[i].abs))) {
+            snprintf(s->v[i].abs, sizeof s->v[i].abs, "%s", abs); s->v[i].st = *st; s->v[i].rank = rank;
+        }
+        return;
+    }
+    if (s->n == s->cap) { mcand *v = realloc(s->v, (size_t)(s->cap = s->cap ? s->cap * 2 : 8) * sizeof *v); if (!v) return; s->v = v; }
+    snprintf(s->v[s->n].abs, sizeof s->v[s->n].abs, "%s", abs); s->v[s->n].st = *st; s->v[s->n++].rank = rank;
+}
+
 /* gguf/ 往下三层(gguf/hub/model/X.gguf 正好三层)。用 lstat: ./ds4flash.gguf 这类别名软链不重复列, 目录软链也不会绕圈 */
-static void scan_models(ds4_buf *b, int *n, const char *dir, int depth) {
+static void scan_models(mscan *s, const char *dir, int depth) {
     DIR *d = opendir(dir); if (!d) return;
     struct dirent *de;
     while ((de = readdir(d))) {
@@ -168,8 +202,8 @@ static void scan_models(ds4_buf *b, int *n, const char *dir, int depth) {
         if (!gg && (de->d_type != DT_DIR && de->d_type != DT_UNKNOWN)) continue;   /* 产物目录里成千上万的 .bin 不逐个 stat */
         char p[TR_PATH + 600]; snprintf(p, sizeof p, "%s/%s", dir, de->d_name);
         struct stat st; if (lstat(p, &st)) continue;
-        if (S_ISDIR(st.st_mode)) { if (depth > 0 && !ends_with(de->d_name, "-engine")) scan_models(b, n, p, depth - 1); }
-        else if (gg && S_ISREG(st.st_mode) && (unsigned long long)st.st_size >= MODEL_MIN_BYTES) emit_model(b, n, dir, de->d_name, &st);
+        if (S_ISDIR(st.st_mode)) { if (depth > 0 && !ends_with(de->d_name, "-engine")) scan_models(s, p, depth - 1); }
+        else if (gg && S_ISREG(st.st_mode) && (unsigned long long)st.st_size >= MODEL_MIN_BYTES) add_model(s, p, de->d_name, &st);
     }
     closedir(d);
 }
@@ -196,9 +230,9 @@ static time_t log_tail(ds4_buf *b, const char *const prefixes[]) {
     return bt;
 }
 
-/* hf_install.sh probe → hub 对象。shard0 = 第一片 n-gram 分片的文件名(给"本机已有分片"的提示用) */
+/* hf_install.sh probe → hub 对象。shard0 = 第一片 n-gram 分片的文件名, base = 底座仓库(两个都给"本机已有分片"的提示用) */
 static void emit_hub(ds4_buf *b) {
-    char cmd[TR_PATH * 2 + 128], ln[1024], shard0[256] = "";
+    char cmd[TR_PATH * 2 + 128], ln[1024], shard0[256] = "", base[256] = "";
     snprintf(cmd, sizeof cmd, "bash '%s/gguf-tools/scripts/hf_install.sh' probe --dir '%s/gguf/hub' 2>/dev/null", tr_root, tr_root);
     ds4_buf_puts(b, "{\"dir\":\"gguf/hub\",\"sidecars\":[");
     FILE *f = popen(cmd, "r"); int nsc = 0;
@@ -207,6 +241,7 @@ static void emit_hub(ds4_buf *b) {
         char a[512] = "", c[512] = ""; long long x = 0, y = 0;
         if (sscanf(ln, "repo %511s", a) == 1) { ds4_buf_puts(&tail, ",\"repo\":"); ds4_json_escape(&tail, a); }
         else if (sscanf(ln, "shards %255s", shard0) == 1) {}
+        else if (sscanf(ln, "base %255s", base) == 1) {}
         else if (sscanf(ln, "gguf %511s %lld %lld", a, &x, &y) == 3) { ds4_buf_puts(&tail, ",\"gguf\":{\"name\":"); ds4_json_escape(&tail, a); ds4_buf_printf(&tail, ",\"bytes\":%lld,\"have\":%lld}", x, y); }
         else if (sscanf(ln, "engram %lld %lld", &x, &y) == 2) ds4_buf_printf(&tail, ",\"engram\":{\"bytes\":%lld,\"have\":%lld}", x, y);
         else if (sscanf(ln, "seg %511s %lld %lld", a, &x, &y) == 3) { ds4_buf_puts(&tail, ",\"seg\":{\"name\":"); ds4_json_escape(&tail, a); ds4_buf_printf(&tail, ",\"bytes\":%lld,\"have\":%lld}", x, y); }
@@ -219,16 +254,16 @@ static void emit_hub(ds4_buf *b) {
     ds4_buf_putc(b, ']');
     if (tail.len) ds4_buf_append(b, tail.ptr, tail.len);
     ds4_buf_free(&tail);
-    /* 本机已经有官方 n-gram 分片(量化时从 HF 下过整份底模)就提示出来: 省 203 GB 下载 */
-    char hint[TR_PATH + 300] = "", hd[TR_PATH + 8]; snprintf(hd, sizeof hd, "%s/hf", tr_root);
-    DIR *d = shard0[0] ? opendir(hd) : NULL; struct dirent *de;
-    while (d && !hint[0] && (de = readdir(d))) {
-        if (de->d_name[0] == '.') continue;
+    /* 本机已经有官方 n-gram 分片(量化时从 HF 下过整份底模)就提示出来: 省 203 GB 下载。
+     * 只看 hf/<底座仓库名斜杠后半截>/, 不扫 hf/ 下别的目录: 新旧两版底座(DeepSeek-V4.1-Flash 与 -1017)的
+     * 分片文件名、字节数都一样, 表内容不同 —— 扫到旧版就把旧表提示给新模型, 加载不报错, 只是答得变差。 */
+    char hint[TR_PATH + 300] = "";
+    const char *bn = strrchr(base, '/'); bn = bn ? bn + 1 : base;
+    if (shard0[0] && bn[0]) {
         char p[TR_PATH + 600]; struct stat st;
-        snprintf(p, sizeof p, "%s/%s/%s", hd, de->d_name, shard0);
-        if (!stat(p, &st) && S_ISREG(st.st_mode)) snprintf(hint, sizeof hint, "hf/%s", de->d_name);
+        snprintf(p, sizeof p, "%s/hf/%s/%s", tr_root, bn, shard0);
+        if (!stat(p, &st) && S_ISREG(st.st_mode)) snprintf(hint, sizeof hint, "hf/%s", bn);
     }
-    if (d) closedir(d);
     ds4_buf_puts(b, ",\"engram_hint\":"); ds4_json_escape(b, hint);
     ds4_buf_puts(b, "}");
 }
@@ -280,12 +315,13 @@ bool tr_pick_write(const char *gguf_abs, const char *zch_abs, const char *pt_abs
 
 /* with_hub = 0(?hub=0): 聊天页每 2.5 s 拉一次只为看侧车与切换状态, 不跑 hf_install.sh probe(每次起一个 bash)、不读日志尾 */
 static int api_list(ds4_buf *b, bool with_hub) {
-    char g[TR_PATH * 2 + 8], z[TR_PATH * 2 + 8], pt[TR_PATH * 2 + 8], gg[TR_PATH + 16], serr[256];
+    char g[TR_PATH * 2 + 8], z[TR_PATH * 2 + 8], pt[TR_PATH * 2 + 8], gg[TR_PATH + 16], serr[256], lg[TR_PATH * 2 + 8], base[256];
     int pending = 0;
     tr_procs p; tr_proc_scan(&p);
     ds4_buf_printf(b, "{\"mem_total_mb\":%ld,\"mem_avail_mb\":%ld,\"downloading\":%s,\"live\":%s", mem_total_mb(), tr_mem_avail_mb(),
                    p.dl ? "true" : "false", tr_live.request ? "true" : "false");
     current_trio(g, sizeof g, z, sizeof z, pt, sizeof pt, &pending, serr, sizeof serr); emit_trio(b, "loaded", g, z, pt);
+    snprintf(lg, sizeof lg, "%s", g);
     ds4_buf_printf(b, ",\"switch\":{\"pending\":%s,\"error\":", pending ? "true" : "false"); ds4_json_escape(b, serr); ds4_buf_putc(b, '}');
     /* 装着的模型的侧车指纹: 聊天页按它把 ③ 配到对的 ②(③ 的 base.fnv = 训练时挂的 ② 的指纹) */
     ds4_buf_printf(b, ",\"fnv\":{\"\":\"%016llx 0\"", (unsigned long long)DS4_GR_FNV_SEED);   /* 键 "" = 不挂侧车(对着裸 ① 训的 ③ 配它) */
@@ -297,7 +333,10 @@ static int api_list(ds4_buf *b, bool with_hub) {
     emit_posttrains(b);
     read_pick(g, sizeof g, z, sizeof z, pt, sizeof pt); emit_trio(b, "pick", g, z, pt);
     ds4_buf_puts(b, ",\"local\":[");
-    int n = 0; snprintf(gg, sizeof gg, "%s/gguf", tr_root); scan_models(b, &n, gg, 3);
+    current_base(base); mscan s = { .base = base, .keep = { lg, g } };
+    snprintf(gg, sizeof gg, "%s/gguf", tr_root); scan_models(&s, gg, 3);
+    for (int i = 0; i < s.n; i++) emit_model(b, i, s.v[i].abs, &s.v[i].st);
+    free(s.v);
     ds4_buf_putc(b, ']');
     if (!with_hub) { ds4_buf_putc(b, '}'); return 200; }
     ds4_buf_puts(b, ",\"hub\":"); emit_hub(b);
