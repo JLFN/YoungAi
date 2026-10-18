@@ -209,22 +209,22 @@ void request_free(request *r) {
 
 ds4_think_mode think_mode_from_enabled(bool enabled, ds4_think_mode effort) {
     if (!enabled || effort == DS4_THINK_NONE) return DS4_THINK_NONE;
-    return effort == DS4_THINK_MAX ? DS4_THINK_MAX : DS4_THINK_HIGH;
+    return effort;
 }
 
+/* 与官方 API 文档同一张表(2026-10-18): low/high/max 三档 = 50/75/100; 兼容别名 minimal→low, medium/xhigh→high。
+ * 以前 low 折成 high(75): 客户端要 50 却渲染 75, 不报错只偏离。 */
 bool parse_reasoning_effort_name(const char *s, ds4_think_mode *out) {
     if (!s) return false;
     if (!strcmp(s, "max")) {
         *out = DS4_THINK_MAX;
         return true;
     }
-    if (!strcmp(s, "xhigh") || !strcmp(s, "high") ||
-        !strcmp(s, "medium") || !strcmp(s, "low") ||
-        !strcmp(s, "minimal"))
-    {
-        /* DS4 only exposes HIGH and MAX above zero, so "minimal" collapses to
-         * the smallest non-zero level (HIGH). Callers that need *no* reasoning
-         * must use "none" instead. */
+    if (!strcmp(s, "low") || !strcmp(s, "minimal")) {
+        *out = DS4_THINK_LOW;
+        return true;
+    }
+    if (!strcmp(s, "xhigh") || !strcmp(s, "high") || !strcmp(s, "medium")) {
         *out = DS4_THINK_HIGH;
         return true;
     }

@@ -11,6 +11,8 @@ void ds4_gpu_expert_remote_fetch_kick(void) {}
  * 位置: BOS → <｜System｜> → 这一行 → system 正文 → <｜User｜>…, 只在 thinking 模式出现, 每条对话一次。
  * 2026-09-21 之前这里是 V4 时代的一段英文长段落, 且只在 max 档写、high 档什么都不写、前面也没有 <｜System｜> ——
  * 三处都与 V4.1 官方不同(bug.md §1.4)。模板字符串只在这一处, 服务端/CLI/agent 都引它。 */
+const char DS4_REASONING_EFFORT_LOW_PREFIX[] =
+    "Reasoning Effort: 50 (range 1-100, the higher the value, the more thorough the reasoning)\n\n";
 const char DS4_REASONING_EFFORT_HIGH_PREFIX[] =
     "Reasoning Effort: 75 (range 1-100, the higher the value, the more thorough the reasoning)\n\n";
 const char DS4_REASONING_EFFORT_MAX_PREFIX[] =

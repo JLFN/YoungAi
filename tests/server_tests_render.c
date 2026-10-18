@@ -100,7 +100,9 @@ void test_request_defaults_use_min_p_filtering(void) {
 
 void test_reasoning_effort_mapping(void) {
     ds4_think_mode mode = DS4_THINK_NONE;
-    TEST_ASSERT(parse_reasoning_effort_name("low", &mode) && mode == DS4_THINK_HIGH);
+    TEST_ASSERT(parse_reasoning_effort_name("low", &mode) && mode == DS4_THINK_LOW);       /* 官方 low = 50(2026-10-18) */
+    TEST_ASSERT(parse_reasoning_effort_name("minimal", &mode) && mode == DS4_THINK_LOW);
+    TEST_ASSERT(strstr(ds4_think_effort_prefix(DS4_THINK_LOW), "Reasoning Effort: 50 ") && ds4_think_mode_enabled(DS4_THINK_LOW));
     TEST_ASSERT(parse_reasoning_effort_name("medium", &mode) && mode == DS4_THINK_HIGH);
     TEST_ASSERT(parse_reasoning_effort_name("high", &mode) && mode == DS4_THINK_HIGH);
     TEST_ASSERT(parse_reasoning_effort_name("xhigh", &mode) && mode == DS4_THINK_HIGH);

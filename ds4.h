@@ -15,11 +15,8 @@
 
 typedef enum { DS4_BACKEND_METAL, DS4_BACKEND_CUDA, DS4_BACKEND_CPU } ds4_backend;
 
-typedef enum {
-    DS4_THINK_NONE,
-    DS4_THINK_HIGH,
-    DS4_THINK_MAX,
-} ds4_think_mode;
+/* 官方 Reasoning Effort 三档 low/high/max = 50/75/100(默认 high); LOW 2026-10-18 加, 以前 low 被折成 75 与官方 encoding.py 不符 */
+typedef enum { DS4_THINK_NONE, DS4_THINK_LOW, DS4_THINK_HIGH, DS4_THINK_MAX } ds4_think_mode;
 
 typedef enum {
     DS4_LOG_DEFAULT,

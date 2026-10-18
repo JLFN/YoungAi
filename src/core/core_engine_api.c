@@ -64,12 +64,13 @@ const char *ds4_backend_name(ds4_backend backend) {
 }
 
 bool ds4_think_mode_enabled(ds4_think_mode mode) {
-    return mode == DS4_THINK_HIGH || mode == DS4_THINK_MAX;
+    return mode == DS4_THINK_LOW || mode == DS4_THINK_HIGH || mode == DS4_THINK_MAX;
 }
 
 const char *ds4_think_mode_name(ds4_think_mode mode) {
     switch (mode) {
     case DS4_THINK_NONE: return "none";
+    case DS4_THINK_LOW:  return "low";
     case DS4_THINK_HIGH: return "high";
     case DS4_THINK_MAX:  return "max";
     }
@@ -82,6 +83,7 @@ const char *ds4_think_max_prefix(void) {
 
 const char *ds4_think_effort_prefix(ds4_think_mode mode) {
     switch (mode) {
+    case DS4_THINK_LOW:  return DS4_REASONING_EFFORT_LOW_PREFIX;
     case DS4_THINK_HIGH: return DS4_REASONING_EFFORT_HIGH_PREFIX;
     case DS4_THINK_MAX:  return DS4_REASONING_EFFORT_MAX_PREFIX;
     case DS4_THINK_NONE: break;

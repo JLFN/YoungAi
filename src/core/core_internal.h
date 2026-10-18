@@ -193,6 +193,7 @@ struct ds4_session {
 };
 
 /* ---- 跨文件全局与函数声明(拆分工序新增; 定义处已去 static) ---- */
+extern const char DS4_REASONING_EFFORT_LOW_PREFIX[];
 extern const char DS4_REASONING_EFFORT_HIGH_PREFIX[];
 extern const char DS4_REASONING_EFFORT_MAX_PREFIX[];
 extern bool g_ds4_chat_system_token;   /* 装载的 tokenizer 有 <｜System｜>(core_bpe.c 装 vocab 时置); 文本渲染路(服务端)靠它决定写不写 */
