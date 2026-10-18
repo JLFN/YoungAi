@@ -45,7 +45,14 @@ R30="$ROOT/gguf/go-onebit/r30"
 G7="$ROOT/gguf/go-onebit/g7"
 
 PROFILE=general
-if [ "${1:-}" = "--profile" ]; then PROFILE="${2:?--profile 要值 general|fin|fin41|code|law|med|sci}"; shift 2; fi
+GG_SET=""   # --gguf: sidecar 段的基座 GGUF(2026-10-17 新底座 1017 反修; 空 = 现役部署基座)
+HF_OVR=""   # --hf: 出厂权重目录覆盖(与 --gguf 成对给: 教师锚/链态夹具必须是这份基座自己的出厂权重, v41_judge.sh --hf 按目录名另存缓存)
+while [ $# -gt 0 ]; do case "${1:-}" in
+  --profile) PROFILE="${2:?--profile 要值 general|fin|fin41|code|law|med|sci}"; shift 2;;
+  --gguf) GG_SET="${2:?--gguf 要文件}"; shift 2;;
+  --hf) HF_OVR="${2:?--hf 要目录}"; shift 2;;
+  *) break;;
+esac; done
 HF_SET=""
 # idshalf 切几份、每份叫什么(<中文标签>:<文件名去 .ids>)。默认三份 = 历史所有工作区的落盘名, 改了就对不上已有锚。
 SPLITS=("量化份:vqhalf_q" "反修份:vqhalf_a" "判决份:vqhalf_j")
@@ -86,6 +93,7 @@ case "$PROFILE" in
            HF_SET="$ROOT/hf/DeepSeek-V4.1-Flash";;
   *) echo "未知 profile: $PROFILE(general|fin|fin41|code|law|med|sci)" >&2; exit 2;;
 esac
+[ -n "$HF_OVR" ] && HF_SET="$(cd "$HF_OVR" && pwd)"
 S=8192                       # 锚 token 数(整份语料等距窗抽样)
 IDS_WIN=64                   # 等距窗数, 跨度铺满全文
 MDL="$ROOT/gguf/ds4-allq2.gguf"   # 普通 RTN 全 q2, 零语料, 本战役不重量化
@@ -504,18 +512,28 @@ PY
 # 耗时(09-26 编程实测): 判决份教师 29 min + 拟合份夹具 31 min + 解算 124 min + 每个学生 ~2.5 min。
 # 用法: amp_campaign.sh --profile law sidecar   (idshalf 没切会先切; 三个域串行跑就在外面一个 for 循环)
 stage_sidecar(){
-    case "$PROFILE" in code|law|med|sci) ;; *) DIE "sidecar 段只给 code/law/med/sci, 收到 $PROFILE";; esac
+    case "$PROFILE" in code|law|med|sci|fin41) ;; *) DIE "sidecar 段只给 code/law/med/sci/fin41, 收到 $PROFILE";; esac
     stage_idshalf
     local J="$SC/v41_judge.sh"
+    # 拟合份 / 判决份文件名按 profile 的 SPLITS 取(code/law/med/sci = fit/judge; fin41 = vqhalf_a/vqhalf_j, 09-21 金融侧车就是这两份)。
+    # fin41 进 sidecar 段(2026-10-17 用户令"其他四个域也全部接上"): 现役金融侧车 09-21 是手敲 v41_judge.sh engamp 做的, 这里收成同一条链。
+    local FITN="fit" JUDN="judge"
+    case "$PROFILE" in fin41) FITN="vqhalf_a"; JUDN="vqhalf_j";; esac
     local GG="$ROOT/gguf/v41/DeepSeek-V4.1-Flash-vq8sh14-q4k-mtpnative.gguf"   # 现役部署基座(09-22 起), 同 v41_judge.sh 默认
-    local FIT="$VQD/fit.ids" JUD="$VQD/judge.ids" WT2="$G7/wt2.ids" f d
-    for f in "$GG" "$FIT" "$FIT.layout" "$JUD" "$WT2"; do [ -s "$f" ] || DIE "缺 $f"; done
+    [ -n "$GG_SET" ] && GG="$ROOT/${GG_SET#$ROOT/}"   # --gguf 给相对或绝对都行, 统一成仓库下的绝对路径(下面 ${GG#$ROOT/} 再剥成相对)
+    # --hf 跟着基座走: 新底座的侧车要用新底座的出厂权重出教师锚与拟合份链态夹具(v41_judge.sh --hf 对非默认目录另存 _<目录名> 缓存),
+    # 拿旧底座的锚解新底座 = 把两个模型的差当量化误差去修。HF_SET 等于默认目录时 v41_judge.sh 行为与不传逐字同。
+    local HFARG=(--hf "$HF_SET")
+    local FIT="$VQD/$FITN.ids" JUD="$VQD/$JUDN.ids" WT2="$G7/wt2.ids" f d
+    for f in "$GG" "$FIT" "$FIT.layout" "$JUD" "$WT2" "$HF_SET/config.json"; do [ -s "$f" ] || DIE "缺 $f"; done
+    LOG "基座 $(basename "$GG") / 出厂权重 $HF_SET"
     # 与 v41_judge.sh engamp 档的命名逐字同(<基座>-<模式>-<目录>_<文件名>_n<N>-engine), 对不上 ② 就会把自己当成"别的侧车"
-    local ARM="$ROOT/gguf/v41/$(basename "$GG" .gguf)-grrb-${NAME}_fit_n${SPLIT_N}-engine"
+    # code: <基座>-grrb-code_fit_n15360-engine(与改前逐字同); fin41: <基座>-grrb-vqfin41_vqhalf_a_n8192-engine(与现役金融侧车同名法)
+    local ARM="$ROOT/gguf/v41/$(basename "$GG" .gguf)-grrb-$(basename "$VQD")_${FITN}_n${SPLIT_N}-engine"
     LOG "① 解 $NAME 侧车 + $NAME 判决份五指标 → $ARM"
     # 基座与拟合料传仓库相对路径(v41_judge.sh 先 cd 到仓库根): 解算器把这两个参数原样写进侧车 manifest.txt, 传绝对路径
     # 就是把 /home/<本机用户>/ 写进要公开发布的文件, hf_publish_spark.sh 的 stage 会因此拒发(09-28 实撞, 三份 manifest 手工改回)
-    "$J" "$JUD" "$SPLIT_N" "engamp:${FIT#$ROOT/}:$SPLIT_N:${GG#$ROOT/}:0:40:grrb" || DIE "① 解侧车/判决失败"
+    "$J" "$JUD" "$SPLIT_N" "${HFARG[@]}" "engamp:${FIT#$ROOT/}:$SPLIT_N:${GG#$ROOT/}:0:40:grrb" || DIE "① 解侧车/判决失败"
     grep -q "^# 完成" "$ARM/manifest.txt" 2>/dev/null || DIE "侧车目录没有完成标记: $ARM"
     local CMP=("engine:$GG")
     for d in "$ROOT/gguf/v41/$(basename "$GG" .gguf)"-grrb-*-engine; do
@@ -524,9 +542,9 @@ stage_sidecar(){
         grep -q "^# 完成" "$d/manifest.txt" 2>/dev/null && CMP+=("engine:$GG:$d")
     done
     LOG "② 对照 ${#CMP[@]} 档(裸基座 + 其他领域侧车), 同一判决份"
-    "$J" "$JUD" "$SPLIT_N" "${CMP[@]}" || DIE "② 对照失败"
+    "$J" "$JUD" "$SPLIT_N" "${HFARG[@]}" "${CMP[@]}" || DIE "② 对照失败"
     LOG "③ wt2 512 守门: 裸基座 / +$NAME 侧车"
-    "$J" "$WT2" 512 "engine:$GG" "engine:$GG:$ARM" || DIE "③ wt2 守门失败"
+    "$J" "$WT2" 512 "${HFARG[@]}" "engine:$GG" "engine:$GG:$ARM" || DIE "③ wt2 守门失败"
 }
 
 # ★放大器半扩样(2026-08-26 zloss90 战役, 用户令: 体积≤2GB 换 Σmin→0.90)★
