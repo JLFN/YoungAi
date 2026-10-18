@@ -1,6 +1,10 @@
 /* model_llm.c — 助理调模型: 127.0.0.1:<模型端口> POST /v1/chat/completions(stream), 解析 SSE 增量(正文/思考/tool_calls/用量)。
  * 走 HTTP 而不是进程内调引擎: 模型在 ds4-server 子进程里(主进程永不退, 模型会被训练停掉、换模型重起), 这正是两者分开的理由。
- * 不带 temperature / max_tokens(10-10 用户: "不要温度, 不要长度限制"): 服务端按模型卡配方采样; 工具语法位服务端自己强制贪心(10-11 修的 v41_syntax_greedy)。
+ * 不带 temperature(10-10 用户: "不要温度"): 服务端按模型卡配方采样; 工具语法位服务端自己强制贪心(10-11 修的 v41_syntax_greedy)。
+ * 带 max_tokens = 官方思考模式的默认上限(10-18 用户"先看 max-token 试一试", 收回 10-10 的"不要长度限制"): 10-18 鹈鹕一条思考 43k 不收口
+ * 到用户按停, 官方线上同样的请求到 64K 就 finish=length 断掉。顶到上限时 content 为空, asst_run.c 把它当"没产出"报给用户。 */
+enum { ASST_MAX_TOKENS = 65536 };   /* = DeepSeek API 文档思考模式 max_tokens 默认(非思考 8K, effort=max 128K); 改它 = 偏离官方口径 */
+/*
  * ds4-server 的流式响应是 Connection: close 分隔(不是 chunked), 读到对端关就是完了。
  * 出错会怎样: 连不上 → err="model is not running"(训练中/没装模型), 页面照实显示; 中途 stop → 关 socket, ds4-server 探到断开自己停生成。 */
 #include "../assistant/asst_internal.h"
@@ -93,7 +97,9 @@ bool asst_llm_chat(int port, const char *messages, const char *tools, const asst
     /* ★助理默认开思考★(2026-10-12 用户定"Agent 默认开启"): 不思考模式下模型把过渡句当思考段, 收口位 24 次采样 8 次吐游离 </think>、1 次 EOS
      * 直接收工没终稿; 开思考后同任务 12 步 43 次工具调用每步都正常收口并交出带链接的终稿(fable5 10-12)。代价是每步多 1.5k~3.5k 思考 token(约 1 分钟)。
      * 思考段原文随 reasoning_content 回传(asst_run.c), 服务端按官方模板把同一轮里的 <think>…</think> 原样渲染回去, KV 前缀才接得上。 */
-    ds4_buf_printf(&body, "{\"model\":\"deepseek-v4-flash\",\"stream\":true,\"think\":true,\"stream_options\":{\"include_usage\":true},\"messages\":%s", messages);
+    /* 不带 reasoning_effort = 官方默认 high(75)。10-18 试过 low(50): 鹈鹕照样进环, 用户令还原; 服务端的 low=50 档留着(以前 low 被折成 75 是错的)。 */
+    ds4_buf_printf(&body, "{\"model\":\"deepseek-v4-flash\",\"stream\":true,\"think\":true,\"max_tokens\":%d,\"stream_options\":{\"include_usage\":true},\"messages\":%s",
+                   ASST_MAX_TOKENS, messages);
     if (tools && tools[0]) ds4_buf_printf(&body, ",\"tools\":%s", tools);
     ds4_buf_putc(&body, '}');
     ds4_buf req = {0};

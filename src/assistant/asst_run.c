@@ -159,6 +159,10 @@ static void run_one(const char *sid, const char *text, const char *device, const
         ds4_buf u = {0}; ds4_buf_printf(&u, "{\"ev\":\"usage\",\"prompt\":%ld,\"completion\":%ld}", o.prompt_tokens, o.completion_tokens); asst_ev(sid, u.ptr); ds4_buf_free(&u);
         if (!good) { ev_str(sid, "error", "msg", o.err); asst_llm_out_free(&o); end = "error"; break; }
         if (o.stopped) { asst_llm_out_free(&o); end = "stopped"; break; }
+        if (!nc && !o.content.len && !strcmp(o.finish, "length")) {   /* 顶到 max_tokens(model_llm.c)时思考还没收口: 一个字的回答都没有, 照实告诉用户而不是静默结束 */
+            char msg[160]; snprintf(msg, sizeof msg, "model hit the output limit after %ld tokens of thinking without producing an answer", o.completion_tokens);
+            ev_str(sid, "error", "msg", msg); asst_llm_out_free(&o); end = "error"; break;
+        }
         if (!nc) { asst_llm_out_free(&o); break; }
         bool stopped = false;
         for (int i = 0; i < nc; i++) {
