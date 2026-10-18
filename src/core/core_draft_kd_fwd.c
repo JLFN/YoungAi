@@ -201,6 +201,7 @@ bool dk_tower_fwd(ds4_engine *e, dk_run *r, uint32_t T) {
     if (!ds4_gpu_draft_attn_fwd_tensor(st->o, r->lse[T], st->q, r->hist[T], r->hbase, st->kvn, r->bpos, r->nb, r->B, SWA,
                                        m->map, m->size, l->attn_sinks->abs_offset, NH, HD, (float)(1.0 / sqrt((double)HD)))) return false;
     if (!dk_rope(st->o, st->pos, n, NH, HD, true)) return false;
+    if (!ds4_gpu_v41_act_quant_fp8_tensor(st->o, n, NH * HD, 32)) return false;   /* 官方 1017 草稿塔同样在 wo_a 前假量化 o(见 v41_attn_out) */
     const uint32_t grp = NH / DS4_N_OUT_GROUP;
     if (!v41_tproj_grouped(m, st->low, l->attn_output_a, DS4_N_OUT_GROUP, (uint64_t)grp * HD, DS4_N_LORA_O, st->o, n, 1) ||
         !v41_tproj(m, st->attn_out, l->attn_output_b, (uint64_t)DS4_N_OUT_GROUP * DS4_N_LORA_O, E, st->low, n, 1)) return false;

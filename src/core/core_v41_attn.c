@@ -252,6 +252,7 @@ static bool v41_draft_attention(ds4_engine *e, ds4_v41_state *st, uint32_t il) {
                                         l->attn_sinks->abs_offset, n, st->pos0, SWA, 0, 0, 0, NH, HD,
                                         (float)(1.0 / sqrt((double)HD)), 1, 0, 0u, NULL, 0u)) return false;   /* 草稿塔窗口由 push_main 整段维护, 无脏槽 */
     if (!v41_rope(st->o, st->pos, n, NH, HD, 0, true)) return false;
+    if (!ds4_gpu_v41_act_quant_fp8_tensor(st->o, n, NH * HD, 32)) return false;   /* 官方 1017 草稿塔 wo_a 前的 act_quant(见 v41_attn_out) */
     const uint32_t grp = NH / DS4_N_OUT_GROUP;
     if (!v41_tproj_grouped(m, st->low, l->attn_output_a, DS4_N_OUT_GROUP, (uint64_t)grp * HD, DS4_N_LORA_O, st->o, n, 1)) return false;
     return v41_tproj(m, st->attn_out, l->attn_output_b, (uint64_t)DS4_N_OUT_GROUP * DS4_N_LORA_O, E, st->low, n, 1);
@@ -353,6 +354,11 @@ bool v41_attn_out(ds4_engine *e, ds4_v41_state *st, uint32_t il) {
     const uint32_t n = st->n, E = DS4_N_EMBD, HD = DS4_N_HEAD_DIM, NH = DS4_N_HEAD;
     const uint32_t ratio = ds4_layer_compress_ratio(il);
     if (!v41_rope(st->o, st->pos, n, NH, HD, ratio, true)) return false;
+    /* ★o 进 wo_a 前按 32 块 FP8 假量化(e4m3 值 + ue8m0 尺度)★: 官方 1017 版 model.py 在 einsum 前新加的
+     * `act_quant(o, fp8_block_size, scale_fmt, scale_dtype, True)`(主注意力与 DSpark 草稿塔各一处), 旧版没有。
+     * 训练时 wo_a 的输入走的就是这种块量化 FP8, 省掉它 = 每层注意力输出少一道训练时有的舍入。
+     * 块对角分组 grp×HD 是 32 的倍数, 整行按 32 切与官方按组切是同一套块边界。 */
+    if (!ds4_gpu_v41_act_quant_fp8_tensor(st->o, n, NH * HD, 32)) return false;
     /* 输出投影: 分组 wo_a(块对角) → bf16 → wo_b → bf16 */
     const uint32_t grp = NH / DS4_N_OUT_GROUP;
     if (!v41_tproj_grouped(m, st->low, l->attn_output_a, DS4_N_OUT_GROUP,
