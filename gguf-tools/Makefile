@@ -254,8 +254,11 @@ endif
 # 与 .so 同旗标, 否则同输入两路出不同数。v41_fp_moe.cu 用 --use_fast_math: 它抄的是引擎核, 引擎就是这么编的。
 ifeq ($(CUDA),1)
 V41AMP_ENGINE_OBJS_CMD = find ../src/core ../src/dist -name '*.o' ! -name '*_cpu.o' ! -name '*_test.o' | $(LIVE_OBJS); \
-    echo ../src/common/ds4_quantfmt.o ../ds4_corr.o ../ds4_zchain.o ../ds4_zfinetune.o ../ds4_z.o ../ds4_loss.o \
+    echo ../src/common/ds4_quantfmt.o ../src/common/ds4_json.o ../ds4_corr.o ../ds4_zchain.o ../ds4_zfinetune.o ../ds4_z.o ../ds4_loss.o \
          ../ds4_multimodal.o ../ds4_spatial.o ../ds4_css.o ../ds4_cuda.o
+# ds4_json.o(2026-10-17 实撞): core_ptrain_data/expand(10-10 后训练 jsonl 料)引用 json_ws/json_string/ds4_buf_*/ds4_json_escape, 都住
+# src/common/ds4_json.c; find 只扫 core/dist, 漏了它 ⇒ 1017 编程侧车两趟教师(1 h)跑完到解算才报 undefined reference。common 下
+# 不整目录 find: ds4_gguf.o 这里有自己编的一份(上面 $(AMP)/ds4_gguf.o), 两份同名符号会撞。
 v41_amp_run: $(AMP)/v41_amp_run
 $(AMP)/v41_amp_solve.o: $(AMP)/v41_amp_solve.cu $(AMP)/v41_amp_diag.inc.cu
 	$(NVCC) -O3 -fmad=false -arch=native -DV41_AMP_NOMAIN -c $< -o $@
