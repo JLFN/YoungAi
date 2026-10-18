@@ -10,7 +10,7 @@
 # (ids, ntok) 命名, 换语料/换长度会自动另存, 不会拿错锚 —— 锚与 ids 错配会出 PPL 2.4e7
 # 这种一眼假的数(V4 时代实撞)。
 #
-# 用法: v41_judge.sh <ids文件> <ntok> <档位列表...>
+# 用法: v41_judge.sh <ids文件> <ntok> [--act-from <量化份ids>] [--hf <出厂权重目录>] <档位列表...>
 #   例: v41_judge.sh gguf/go-onebit/g7/wt2.ids 32 4 3 2 1        标量位宽
 #       v41_judge.sh gguf/go-onebit/g7/wt2.ids 512 8:4096         VQ dim:nc
 #       v41_judge.sh gguf/go-onebit/g7/wt2.ids 512 amp:<拟合ids>:<拟合ntok>:8:4096:64
@@ -34,7 +34,19 @@ IDS="${1:?ids 文件}"; NTOK="${2:?token 数}"; shift 2
 # 量化校准那一环。三份语料各司其职, 缺一环就不是完整配方: 量化份校准 / 反修份拟合放大器 /
 # 判决份打分, 谁都不许串岗。
 ACTIDS=""
-[ "${1:-}" = "--act-from" ] && { ACTIDS="${2:?--act-from 要 ids}"; shift 2; }
+# --hf DIR(2026-10-17): 换出厂权重(新底座 DeepSeek-V4.1-Flash-1017 与旧版并排)。教师锚、链态夹具都是从 HF 算的,
+# 换了底座就是另一套数 ⇒ 非默认目录时缓存文件名统一带 _<目录名> 后缀(HFSFX), 不然 [ -s "$REF" ] 直接拿旧底座的锚
+# 判新底座的学生 —— 不报错, 只出一组"看着合理"的假数(与上面两套同名语料共用锚是同一类坑)。
+HF_DEFAULT="$HF"; HFSFX=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --act-from) ACTIDS="${2:?--act-from 要 ids}"; shift 2;;
+    --hf) HF="$(cd "${2:?--hf 要目录}" && pwd)" || exit 2; shift 2;;
+    *) break;;
+  esac
+done
+[ -s "$HF/config.json" ] || { echo "★--hf $HF 不是出厂权重目录(缺 config.json)★"; exit 2; }
+[ "$HF" = "$HF_DEFAULT" ] || HFSFX="_$(basename "$HF")"
 OUT="$ROOT/gguf/v41judge"; mkdir -p "$OUT"
 # ★语料标识必须带上目录★: gguf/go-onebit/vqhalf/(全域八域: academic/prose/code/euro/
 # cyrillic/math/arabic/cjk) 与 gguf/go-onebit/vqfin41/(金融五域) 里的 ids 文件【同名】
@@ -42,7 +54,7 @@ OUT="$ROOT/gguf/v41judge"; mkdir -p "$OUT"
 # 是 [ -s "$REF" ] ⇒ 第二套直接拿第一套的锚打分, 不报错, 只出一组看着合理的假数字。
 corpus_tag() { echo "$(basename "$(dirname "$1")")_$(basename "$1" .ids)"; }
 TAG="$(corpus_tag "$IDS")_n$NTOK"
-REF="$OUT/teacher_$TAG.bin"
+REF="$OUT/teacher_$TAG$HFSFX.bin"
 LOG(){ echo "[judge $(date '+%m-%d %H:%M:%S')] $*"; }
 
 # ★看门狗★: 按 free 的 available 算, 不看 RSS —— 权重是 mmap 的, 那些页算 buff/cache 也计进
@@ -130,8 +142,8 @@ file "$AM" | grep -q "ELF.*aarch64" || { LOG "★$AM 不是 ELF aarch64, 重编�
 if [ ! -s "$REF" ]; then
     # 教师锚要 HF 出厂权重(476 GB)+ 教师端 venv, 发布包只带 wt2 n512 那一份(release_pack.sh): 缺就说清楚, 别让它死在 "python: 没有那个文件"
     [ -x "$PY" ] || { LOG "★教师锚 $REF 缺, 本机又没有教师端 $PY —— 发布包只带 wt2 512 token 的锚, 别的判决料/长度要在有 HF 出厂权重的机器上出★"; exit 3; }
-    LOG "① FP 教师(不量化) → $REF"
-    run_py "teacher_$TAG" "配置|完成|PPL|→" --ids "$IDS" --ntok "$NTOK" --out "$REF" || exit 3
+    LOG "① FP 教师(不量化, 出厂权重 $HF) → $REF"
+    run_py "teacher_$TAG$HFSFX" "配置|完成|PPL|→" --ids "$IDS" --ntok "$NTOK" --out "$REF" || exit 3
 else
     LOG "① 教师已在 $(ls -l "$REF" | awk '{printf "%.1f MB", $5/1e6}'), 跳过"
 fi
@@ -243,8 +255,8 @@ for NB in "$@"; do
       [ -s "$MD/model.safetensors.index.json" ] || { LOG "★$MD 不是量化目录★"; continue; }
       [ -s "$FIT.layout" ] || { LOG "★$FIT.layout 缺★"; continue; }
       build_amp_so || continue
-      DUMP="$OUT/moe_fp_$(corpus_tag "$FIT")_n${FN}"
-      FREF="$OUT/teacher_$(corpus_tag "$FIT")_n${FN}.bin"
+      DUMP="$OUT/moe_fp_$(corpus_tag "$FIT")_n${FN}$HFSFX"
+      FREF="$OUT/teacher_$(corpus_tag "$FIT")_n${FN}$HFSFX.bin"
       if [ ! -s "$DUMP/y_L00.bin" ]; then
           LOG "教师 dump(FP 自然跑, 逐层 x/y) → $DUMP"
           run_py "teacherdump_$(corpus_tag "$FIT")_n${FN}" "配置|反修原料|完成|PPL|→" \
@@ -339,11 +351,11 @@ for NB in "$@"; do
         "") ;;
         gr) GRARG="--capture-ye"; KIND="gr" ;;
         grrb)
-          DUMP="$OUT/fpdump_$(corpus_tag "$FIT")_n${FN}"
+          DUMP="$OUT/fpdump_$(corpus_tag "$FIT")_n${FN}$HFSFX"
           if [ ! -s "$DUMP/x_L$(printf %02d $((NLY-1))).bin" ]; then
               LOG "教师链态夹具(FP 每层 x/y) → $DUMP"
-              run_py "fpdump_$(corpus_tag "$FIT")_n${FN}" "配置|反修原料|完成|PPL|→" \
-                     --ids "$FIT" --ntok "$FN" --dump-moe "$DUMP" --out "$OUT/teacher_$(corpus_tag "$FIT")_n${FN}.bin" || continue
+              run_py "fpdump_$(corpus_tag "$FIT")_n${FN}$HFSFX" "配置|反修原料|完成|PPL|→" \
+                     --ids "$FIT" --ntok "$FN" --dump-moe "$DUMP" --out "$OUT/teacher_$(corpus_tag "$FIT")_n${FN}$HFSFX.bin" || continue
           fi
           GRARG="--capture-ye --rb $DUMP"; KIND="grrb" ;;
         *) LOG "★engamp 第七字段只认空/gr/grrb, 收到 $MODE★"; continue ;;
@@ -376,7 +388,7 @@ for NB in "$@"; do
       [ -s "$GG" ] || { LOG "★$GG 不存在★"; continue; }
       [ -s "$FIT" ] || { LOG "★拟合料 $FIT 不存在★"; continue; }
       [ -s "$FIT.layout" ] || { LOG "★$FIT.layout 缺: 择优路要 layout 分层 held-out★"; continue; }
-      KREF="$OUT/teacher_$(corpus_tag "$FIT")_n${FN}.bin"
+      KREF="$OUT/teacher_$(corpus_tag "$FIT")_n${FN}$HFSFX.bin"
       [ -s "$KREF" ] || { LOG "★拟合料教师锚 $KREF 缺 —— 先跑 v41_judge.sh $FIT $FN engine 产一份★"; continue; }
       ARM="$ROOT/gguf/v41/$(basename "$GG" .gguf)-kl-$(corpus_tag "$FIT")_n${FN}_L${KLY}_eta${ETA}-engine"
       if grep -q "^# 完成" "$ARM/manifest.txt" 2>/dev/null; then

@@ -8,10 +8,12 @@
 # 【为什么判决必须从目录加载】此前的五指标都是"量化-反量化后原地跑"的读数; 这次的产物是
 # 文件, 文件读回来的数才算数(铁律: 捕获与部署同路)。解码核与量化器内部算残差的是同一个。
 #
-# 用法: v41_quantize_spark.sh [--out DIR] [--layers a:b] [--no-common] [--no-judge] [--force]
+# 用法: v41_quantize_spark.sh [--hf DIR] [--out DIR] [--layers a:b] [--no-common] [--no-judge] [--force]
 #                             [--vq-nc N] [--vq-iters N] [--vq-stride N] [--skel q4k|fp4]
 #                             [--base DIR] [--base-layers DIR:a:b]... [--judge-set fin|eight|wt2|all]
 #                             [--calib <取料目录>] [--calib-ab]   (金融域校准量化, 2026-09-20; 料由 v41_amp_run --dump-calib 落)
+#   --hf DIR: 出厂权重目录(2026-10-17 加, 新底座 DeepSeek-V4.1-Flash-1017 与旧版并排在 hf/ 下)。它同时传给判决:
+#         教师锚必须用【同一份出厂权重】重算, 拿旧底座的锚判新底座的学生 = 两个模型互比, 五指标全是假数。
 #   冒烟: v41_quantize_spark.sh --layers 0:1 --no-common --no-judge   (只出第 0 层一个分片)
 #   探针: --base <现役目录> --layers 0:10 --no-common --vq-nc 2048   (只重做前 10 层, 其余软链现役)
 #   拼装: --base <11位目录> --base-layers <12位目录>:10:40 --layers 0:0 --no-common --no-judge
@@ -33,6 +35,7 @@ OUT="$ROOT/gguf/v41/DeepSeek-V4.1-Flash-vq8x4096-fp4"
 QARGS=(); JUDGE=1; BASE=""; BASEL=(); JSET="eight"; VS=""
 while [ $# -gt 0 ]; do
   case "$1" in
+    --hf) HF="$2"; shift 2;;
     --out) OUT="$2"; shift 2;;
     --no-judge) JUDGE=0; shift;;
     --base) BASE="$2"; shift 2;;
@@ -54,6 +57,8 @@ case "$JSET" in
   *) echo "★--judge-set 只认 fin/eight/wt2/all, 收到 $JSET★"; exit 2;;
 esac
 LOG(){ echo "[v41q $(date '+%m-%d %H:%M:%S')] $*"; }
+[ -s "$HF/config.json" ] && [ -s "$HF/model.safetensors.index.json" ] || { echo "★--hf $HF 不是出厂权重目录(缺 config.json / model.safetensors.index.json)★"; exit 2; }
+HF="$(cd "$HF" && pwd)"
 mkdir -p "$OUT"
 exec > >(tee -a "$OUT/quantize_log.txt") 2>&1
 
@@ -128,7 +133,7 @@ SPECS=("file:$OUT"); [ -n "$VS" ] && SPECS+=("file:$VS")
 for J in "${JUDGES[@]}"; do
     set -- $J
     LOG "④ 判决($JSET): 教师端从量化目录加载, $1 前 $2 token, 对现成教师锚; 档: ${SPECS[*]}"
-    bash "$ROOT/gguf-tools/scripts/v41_judge.sh" "$ROOT/$1" "$2" "${SPECS[@]}" || { LOG "★判决失败 $1★"; rc=4; }
+    bash "$ROOT/gguf-tools/scripts/v41_judge.sh" "$ROOT/$1" "$2" --hf "$HF" "${SPECS[@]}" || { LOG "★判决失败 $1★"; rc=4; }
 done
 [ "$rc" = 0 ] || exit "$rc"
 LOG "收工"
